@@ -5,6 +5,7 @@
 <!-- ************************************** Dimensions ************************************** -->
 <!-- **************************************************************************************** -->
 
+        <!-- JOHN_edit: Added EIGHT, needed for helm_coeff array in mgs_vars -->
         <dims>
                 <dim name="nCells"/>
                 <dim name="nEdges"/>
@@ -13,6 +14,7 @@
                 <dim name="nVertices"/>
                 <dim name="TWO"                definition="2"/>
                 <dim name="THREE"              definition="3"/>
+                <dim name="EIGHT"              definition="8"/>
                 <dim name="vertexDegree"/>
                 <dim name="FIFTEEN"            definition="15"/>
                 <dim name="TWENTYONE"          definition="21"/>
@@ -32,9 +34,14 @@
 <!-- **************************************************************************************** -->
 <!-- ************************************** Namelists *************************************** -->
 <!-- **************************************************************************************** -->
+<!-- STEVE_edit: added config_num_mgslevels below******************************************** -->
+<!-- STEVE_edit: added config_mg_input_name below******************************************** -->
 
+        <!-- JOHN_edit: Added switches config_alpha_si, config_mg_solve_depth, config_mg_solve_npass -->
+        <!-- *** check: do we need both config_mg_solve_depth and config_num_mgslevels ??? *** -->
         <nml_record name="nhyd_model">
                 <nml_option name="config_time_integration"           type="character"     default_value="SRK3"/>
+                <nml_option name="config_alpha_si"                   type="real"          default_value="0.5"/>
                 <nml_option name="config_dt"                         type="real"          default_value="600.0"/>
                 <nml_option name="config_calendar_type"              type="character"     default_value="gregorian"/>
                 <nml_option name="config_start_time"                 type="character"     default_value="0000-01-01_00:00:00"/>
@@ -69,6 +76,8 @@
                 <nml_option name="config_apvm_upwinding"             type="real"          default_value="0.5"/>
                 <nml_option name="config_h_ScaleWithMesh"            type="logical"       default_value="true"/>
                 <nml_option name="config_num_halos"                  type="integer"       default_value="2"/>
+                <nml_option name="config_num_mgslevels"              type="integer"       default_value="1"/>
+                <nml_option name="config_mg_solve_npass"             type="integer"       default_value="1"/>
         </nml_record>
 
         <nml_record name="damping">
@@ -78,6 +87,7 @@
 
         <nml_record name="io">
                 <nml_option name="config_input_name"                 type="character"     default_value="init.nc"/>
+                <nml_option name="config_mg_input_name"              type="character"     default_value="mg_init.nc"/>
                 <nml_option name="config_output_name"                type="character"     default_value="output.nc"/>
                 <nml_option name="config_output_interval"            type="character"     default_value="06:00:00"/>
                 <nml_option name="config_restart_name"               type="character"     default_value="restart.nc"/>
@@ -319,6 +329,11 @@
                 <var name="rho_pp"                  type="real"     dimensions="nVertLevels nCells Time"/>
                 <var name="rho_p_save"              type="real"     dimensions="nVertLevels nCells Time"/>
 
+                <!-- John_edit: Two additional variables needed for semi-implicit solver -->
+                <var name="pressure_inc"            type="real"     dimensions="nVertLevels nCells Time"/>
+                <var name="rhs"                     type="real"     dimensions="nVertLevels nCells Time"/>
+
+
                 <var name="kdiff"                   type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
 
                 <var name="surface_pressure"        type="real"     dimensions="nCells Time"                 streams="iro"/>
@@ -355,16 +370,20 @@
 
         <var_struct name="tend" time_levs="1">
 
-                
+                <!-- JOHN_edit: Included fast tendency fields needed for semi-implicit solver -->
                 <!-- tendencies for prognostic variables -->
-                <var name="tend_u"             name_in_code="u"           type="real"     dimensions="nVertLevels nEdges Time"     streams="o"/>
-                <var name="tend_w"             name_in_code="w"           type="real"     dimensions="nVertLevelsP1 nCells Time"   streams="o"/>
-                <var name="tend_rho"           name_in_code="rho_zz"      type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
-                <var name="tend_theta"         name_in_code="theta_m"     type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
-                <var name="rt_diabatic_tend"                              type="real"     dimensions="nVertLevels nCells Time"     streams="r"/>
-                <var name="euler_tend_u"       name_in_code="u_euler"     type="real"     dimensions="nVertLevels nEdges Time"/>
-                <var name="euler_tend_w"       name_in_code="w_euler"     type="real"     dimensions="nVertLevelsP1 nCells Time"/>
-                <var name="euler_tend_theta"   name_in_code="theta_euler" type="real"     dimensions="nVertLevels nCells Time"/>
+                <var name="tend_u"             name_in_code="u"             type="real"     dimensions="nVertLevels nEdges Time"     streams="o"/>
+                <var name="tend_w"             name_in_code="w"             type="real"     dimensions="nVertLevelsP1 nCells Time"   streams="o"/>
+                <var name="tend_rho"           name_in_code="rho_zz"        type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
+                <var name="tend_theta"         name_in_code="theta_m"       type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
+                <var name="tend_u_fast"        name_in_code="u_fast"        type="real"     dimensions="nVertLevels nEdges Time"     streams="o"/>
+                <var name="tend_w_fast"        name_in_code="w_fast"        type="real"     dimensions="nVertLevelsP1 nCells Time"   streams="o"/>
+                <var name="tend_rho_fast"      name_in_code="rho_zz_fast"   type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
+                <var name="tend_theta_fast"    name_in_code="theta_m_fast"  type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
+                <var name="rt_diabatic_tend"                                type="real"     dimensions="nVertLevels nCells Time"     streams="r"/>
+                <var name="euler_tend_u"       name_in_code="u_euler"       type="real"     dimensions="nVertLevels nEdges Time"/>
+                <var name="euler_tend_w"       name_in_code="w_euler"       type="real"     dimensions="nVertLevelsP1 nCells Time"/>
+                <var name="euler_tend_theta"   name_in_code="theta_euler"   type="real"     dimensions="nVertLevels nCells Time"/>
 
                 <!-- scalar tendencies -->
                 <var_array name="scalars" type="real" dimensions="nVertLevels nCells Time">
@@ -1014,4 +1033,19 @@
 		<var name="ol3"                               type="real"     dimensions="nCells"                      streams="iro"/>
 		<var name="ol4"                               type="real"     dimensions="nCells"                      streams="iro"/>
         </var_struct>
+
+        <!-- multi-grid mesh variables used in solution of Helmholtz problem -->
+        <!-- STEVE: Need to work out exactly the variables to use -->
+        <!-- STEVE_edit -->
+        <!-- JOHN: Helmholtz coefficients packed into a single array helm_coeff -->
+        <!-- JOHN: and pressure_inc and rhs_helm renamed helm_inc and helm_rhs -->
+        <!-- JOHN_edit -->
+        <var_struct name="mgs_vars" time_levs="1">
+		<var name="helm_inc"                    type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
+                <var name="helm_rhs"                	type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
+		<var name="restrictStencil"             type="integer"  dimensions="maxEdges nCells"                streams="iro"/>
+		<var name="restrictWeights"             type="real"     dimensions="maxEdges nCells"                streams="iro"/>
+                <var name="helm_coeff"                  type="real"     dimensions="nVertLevels nCells EIGHT Time"  streams="o"/>
+        </var_struct>
+
 </registry>

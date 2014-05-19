@@ -29,6 +29,8 @@
 <!-- **************************************************************************************** -->
 <!-- ************************************** Namelists *************************************** -->
 <!-- **************************************************************************************** -->
+<!-- STEVE_edit: added config_num_mgslevels below******************************************** -->
+<!-- STEVE_edit: added config_mg_input_name below******************************************** -->
 
         <nml_record name="nhyd_model">
                 <nml_option name="config_init_case"             type="integer"       default_value="7"/>
@@ -38,6 +40,7 @@
                 <nml_option name="config_theta_adv_order"       type="integer"       default_value="3"/>
                 <nml_option name="config_coef_3rd_order"        type="real"          default_value="0.25"/>
                 <nml_option name="config_num_halos"             type="integer"       default_value="2"/>
+                <nml_option name="config_num_mgslevels"         type="integer"       default_value="1"/>
         </nml_record>
 
         <nml_record name="dimensions">
@@ -71,6 +74,7 @@
 
         <nml_record name="io">
                 <nml_option name="config_input_name"            type="character"     default_value="grid.nc"/>
+                <nml_option name="config_mg_input_name"         type="character"     default_value="mg_grid.nc"/>
                 <nml_option name="config_sfc_update_name"       type="character"     default_value="sfc_update.nc"/>
                 <nml_option name="config_output_name"           type="character"     default_value="init.nc"/>
                 <nml_option name="config_restart_name"          type="character"     default_value="restart.nc"/>
@@ -289,4 +293,5 @@
         <var_struct name="diag_physics" time_levs="1">
                 <var name="precipw"                           type="real"     dimensions="nCells Time"                 streams="o"/>
         </var_struct>
+
 </registry>
