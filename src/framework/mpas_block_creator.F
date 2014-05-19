@@ -44,6 +44,8 @@ module mpas_block_creator
 !>  indexToCellID field for the 0 halo. The information required to setup these
 !>  structures is provided as input in cellList, blockID, blockStart, and
 !>  blockCount.
+!>
+!>  Steve_edit: Subroutine edited to deal with muliple grids
 !
 !-----------------------------------------------------------------------
 
@@ -61,23 +63,74 @@ module mpas_block_creator
  
      integer :: i
      integer :: nBlocks
+!STEVE_edit: the following declrations are used to generate the mgs grid
+     integer :: nMgsLevels
+     type (block_type), pointer :: blockCursorHead, blockCursor2
+     integer :: j
+     logical :: headBlock
+
+
+
  
      nBlocks = size(blockID)
      nHalos = config_num_halos
+!STEVE_edit: config_num_mgslevels is 1 by default or maybe specefied in the namelist file
+     nMgsLevels = config_num_mgslevels
 
-     ! Setup first block
-     allocate(domain % blocklist)
-     nullify(domain % blocklist % prev)
-     nullify(domain % blocklist % next)
-  
+!STEVE_Ev2: check if the the first level has been defined and set logical
+     if (associated(domain % blocklist)) then
+       headBlock = .false.
+     else
+       ! Setup first block
+       allocate(domain % blocklist)
+       nullify(domain % blocklist % prev)
+       nullify(domain % blocklist % next)
+       headBlock = .true.
+!STEVE_edit: I nulify the coaser and finer in the deff so dont need to nulify
+!them here  - I think that I should check with MPAS about defineing null
+!status...
+     end if
+
      ! Setup first block field
      allocate(indexToCellID)
      nullify(indexToCellID % next)
  
      ! Loop over blocks
-     blockCursor => domain % blocklist
+!STEVE_edit: blockCursorHead is defined so can loop over the blocks and run down
+!coarser for the multigrid
+     blockCursorHead => domain % blocklist
+!     blockCursor => domain % blocklist
      fieldCursor => indexToCellID
      do i = 1, nBlocks
+!STEVE_edit: code included to set correct mg-level and additional mg info
+       blockCursor => blockCursorHead
+       ! Set and allocate new grids and define mgs info
+       if(headBlock) then
+         ! For the head block set info for the mgs 
+         blockCursor % mgsLevel = 1
+       else
+         !Allocate space for the mgs blocks
+         blockCursor => blockCursorHead
+         j=2!the first mg is = 2
+         do while (associated(blockCursor % coarser))
+           blockCursor => blockCursor % coarser
+           j=j+1
+         end do
+         ! allocate a new coarser block
+         allocate(blockCursor % coarser)! allocate a new coarser block
+         if (i==1) then
+           nullify(blockCursor % coarser % prev)
+         else
+           blockCursor % coarser % prev => blockCursor2
+         end if
+         nullify(blockCursor % coarser % next)
+         !point coarser's finer pointer at the current pointer
+         blockCursor % coarser % finer => blockCursor
+         !move allong the list
+         blockCursor => blockCursor % coarser
+         blockCursor % mgsLevel = j
+       end if
+       blockCursor % nMgsLevels = nMgsLevels
        ! Initialize block information
        blockCursor % blockID = blockID(i)
        blockCursor % localBlockID = i - 1
@@ -98,20 +151,43 @@ module mpas_block_creator
        fieldCursor % array(:) = cellList(blockStart(i)+1:blockStart(i)+blockCount(i))
        call mpas_quicksort(fieldCursor % dimSizes(1), fieldCursor % array)
   
+
+!STEVE_edit: this code replaces the comneted-out code below
        ! Advance cursors, and create new blocks as needed
        if(i < nBlocks) then
-         allocate(blockCursor % next)
-         allocate(fieldCursor % next)
- 
-         blockCursor % next % prev => blockCursor
-
-         blockCursor => blockCursor % next
-         fieldCursor => fieldCursor % next
+         if(headBlock) then
+            allocate(blockCursorHead % next)
+            blockCursorHead % next % prev => blockCursorHead
+            blockCursorHead => blockCursorHead % next
+          else
+            ! mg - go to the head of the next block
+            blockCursorHead => blockCursorHead % next
+          end if
+!This is the same regardless of the gird being read
+           allocate(fieldCursor % next)
+           fieldCursor => fieldCursor % next
        end if
- 
+
        ! Nullify next pointers
-       nullify(blockCursor % next)
+       if(.not.headBlock) nullify(blockCursorHead % prev)!mg block
+       nullify(blockCursorHead % next)
        nullify(fieldCursor % next)
+!       ! Advance cursors, and create new blocks as needed
+!       if(i < nBlocks) then
+!         allocate(blockCursor % next)
+!         allocate(fieldCursor % next)
+! 
+!         blockCursor % next % prev => blockCursor
+!
+!         blockCursor => blockCursor % next
+!         fieldCursor => fieldCursor % next
+!       end if
+! 
+!       ! Nullify next pointers
+!       nullify(blockCursor % next)
+!       nullify(fieldCursor % next)
+!STEVE_edit: required to set the finer pointer
+       blockCursor2 => blockCursor
      end do
    end subroutine mpas_block_creator_setup_blocks_and_0halo_cells!}}}
 
@@ -971,12 +1047,14 @@ module mpas_block_creator
 !>  halo indices for each element and the exchange lists are copied into the
 !>  appropriate block. A halo update is required after this routien is called
 !>  to make sure all data in a block is valid.
+!>
+!>  Steve_edit: Subroutine edited to deal with muliple grids
 !
 !-----------------------------------------------------------------------
 
    subroutine mpas_block_creator_finalize_block_init(blocklist, &  !{{{
 #include "dim_dummy_args.inc"
-                                                     , nCellsSolve, nEdgesSolve, nVerticesSolve, indexToCellID, indexToEdgeID, indexToVertexID)
+                                                     , nCellsSolve, nEdgesSolve, nVerticesSolve, indexToCellID, indexToEdgeID, indexToVertexID, mgslevel)
      type (block_type), pointer :: blocklist !< Input/Output: Linked List of blocks
 #include "dim_dummy_decls_inout.inc"
      type (field1dInteger), pointer :: nCellsSolve !< Input: nCellsSolve field information
@@ -985,6 +1063,7 @@ module mpas_block_creator
      type (field1dInteger), pointer :: indexToCellID !< Input: indexToCellID field information
      type (field1dInteger), pointer :: indexToEdgeID !< Input: indexToEdgeID field information
      type (field1dInteger), pointer :: indexToVertexID !< Input: indexToVertexID field information
+     integer, intent(in) :: mgslevel
 
      type (domain_type), pointer :: domain
 
@@ -1007,6 +1086,12 @@ module mpas_block_creator
      indexToCellCursor => indexToCellID
      indexToEdgeCursor => indexToEdgeID
      indexToVertexCursor => indexToVertexID
+
+!STEVE_edit: loop down to the corect mgs level
+     do while (associated(block_ptr % coarser))
+       block_ptr => block_ptr % coarser
+     end do
+
      do while(associated(block_ptr))
        ! Determine block dimensions
        nCells = nCellsCursor % array(nHalos+1)
@@ -1022,8 +1107,10 @@ module mpas_block_creator
        localBlockID = block_ptr % localBlockID
 
        ! Allocate fields in block
+!STEVE_edit: added to inlcude mgsLevel as argument
        call mpas_allocate_block(nHalos, block_ptr, domain, blockID, &
 #include "dim_dummy_args.inc"
+                 , mgslevel &
                                )
 
        allocate(block_ptr % mesh % nCellsArray(0:nHalos))
@@ -1113,6 +1200,11 @@ module mpas_block_creator
 
      ! Link fields between blocks
      block_ptr => blocklist
+!STEVE_edit: added this to loop down to the current level
+     do while (associated(block_ptr % coarser))
+       block_ptr => block_ptr % coarser
+     end do
+
      do while(associated(block_ptr))
        call mpas_create_field_links(block_ptr)
 
@@ -1132,6 +1224,8 @@ module mpas_block_creator
 !>  structure. Prior to this routine, all indices are given as global index (which
 !>  can later be found in the indexTo* arrays). After this routine is called,
 !>  indices are provided as local indices now (1:nCells+1 ... etc).
+!>
+!>  Steve_edit: Subroutine edited to deal with muliple grids
 !
 !-----------------------------------------------------------------------
 
@@ -1145,6 +1239,11 @@ module mpas_block_creator
 
      ! Loop over blocks
      block_ptr => blocklist
+!STEVE_edit: added a head block pointer to loop over
+     do while (associated(block_ptr % coarser))
+       block_ptr => block_ptr % coarser
+     end do
+
      do while(associated(block_ptr))
        !
        ! Rename vertices in cellsOnCell, edgesOnCell, etc. to local indices

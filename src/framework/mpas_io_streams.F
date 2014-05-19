@@ -48,6 +48,9 @@ module mpas_io_streams
       type (MPAS_IO_Handle_type) :: fileHandle
       type (att_list_type), pointer :: attList => null()
       type (field_list_type), pointer :: fieldList => null()
+!STEVE_edit: added an int to define the current level - reuired for some reading
+!routines - its defined as -999 so that if its not set it can easily be id'd
+      integer :: mgslevel = -999
    end type MPAS_Stream_type
 
 
@@ -1371,6 +1374,28 @@ contains
       integer, dimension(:), pointer :: dimSizesInq
       type (field_list_type), pointer :: field_list_cursor
       type (field_list_type), pointer :: new_field_list_node
+!STEVE_edit: char pointer for the multigrid and char for name read
+      character (len=StrKIND), dimension(:), pointer :: dum_dimNamesInq
+      character(len=3) :: mgslevelChar
+
+!STEVE_edit: This bit of code sets the mgslevel string
+      if (stream % mgslevel.eq.1) then
+        !for the first time there is no level defined in the nc fle so make an
+        !emtpy string
+        mgslevelChar=''
+      elseif(stream % mgslevel.eq.-999) then!This is the case where the mgs-level has not been set
+        mgslevelChar=''
+        write(*,*) 'stream % mgslevel = -999, *_mgsLevel is not implemented'
+      elseif(stream % mgslevel.lt.10) then
+        write(mgslevelChar,'(I1)') stream % mgslevel
+        mgslevelChar='_'//trim(mgslevelChar)
+      elseif(stream % mgslevel.lt.100) then
+        write(mgslevelChar,'(I2)') stream % mgslevel
+        mgslevelChar='_'//trim(mgslevelChar)
+      else
+        write(*,*) 'I doubt that there should be more than 100 layers'
+        write(*,*) '... in MPAS_streamAddField_generic'
+      endif
 
       if (present(ierr)) ierr = MPAS_STREAM_NOERR
 
@@ -1457,6 +1482,11 @@ contains
 !write(stderrUnit,*) '... inquiring about'
 
          call MPAS_io_inq_var(stream % fileHandle, trim(fieldName), dimnames=dimNamesInq, dimsizes=dimSizesInq, ierr=io_err)
+!STEVE_edit: update dimSizesInq where mgslevel is greater than 1 and not dimNamesInq
+         if (stream % mgslevel.gt.1) then
+           call MPAS_io_inq_var(stream % fileHandle, trim(fieldName)//trim(mgslevelChar),dimnames=dum_dimNamesInq,dimsizes=dimSizesInq, ierr=io_err)
+         endif
+
          ! If the field does not exist in the input file, we should handle this situation gracefully at higher levels
          !   without printing disconcerting error messages
          !call MPAS_io_err_mesg(io_err, .false.)
@@ -1474,6 +1504,8 @@ contains
                if (present(ierr)) ierr = MPAS_IO_ERR
                deallocate(new_field_list_node)
                deallocate(dimNamesInq)
+!STEVE_edit: deallocate dum_dimNamesInq if its allocated
+               if (associated(dum_dimNamesInq)) deallocate(dum_dimNamesInq)
                deallocate(dimSizesInq)
                return
             end if
@@ -1519,7 +1551,10 @@ contains
       ! Set variable indices
       !
       if (ndims > 0) then
-         call MPAS_io_set_var_indices(stream % fileHandle, trim(fieldName), indices, io_err)
+!STEVE: I initailly didnt include this and it ciaused problems with output. The
+!problem stems from the stream output
+!         call MPAS_io_set_var_indices(stream % fileHandle, trim(fieldName), indices, io_err)
+         call MPAS_io_set_var_indices(stream % fileHandle,trim(trim(fieldName)//trim(mgslevelChar)), indices, io_err)
          call MPAS_io_err_mesg(io_err, .false.)
          if (io_err /= MPAS_IO_NOERR) then
             if (present(ierr)) ierr = MPAS_IO_ERR
@@ -1593,7 +1628,6 @@ contains
          return
       end if
 
-
       !
       ! Set time frame to real
       !
@@ -1618,7 +1652,8 @@ contains
 !write(stderrUnit,*) '   > outer dimension size ', field_cursor % totalDimSize
 
 !write(stderrUnit,*) 'MGD calling MPAS_io_get_var now...'
-            call MPAS_io_get_var(stream % fileHandle, field_cursor % int0dField % fieldName, int0d_temp, io_err)
+!STEVE_edit: added fileFieldName here so that it reads '_*' from the netCDF file
+            call MPAS_io_get_var(stream % fileHandle, field_cursor % int0dField % fileFieldName, int0d_temp, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR) then
                 if (present(ierr)) ierr = MPAS_IO_ERR
@@ -1649,7 +1684,8 @@ contains
                   if (.not. field_cursor % isAvailable(j)) cycle
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % int1dField % constituentNames(j), int0d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % int1dField % fieldName, int1d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_get_var(stream % fileHandle, field_cursor % int1dField % fileFieldName, int1d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR) then
@@ -1725,7 +1761,8 @@ contains
                   if (.not. field_cursor % isAvailable(j)) cycle
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % int2dField % constituentNames(j), int1d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % int2dField % fieldName, int2d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_get_var(stream % fileHandle, field_cursor % int2dField % fileFieldName, int2d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR) then
@@ -1807,7 +1844,8 @@ contains
                   if (.not. field_cursor % isAvailable(j)) cycle
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % int3dField % constituentNames(j), int2d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % int3dField % fieldName, int3d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_get_var(stream % fileHandle, field_cursor % int3dField % fileFieldName, int3d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR) then
@@ -1878,7 +1916,8 @@ contains
 !write(stderrUnit,*) '   > outer dimension size ', field_cursor % totalDimSize
 
 !write(stderrUnit,*) 'MGD calling MPAS_io_get_var now...'
-            call MPAS_io_get_var(stream % fileHandle, field_cursor % real0dField % fieldName, real0d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+            call MPAS_io_get_var(stream % fileHandle, field_cursor % real0dField % fileFieldName, real0d_temp, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR) then
                 if (present(ierr)) ierr = MPAS_IO_ERR
@@ -1909,9 +1948,12 @@ contains
                   if (.not. field_cursor % isAvailable(j)) cycle
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % real1dField % constituentNames(j), real0d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real1dField % fieldName, real1d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  !call MPAS_io_get_var(stream % fileHandle, field_cursor % real1dField % fieldName, real1d_temp, io_err)
+		  call MPAS_io_get_var(stream % fileHandle, field_cursor % real1dField % fileFieldName, real1d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
+
                if (io_err /= MPAS_IO_NOERR) then
                    if (present(ierr)) ierr = MPAS_IO_ERR
                    if (.not. field_cursor % real1dField % isVarArray) then
@@ -1986,7 +2028,8 @@ contains
                   if (.not. field_cursor % isAvailable(j)) cycle
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % real2dField % constituentNames(j), real1d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real2dField % fieldName, real2d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real2dField % fileFieldName, real2d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR) then
@@ -2071,7 +2114,8 @@ contains
 !write(stderrUnit,*) 'DEBUGGING : calling get_var for a constitutent'
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % real3dField % constituentNames(j), real2d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real3dField % fieldName, real3d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real3dField % fileFieldName, real3d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR) then
@@ -2158,7 +2202,8 @@ contains
 !write(stderrUnit,*) 'DEBUGGING : calling get_var for a constitutent'
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % real4dField % constituentNames(j), real3d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real4dField % fieldName, real4d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real4dField % fileFieldName, real4d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR) then
@@ -2248,7 +2293,8 @@ contains
 !write(stderrUnit,*) 'DEBUGGING : calling get_var for a constitutent'
                   call MPAS_io_get_var(stream % fileHandle, field_cursor % real5dField % constituentNames(j), real4d_temp, io_err)
                else
-                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real5dField % fieldName, real5d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_get_var(stream % fileHandle, field_cursor % real5dField % fileFieldName, real5d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR) then
@@ -2320,7 +2366,8 @@ contains
 !write(stderrUnit,*) '   > outer dimension size ', field_cursor % totalDimSize
 
 !write(stderrUnit,*) 'MGD calling MPAS_io_get_var now...'
-            call MPAS_io_get_var(stream % fileHandle, field_cursor % char0dField % fieldName, field_cursor % char0dField % scalar, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+            call MPAS_io_get_var(stream % fileHandle, field_cursor % char0dField % fileFieldName, field_cursor % char0dField % scalar, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR) then
                 if (present(ierr)) ierr = MPAS_IO_ERR
@@ -2417,7 +2464,8 @@ contains
             int0d_temp = field_cursor % int0dField % scalar
 
 !write(stderrUnit,*) 'MGD calling MPAS_io_put_var now...'
-            call MPAS_io_put_var(stream % fileHandle, field_cursor % int0dField % fieldName, int0d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+            call MPAS_io_put_var(stream % fileHandle, field_cursor % int0dField % fileFieldName, int0d_temp, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
 
@@ -2466,7 +2514,8 @@ contains
                if (field_cursor % int1dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % int1dField % constituentNames(j), int0d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int1dField % fieldName, int1d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int1dField % fileFieldName, int1d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2522,7 +2571,8 @@ contains
                if (field_cursor % int2dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % int2dField % constituentNames(j), int1d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int2dField % fieldName, int2d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int2dField % fileFieldName, int2d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2582,7 +2632,8 @@ contains
                if (field_cursor % int3dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % int3dField % constituentNames(j), int2d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int3dField % fieldName, int3d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int3dField % fileFieldName, int3d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2604,7 +2655,8 @@ contains
             real0d_temp = field_cursor % real0dField % scalar
 
 !write(stderrUnit,*) 'MGD calling MPAS_io_put_var now...'
-            call MPAS_io_put_var(stream % fileHandle, field_cursor % real0dField % fieldName, real0d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+            call MPAS_io_put_var(stream % fileHandle, field_cursor % real0dField % fileFieldName, real0d_temp, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
 
@@ -2653,7 +2705,8 @@ contains
                if (field_cursor % real1dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % real1dField % constituentNames(j), real0d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real1dField % fieldName, real1d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real1dField % fileFieldName, real1d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2709,7 +2762,8 @@ contains
                if (field_cursor % real2dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % real2dField % constituentNames(j), real1d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real2dField % fieldName, real2d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real2dField % fileFieldName, real2d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2769,7 +2823,8 @@ contains
                if (field_cursor % real3dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % real3dField % constituentNames(j), real2d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real3dField % fieldName, real3d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real3dField % fileFieldName, real3d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2831,7 +2886,8 @@ contains
                if (field_cursor % real4dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % real4dField % constituentNames(j), real3d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real4dField % fieldName, real4d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real4dField % fileFieldName, real4d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2895,7 +2951,8 @@ contains
                if (field_cursor % real5dField % isVarArray) then
                   call MPAS_io_put_var(stream % fileHandle, field_cursor % real5dField % constituentNames(j), real4d_temp, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real5dField % fieldName, real5d_temp, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real5dField % fileFieldName, real5d_temp, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -2915,7 +2972,8 @@ contains
 
 !write(stderrUnit,*) 'Copying field from first block'
 !write(stderrUnit,*) 'MGD calling MPAS_io_put_var now...'
-            call MPAS_io_put_var(stream % fileHandle, field_cursor % char0dField % fieldName, field_cursor % char0dField % scalar, io_err)
+!STEVE_edit: added filefeildName here so that it reads '_*' from the netCDF file
+            call MPAS_io_put_var(stream % fileHandle, field_cursor % char0dField % fileFieldName, field_cursor % char0dField % scalar, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
 

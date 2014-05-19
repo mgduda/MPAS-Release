@@ -51,6 +51,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(5) :: dimNames
       integer, dimension(5) :: dimSizes
@@ -82,6 +83,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(4) :: dimNames
       integer, dimension(4) :: dimSizes
@@ -114,6 +116,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(3) :: dimNames
       integer, dimension(3) :: dimSizes
@@ -145,6 +148,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(2) :: dimNames
       integer, dimension(2) :: dimSizes
@@ -176,6 +180,8 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+!STEVE_edit
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(1) :: dimNames
       integer, dimension(1) :: dimSizes
@@ -207,6 +213,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       logical :: hasTimeDimension
       logical :: isActive
@@ -235,6 +242,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(3) :: dimNames
       integer, dimension(3) :: dimSizes
@@ -266,6 +274,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(2) :: dimNames
       integer, dimension(2) :: dimSizes
@@ -297,6 +306,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(1) :: dimNames
       integer, dimension(1) :: dimSizes
@@ -328,6 +338,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       logical :: hasTimeDimension
       logical :: isActive
@@ -356,6 +367,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(1) :: dimNames
       integer, dimension(1) :: dimSizes
@@ -387,6 +399,7 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
+      character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       logical :: hasTimeDimension
       logical :: isActive
@@ -450,6 +463,12 @@ module mpas_grid_types
       type (parallel_info), pointer :: parinfo
 
       type (block_type), pointer :: prev, next
+!STEVE_edit: added this to move between diffrent levels and to define the
+!current mg-level
+      type (block_type), pointer :: coarser => null()
+      type (block_type), pointer :: finer => null()
+      integer :: nMgsLevels, mgsLevel
+      character(len=3) :: mgslevelChar
    end type block_type
 
 
@@ -543,6 +562,7 @@ module mpas_grid_types
 !-----------------------------------------------------------------------
    subroutine mpas_allocate_block(nHaloLayers, b, dom, blockID, &!{{{
 #include "dim_dummy_args.inc"
+	, mgslevel &
                             )
 
       implicit none
@@ -552,6 +572,7 @@ module mpas_grid_types
       type (domain_type), pointer :: dom !< Input: Domain structure
       integer, intent(in) :: blockID !< Input: Global ID of block
 #include "dim_dummy_decls.inc"
+      integer, intent(in) :: mgslevel
 
 
 
@@ -580,7 +601,10 @@ module mpas_grid_types
 !> \author  Michael Duda
 !> \date    04/02/13
 !> \details 
-!> This routine deallocates a domain structure. 
+!> This routine deallocates a domain structure.
+!>
+!> Code added to dela with multiple grids
+!>
 !
 !-----------------------------------------------------------------------
    subroutine mpas_deallocate_domain(dom)!{{{
@@ -590,14 +614,29 @@ module mpas_grid_types
       type (domain_type), pointer :: dom !< Input/Output: Domain to deallocate
 
       type (block_type), pointer :: block_ptr
+!STEVE_edit: Include head pointer
+      type (block_type), pointer :: block_ptrHead
 
-      block_ptr => dom % blocklist
-      do while (associated(block_ptr))
+
+!STEVE_edit: loop over coarser for each head block - this code replaces the
+!comented code below
+      block_ptrHead => dom % blocklist
+      do while (associated(block_ptrHead))
+        block_ptr => block_ptrHead
+        do while (associated(block_ptr))
          call mpas_deallocate_block(block_ptr)
-         block_ptr => block_ptr % next
+         block_ptr => block_ptr % coarser
+        end do
+         block_ptrHead => block_ptrHead % next
       end do
+!Steve_edit: the above code replaces this:
+!      block_ptr => dom % blocklist
+!      do while (associated(block_ptr))
+!         call mpas_deallocate_block(block_ptr)
+!         block_ptr => block_ptr % next
+!      end do
 
-      deallocate(dom) 
+      deallocate(dom)
 
    end subroutine mpas_deallocate_domain!}}}
 
@@ -1838,19 +1877,24 @@ module mpas_grid_types
 !> \date    04/02/13
 !> \details 
 !> This routine deallocates a block structure.
+!>
+!> STEVE_Edit: added code to deal with multiple grids
+!>
 !
 !-----------------------------------------------------------------------
    subroutine mpas_deallocate_block(b)!{{{
- 
+
       implicit none
 
       type (block_type), intent(inout) :: b !< Input/Output: Block to be deallocated.
 
       integer :: i
 
-      ! BUG: It seems like we should be deallocating the exchange lists before we 
+      ! BUG: It seems like we should be deallocating the exchange lists before
+      ! we 
       !      deallocate the array of head pointers and the parinfo type...
-      !      It also seems like these deallocations should happen with mpas_dmpar_destroy_multihalo_exchange_list
+      !      It also seems like these deallocations should happen with
+      !      mpas_dmpar_destroy_multihalo_exchange_list
 
       deallocate(b % parinfo % cellsToSend)
       deallocate(b % parinfo % cellsToRecv)
@@ -1866,10 +1910,10 @@ module mpas_grid_types
 
       deallocate(b % parinfo)
 
+!STEVE_edit: include an upadted dealloc routine
 #include "block_deallocs.inc"
 
    end subroutine mpas_deallocate_block!}}}
-
 
 #include "group_dealloc_routines.inc"
 
