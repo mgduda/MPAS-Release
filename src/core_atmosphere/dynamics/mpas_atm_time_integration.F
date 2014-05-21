@@ -47,7 +47,6 @@ module atm_time_integration
       type (MPAS_Time_type) :: currTime
       type (MPAS_TimeInterval_type) :: dtInterval
       character (len=StrKIND) :: xtime
-
       if (trim(config_time_integration) == 'SRK3') then
          call atm_srk3(domain, dt, itimestep)
       elseif (trim(config_time_integration) == 'SI') then
@@ -3707,7 +3706,9 @@ module atm_time_integration
 
 
 ! Solve Helmholtz problem
+!!!**STEVE ADDING CODE TO TEST THE MULTI-GRID
 
+!!!**STEVE ADDING CODE TO TEST THE MULTI-GRID
       if (debug) write(0,*) ' mg_solve '
       call atm_mg_solve( domain, dt )
       if (debug) write(0,*) ' finished mg_solve '
@@ -4409,14 +4410,14 @@ module atm_time_integration
       theta_base       => block % diag % theta_base % array
       pressure_base    => block % diag % pressure_base % array
 
-      helm_c           => block % mgs_vars % helm_coeff % array(:,:,1)
-      helm_np          => block % mgs_vars % helm_coeff % array(:,:,2)
-      helm_n0          => block % mgs_vars % helm_coeff % array(:,:,3)
-      helm_nm          => block % mgs_vars % helm_coeff % array(:,:,4)
-      helm_d1p         => block % mgs_vars % helm_coeff % array(:,:,5)
-      helm_d1m         => block % mgs_vars % helm_coeff % array(:,:,6)      
-      helm_d2p         => block % mgs_vars % helm_coeff % array(:,:,7)
-      helm_d2m         => block % mgs_vars % helm_coeff % array(:,:,8)
+      helm_c           => block % mgs_vars % helm_c % array
+      helm_np          => block % mgs_vars % helm_np % array
+      helm_n0          => block % mgs_vars % helm_n0 % array
+      helm_nm          => block % mgs_vars % helm_nm % array
+      helm_d1p         => block % mgs_vars % helm_d1p % array
+      helm_d1m         => block % mgs_vars % helm_d1m % array      
+      helm_d2p         => block % mgs_vars % helm_d2p % array
+      helm_d2m         => block % mgs_vars % helm_d2m % array
 
       rdzu        => block % mesh % rdzu % array
       rdzw        => block % mesh % rdzw % array
@@ -4534,11 +4535,11 @@ module atm_time_integration
       theta_base       => diag % theta_base % array
       rhs              => diag % rhs % array
 
-      helm_np          => mgs_vars % helm_coeff % array(:,:,2)
-      helm_n0          => mgs_vars % helm_coeff % array(:,:,3)
-      helm_nm          => mgs_vars % helm_coeff % array(:,:,4)
-      helm_d2p         => mgs_vars % helm_coeff % array(:,:,7)
-      helm_d2m         => mgs_vars % helm_coeff % array(:,:,8)
+      helm_np          => mgs_vars % helm_np % array
+      helm_n0          => mgs_vars % helm_n0 % array
+      helm_nm          => mgs_vars % helm_nm % array
+      helm_d2p         => mgs_vars % helm_d2p % array
+      helm_d2m         => mgs_vars % helm_d2m % array
 
       fast_tend_u      => tend % u_fast % array
       fast_tend_theta  => tend % theta_m_fast % array
@@ -4680,11 +4681,11 @@ module atm_time_integration
       rho_pp           => diag % rho_pp % array
       pressure_inc     => diag % pressure_inc % array
 
-      helm_np          => mgs_vars % helm_coeff % array(:,:,2)
-      helm_n0          => mgs_vars % helm_coeff % array(:,:,3)
-      helm_nm          => mgs_vars % helm_coeff % array(:,:,4)
-      helm_d1p         => mgs_vars % helm_coeff % array(:,:,5)
-      helm_d1m         => mgs_vars % helm_coeff % array(:,:,6)
+      helm_np          => mgs_vars % helm_np % array
+      helm_n0          => mgs_vars % helm_n0 % array
+      helm_nm          => mgs_vars % helm_nm % array
+      helm_d1p         => mgs_vars % helm_d1p % array
+      helm_d1m         => mgs_vars % helm_d1m % array
 
       fast_tend_u      => tend % u_fast % array
       fast_tend_w      => tend % w_fast % array
@@ -4894,7 +4895,6 @@ END SUBROUTINE trisolveb
       nCellsSolve = coarse_grid % nCellsSolve
       nVertLevels = coarse_grid % nVertLevels
 
-
       do iCell = 1, nCellsSolve
 
          ix = 1
@@ -4903,24 +4903,23 @@ END SUBROUTINE trisolveb
          do k = 1, nVertLevels
             coarse_field(k,iCell) = fine_field(k,iStencilCell)*aweight
          enddo
-
          ix = 2
          iStencilCell = restrictStencil(ix,iCell)
          do while ((iStencilCell) > 0 .AND. (ix <= fine_grid % maxEdges))
+! the problem here is iSetncilCell returns value larger than size of fine_cellArea - check how restrictStencil is setup
             aweight = fine_cellArea(iStencilCell)*restrictWeights(ix,iCell)
             do k = 1, nVertLevels
                coarse_field(k,iCell) = coarse_field(k,iCell) + fine_field(k,iStencilCell)*aweight
             enddo
             ix = ix + 1
-            iStencilCell = restrictStencil(iCell,ix)
+!STEVE: changed this as it was iCell,ix
+            !iStencilCell = restrictStencil(iCell,ix)
+            iStencilCell = restrictStencil(ix,iCell)
          enddo
-
          do k = 1, nVertLevels
             coarse_field(k,iCell) = coarse_field(k,iCell)/coarse_cellArea(iCell)
          enddo
-
       enddo
-
 
    end subroutine atm_mg_restrict
 
@@ -4978,17 +4977,17 @@ END SUBROUTINE trisolveb
 
 ! ================================================================
 
-   subroutine atm_mg_helmholtz( q, hq, grid, helm_coeff, dt )
+   subroutine atm_mg_helmholtz( q, hq, grid, mgs_vars, dt )
 
       ! Apply the Helmholtz operator to a field q to obtain hq
 
       implicit none
 
-      type (mesh_type), intent(in) :: grid
-      real(kind=RKIND), intent(in) :: dt
-      real(kind=RKIND), dimension(:,:,:), intent(in), target :: helm_coeff
-      real(kind=RKIND), dimension(:,:),   intent(in)  :: q
-      real(kind=RKIND), dimension(:,:),   intent(out) :: hq
+      type (mesh_type), intent(in) 			:: grid
+      real(kind=RKIND), intent(in) 			:: dt
+      type(mgs_vars_type), intent(in) 			:: mgs_vars
+      real(kind=RKIND), dimension(:,:),   intent(in)  	:: q
+      real(kind=RKIND), dimension(:,:),   intent(out) 	:: hq
       
 
       integer :: iCell, iEdge, k, cell1, cell2
@@ -5010,14 +5009,14 @@ END SUBROUTINE trisolveb
       cellsOnEdge => grid % cellsOnEdge % array
       zz          => grid % zz % array
 
-      helm_c   => helm_coeff(:,:,1)
-      helm_np  => helm_coeff(:,:,2)
-      helm_n0  => helm_coeff(:,:,3)
-      helm_nm  => helm_coeff(:,:,4)
-      helm_d1p => helm_coeff(:,:,5)
-      helm_d1m => helm_coeff(:,:,6)
-      helm_d2p => helm_coeff(:,:,7)
-      helm_d2m => helm_coeff(:,:,8)
+      helm_c   => mgs_vars % helm_c % array
+      helm_np  => mgs_vars % helm_np % array
+      helm_n0  => mgs_vars % helm_n0 % array
+      helm_nm  => mgs_vars % helm_nm % array
+      helm_d1p => mgs_vars % helm_d1p % array
+      helm_d1m => mgs_vars % helm_d1m % array
+      helm_d2p => mgs_vars % helm_d2p % array
+      helm_d2m => mgs_vars % helm_d2m % array
 
       nVertLevels = grid % nVertLevels
       nCellsSolve = grid % nCellsSolve
@@ -5082,7 +5081,7 @@ END SUBROUTINE trisolveb
 
 ! ================================================================
 
-   subroutine atm_mg_residual( q, rhs, res, grid, helm_coeff, dt )
+   subroutine atm_mg_residual( q, rhs, res, grid, mgs_vars, dt )
 
       ! Apply the Helmholtz operator to a field q and subtract
       ! from the right hand side rhs to obtain the residual in the
@@ -5090,14 +5089,14 @@ END SUBROUTINE trisolveb
 
       implicit none
 
-      type(mesh_type), intent(in) :: grid
-      real(kind=RKIND), intent(in) :: dt
-      real(kind=RKIND), dimension(:,:,:), intent(in)  :: helm_coeff
-      real(kind=RKIND), dimension(:,:),   intent(in)  :: q, rhs
-      real(kind=RKIND), dimension(:,:),   intent(out) :: res
+      type(mesh_type), intent(in) 			:: grid
+      real(kind=RKIND), intent(in) 			:: dt
+      type(mgs_vars_type), intent(in)  			:: mgs_vars
+      real(kind=RKIND), dimension(:,:),   intent(in)  	:: q, rhs
+      real(kind=RKIND), dimension(:,:),   intent(out) 	:: res
       
 
-      call atm_mg_helmholtz( q, res, grid, helm_coeff, dt )
+      call atm_mg_helmholtz( q, res, grid, mgs_vars, dt )
       res = rhs - res
 
 
@@ -5105,7 +5104,7 @@ END SUBROUTINE trisolveb
 
 ! ================================================================
 
-   subroutine atm_mg_relax( q, rhs, grid, helm_coeff, dt )
+   subroutine atm_mg_relax( q, rhs, grid, mgs_vars, dt )
 
       ! Given an estimate q of the solution of the Helmholtz equation,
       ! Make one relaxation sweep: Jacobi in the horizontal with
@@ -5113,11 +5112,11 @@ END SUBROUTINE trisolveb
 
       implicit none
 
-      type (mesh_type), intent(in) :: grid
-      real(kind=RKIND), intent(in) :: dt
-      real(kind=RKIND), dimension(:,:,:), intent(in), target  :: helm_coeff
-      real(kind=RKIND), dimension(:,:),   intent(inout)  :: q
-      real(kind=RKIND), dimension(:,:),   intent(in) :: rhs
+      type (mesh_type), intent(in) 			:: grid
+      real(kind=RKIND), intent(in) 			:: dt
+      type(mgs_vars_type), intent(in) 			:: mgs_vars
+      real(kind=RKIND), dimension(:,:),   intent(inout) :: q
+      real(kind=RKIND), dimension(:,:),   intent(in) 	:: rhs
       
 
       integer :: iCell, iEdge, k, cell1, cell2
@@ -5142,14 +5141,14 @@ END SUBROUTINE trisolveb
       cellsOnEdge => grid % cellsOnEdge % array
       zz          => grid % zz % array
 
-      helm_c   => helm_coeff(:,:,1)
-      helm_np  => helm_coeff(:,:,2)
-      helm_n0  => helm_coeff(:,:,3)
-      helm_nm  => helm_coeff(:,:,4)
-      helm_d1p => helm_coeff(:,:,5)
-      helm_d1m => helm_coeff(:,:,6)
-      helm_d2p => helm_coeff(:,:,7)
-      helm_d2m => helm_coeff(:,:,8)
+      helm_c   => mgs_vars % helm_c % array
+      helm_np  => mgs_vars % helm_np % array
+      helm_n0  => mgs_vars % helm_n0 % array
+      helm_nm  => mgs_vars % helm_nm % array
+      helm_d1p => mgs_vars % helm_d1p % array
+      helm_d1m => mgs_vars % helm_d1m % array
+      helm_d2p => mgs_vars % helm_d2p % array
+      helm_d2m => mgs_vars % helm_d2m % array
 
       nVertLevels = grid % nVertLevels
       nCells      = grid % nCells
@@ -5170,7 +5169,7 @@ END SUBROUTINE trisolveb
 
 
 !     Find residual
-      call atm_mg_residual( q, rhs, res, grid, helm_coeff, dt )
+      call atm_mg_residual( q, rhs, res, grid, mgs_vars, dt )
 
 
       ! Add contributions from neighbouring cells to res
@@ -5263,15 +5262,14 @@ END SUBROUTINE trisolveb
                                                    fine_helm_rhs,   fine_helm_inc,   &
                                                    coarse_helm_rhs, coarse_helm_inc, &
                                                    coarse_restrictWeights
-      real(kind=RKIND), dimension(:,:,:), pointer :: fine_helm_coeff
-      integer, dimension(:,:), pointer :: coarse_restrictStencil
+      type(mgs_vars_type), pointer 	:: fine_mgs_vars
+      integer, dimension(:,:), pointer 	:: coarse_restrictStencil
 
       real(kind=RKIND), dimension(:,:), allocatable :: temporary
 
 
 
 ! -----------
-
 
       mg_solve_npass = config_mg_solve_npass
       mg_solve_depth = config_num_mgslevels
@@ -5284,9 +5282,9 @@ END SUBROUTINE trisolveb
       do while (associated(fine_block))
          pressure_inc(:,1:fine_block % mesh % nCellsSolve) = 0.0_RKIND
          fine_block   => fine_block % next
-         pressure_inc => fine_block % diag % pressure_inc % next % array
+! Need to ask John about the below line
+!         pressure_inc => fine_block % diag % pressure_inc % next % array
       end do
-
 
       ! Make a number of passes of the multigrid solver
       ! (For second and subsequent passes we start by computing the residual after the
@@ -5297,7 +5295,7 @@ END SUBROUTINE trisolveb
          do while (associated(fine_block))
 
             fine_grid       => fine_block % mesh
-            fine_helm_coeff => fine_block % mgs_vars % helm_coeff % array
+            fine_mgs_vars   => fine_block % mgs_vars
             fine_helm_rhs   => fine_block % mgs_vars % helm_rhs % array
             fine_helm_inc   => fine_Block % mgs_vars % helm_inc % array
             pressure_inc    => fine_block % diag % pressure_inc % array
@@ -5311,13 +5309,12 @@ END SUBROUTINE trisolveb
             else
                ! Calculate the residual
                call atm_mg_residual( pressure_inc, rhs, fine_helm_rhs, &
-                                     fine_grid, fine_helm_coeff, dt )
+                                     fine_grid, fine_mgs_vars, dt )
             endif
             ! And initialize finest grid correction to zero
             fine_helm_inc(:,1:fine_block % mesh % nCellsSolve) = 0.0_RKIND
             fine_block      => fine_block % next
          enddo
-
 
          ! Restrict right hand side to each grid in the hierarchy
          do mgsLevel = 2, mg_solve_depth
@@ -5354,13 +5351,13 @@ END SUBROUTINE trisolveb
 ! *** TO DO Halo exchange ***
             do while (associated(fine_block))
 
-               fine_grid       => fine_block % mesh
-               fine_helm_coeff => fine_block % mgs_vars % helm_coeff % array
-               fine_helm_rhs   => fine_block % mgs_vars % helm_rhs % array
-               fine_helm_inc   => fine_Block % mgs_vars % helm_inc % array
+               fine_grid          => fine_block % mesh
+               fine_mgs_vars => fine_block % mgs_vars
+               fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
+               fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
 
                call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
-                                  fine_helm_coeff, dt )
+                                  fine_mgs_vars, dt )
                fine_block      => fine_block % next
 
             enddo
@@ -5412,10 +5409,10 @@ END SUBROUTINE trisolveb
                      fine_grid           => fine_block % mesh
                      fine_helm_rhs       => fine_block % mgs_vars % helm_rhs % array
                      fine_helm_inc       => fine_block % mgs_vars % helm_inc % array
-                     fine_helm_coeff     => fine_block % mgs_vars % helm_coeff % array
+                     fine_mgs_vars  => fine_block % mgs_vars
 
                      call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
-                                        fine_helm_coeff, dt )
+                                        fine_mgs_vars, dt )
 
                      fine_block      => fine_block % next
 
@@ -5430,7 +5427,7 @@ END SUBROUTINE trisolveb
                   fine_grid              => fine_block % mesh
                   fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
                   fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
-                  fine_helm_coeff        => fine_block % mgs_vars % helm_coeff % array
+                  fine_mgs_vars          => fine_block % mgs_vars
                   coarse_grid            => coarse_block % mesh
                   coarse_helm_rhs        => coarse_block % mgs_vars % helm_rhs % array
                   coarse_helm_inc        => coarse_block % mgs_vars % helm_inc % array
@@ -5441,7 +5438,7 @@ END SUBROUTINE trisolveb
 ! *** TO DO Halo exchange ***
                   ! Calculate residual on current grid
                   call atm_mg_residual( fine_helm_inc, fine_helm_rhs, temporary, &
-                                        fine_grid,     fine_helm_coeff, dt )
+                                        fine_grid,     fine_mgs_vars, dt )
 
 ! *** TO DO Halo exchange ***
                   ! Restrict residual to coarser grid
@@ -5472,14 +5469,13 @@ END SUBROUTINE trisolveb
 ! *** TO DO Halo exchange ***
                do while (associated(fine_block))
 
-                  fine_grid       => fine_block % mesh
-!STEVE_NOTE: in the orignal code - fine_helm_coeff pointer was missing from below
-                  fine_helm_coeff => fine_block % mgs_vars % helm_coeff % array
-                  fine_helm_rhs   => fine_block % mgs_vars % helm_rhs % array
-                  fine_helm_inc   => fine_Block % mgs_vars % helm_inc % array
+                  fine_grid          => fine_block % mesh
+                  fine_mgs_vars => fine_block % mgs_vars
+                  fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
+                  fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
 
                   call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
-                                     fine_helm_coeff, dt )
+                                     fine_mgs_vars, dt )
 
                   fine_block      => fine_block % next
                enddo
@@ -5530,13 +5526,13 @@ END SUBROUTINE trisolveb
 
                   do while (associated(fine_block))
 
-                     fine_grid       => fine_block % mesh
-                     fine_helm_rhs   => fine_block % mgs_vars % helm_rhs % array
-                     fine_helm_inc   => fine_block % mgs_vars % helm_inc % array
-                     fine_helm_coeff => fine_block % mgs_vars % helm_coeff % array
+                     fine_grid          => fine_block % mesh
+                     fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
+                     fine_helm_inc      => fine_block % mgs_vars % helm_inc % array
+                     fine_mgs_vars => fine_block % mgs_vars
 
                      call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
-                                        fine_helm_coeff, dt )
+                                        fine_mgs_vars, dt )
 
                      fine_block      => fine_block % next
                   enddo
@@ -5547,7 +5543,7 @@ END SUBROUTINE trisolveb
 
 
          enddo
-
+ 
          ! Add correction to pressure_inc
          fine_block    => head_block
          do while (associated(fine_block))

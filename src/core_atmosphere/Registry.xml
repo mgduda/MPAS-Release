@@ -5,7 +5,6 @@
 <!-- ************************************** Dimensions ************************************** -->
 <!-- **************************************************************************************** -->
 
-        <!-- JOHN_edit: Added EIGHT, needed for helm_coeff array in mgs_vars -->
         <dims>
                 <dim name="nCells"/>
                 <dim name="nEdges"/>
@@ -14,7 +13,6 @@
                 <dim name="nVertices"/>
                 <dim name="TWO"                definition="2"/>
                 <dim name="THREE"              definition="3"/>
-                <dim name="EIGHT"              definition="8"/>
                 <dim name="vertexDegree"/>
                 <dim name="FIFTEEN"            definition="15"/>
                 <dim name="TWENTYONE"          definition="21"/>
@@ -1045,7 +1043,14 @@
                 <var name="helm_rhs"                	type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
 		<var name="restrictStencil"             type="integer"  dimensions="maxEdges nCells"                streams="iro"/>
 		<var name="restrictWeights"             type="real"     dimensions="maxEdges nCells"                streams="iro"/>
-                <var name="helm_coeff"                  type="real"     dimensions="nVertLevels nCells EIGHT Time"  streams="o"/>
+                <var name="helm_c"                      type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_np"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_n0"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_nm"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_d1p"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_d1m"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_d2p"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_d2m"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
         </var_struct>
 
 </registry>
