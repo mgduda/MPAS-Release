@@ -3462,31 +3462,29 @@ module atm_time_integration
       !
       ! Initialize RK weights
 
-      rk_timestep(1) = dt/3.
-      rk_timestep(2) = dt/2.
+      rk_timestep(1) = dt/3._RKIND
+      rk_timestep(2) = dt/2._RKIND
       rk_timestep(3) = dt
 
-      if (debug) write(0,*) ' copy step in rk solver '
 
-! theta_m
-      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % theta_m)
- 
-! scalars
+
+      ! Exchange scalars
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % scalars)
 
+
+
+
+
+! theta_m
+!!      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % theta_m)
+ 
+
 ! pressure_p
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p)
+!!      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p)
 
 ! rtheta_p
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
 
-!     Copy time_levs(1) into time_levs(2) and also save
-!     density weighted coupled variables
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_rk_integration_setup( block % state % time_levs(2) % state, block % state % time_levs(1) % state, block % diag )
-         block => block % next
-      end do
+
 
 
 ! Add half increment carried over from the end of the previous time step
@@ -3503,6 +3501,16 @@ module atm_time_integration
 
 ! *** TO DO ***         *** DO we need a call to compute solve diagnostics here ? ***
 
+!     Copy time_levs(1) into time_levs(2) and also save
+!     density weighted coupled variables
+      if (debug) write(0,*) ' copy step in rk solver '
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_rk_integration_setup( block % state % time_levs(2) % state, block % state % time_levs(1) % state, block % diag )
+         block => block % next
+      end do
+
+
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
       ! BEGIN Runge-Kutta loop 
@@ -3512,14 +3520,52 @@ module atm_time_integration
 
          if(debug) write(0,*) ' rk substep ', rk_step
 
+
+         ! Exchange rho_p, rw, rtheta_p, ru
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
+
+
+         ! The next two subroutine calls compute various diagnostic quantities needed by compute_dyn_tend
+
+         if (debug) write(0,*) ' recover_derived_variables '
+         block => domain % blocklist
+         do while (associated(block))
+            call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
+            block => block % next
+         end do
+         if (debug) write(0,*) ' finished recover_derived_variables '
+
+
+         if(debug) write(0,*) ' compute_solve_diagnostics '
+         block => domain % blocklist
+         do while (associated(block))
+            call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
+            block => block % next
+         end do
+         if(debug) write(0,*) ' finished compute_solve_diagnostics '
+
+
+         ! Exchange w, pv_edge, and rho_edge
+         call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
+
+
+         ! Compute coefficients to modifiy density to allow for moisture
+         if(debug) write(0,*) ' compute_moist_coefficients '
          block => domain % blocklist
          do while (associated(block))
             ! The coefficients are set for owned cells (cqw) and for all edges of owned cells, 
             call atm_compute_moist_coefficients( block % state % time_levs(2) % state, block % diag, block % mesh )
             block => block % next
          end do
+         if(debug) write(0,*) ' finished compute_moist_coefficients '
 
 
+         ! Compute dynamical tendencies
          if (debug) write(0,*) ' compute_dyn_tend '
          block => domain % blocklist
          do while (associated(block))
@@ -3528,7 +3574,9 @@ module atm_time_integration
          end do
          if (debug) write(0,*) ' finished compute_dyn_tend '
 
+
 #ifdef DO_PHYSICS
+         ! Add physics tendencies
          if (debug) write(0,*) ' add physics tendencies '
          block => domain % blocklist
          do while (associated(block))
@@ -3546,13 +3594,7 @@ module atm_time_integration
 #endif
 
 
-
-! tend_u *** DO WE NEED THIS ? ***
-         call mpas_dmpar_exch_halo_field(domain % blocklist % tend % u, (/ 1 /))
-
-
-! Compute `fast' tendencies
-
+         ! Compute `fast' dynamical tendencies
          if (debug) write(0,*) ' compute_fast_tend '
          block => domain % blocklist
          do while (associated(block))
@@ -3562,8 +3604,7 @@ module atm_time_integration
          if (debug) write(0,*) ' finished compute_fast_tend '
 
 
-! Subtract fast tendencies from total to get slow tendencies
-
+         ! Subtract fast tendencies from total to get slow tendencies
          if (debug) write(0,*) ' subtract_fast_tend '
          block => domain % blocklist
          do while (associated(block))
@@ -3573,8 +3614,7 @@ module atm_time_integration
          if (debug) write(0,*) ' finished subtract_fast_tend '
 
 
-! RK update using slow tendencies
-
+         ! RK update using slow tendencies
          if (debug) write(0,*) ' si_advance_rk_step '
          block => domain % blocklist
          do while (associated(block))
@@ -3584,27 +3624,15 @@ module atm_time_integration
          if (debug) write(0,*) ' si_advance_rk_step '
 
 
-         if (debug) write(0,*) ' recover_derived_variables '
-         block => domain % blocklist
-         do while (associated(block))
-            call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
-            block => block % next
-         end do
-         if (debug) write(0,*) ' finished recover_derived_variables '
+! *** TO DO we need the updated value of rho_zz for scalar advection ***
 
-
-
-! *** TO DO ***
-
-! u
-         !CR: SMALLER STENCIL?: call mpas_dmpar_exch_halo_field(block % state % time_levs(2) % state % u, (/ 3 /))
-         call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % u)
 
          ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
          ! PD or monotonicity constraints applied only on the final Runge-Kutta substep.
 
          if (config_scalar_advection) then
 
+         if (debug) write(0,*) ' scalar advection '
          block => domain % blocklist
          do while (associated(block))
             !
@@ -3626,6 +3654,7 @@ module atm_time_integration
             end if
             block => block % next
          end do
+         if (debug) write(0,*) ' finished scalar advection '
 
          else
  
@@ -3634,26 +3663,7 @@ module atm_time_integration
          end if
 
 
-! Compute various diagnostics, some needed for next step
-
-         block => domain % blocklist
-         do while (associated(block))
-            call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
-            block => block % next
-         end do
-
-         if(debug) write(0,*) ' diagnostics complete '
-
-! w
-         call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
-
-! pv_edge
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
-
-! rho_edge
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
-
-! scalars
+         ! Exchange scalars
          if (rk_step < 3) then
             call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % scalars)
          end if
@@ -3664,9 +3674,15 @@ module atm_time_integration
       if(debug) write(0,*) ' RK steps completed '
 
 
+! *** TO DO we need to update pressure_p for the next call to compute_fast_tend ***
 
-! Compute `fast' tendencies for RHS of helmholtz
 
+      ! Exchange pressure_p and ru
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p, (/ 1 /))
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
+
+
+      ! Compute `fast' tendencies for RHS of helmholtz
       if (debug) write(0,*) ' compute_fast_tend for RHS helmholtz '
       block => domain % blocklist
       do while (associated(block))
@@ -3676,15 +3692,13 @@ module atm_time_integration
       if (debug) write(0,*) ' finished compute_fast_tend for RHS helmholtz'
 
 
-! *** To DO ***
-! halo exchange ?
+      ! Exchange fast u tendency
+      call mpas_dmpar_exch_halo_field(domain % blocklist % tend % u_fast, (/ 1 /))
 
 
-
-! Set up Helmholtz coefficients
-! *** THIS REALLY ONLY NEEDS TO BE DONE ONCE AT THE START ***
-! *** UNLESS WE MODIFY THE REFERENCE STATE ON THE FLY ***
-
+      ! Set up Helmholtz coefficients
+      ! *** THIS REALLY ONLY NEEDS TO BE DONE ONCE AT THE START ***
+      ! *** UNLESS WE MODIFY THE REFERENCE STATE ON THE FLY ***
       if (debug) write(0,*) ' build_helmholtz_coeff '
       block => domain % blocklist
       do while (associated(block))
@@ -3694,8 +3708,7 @@ module atm_time_integration
       if (debug) write(0,*) ' finished build_helmholtz_coeff '
 
 
-! Set up RHS of Helmholtz
-
+      ! Set up RHS of Helmholtz
       if (debug) write(0,*) ' build_helmholtz_rhs '
       block => domain % blocklist
       do while (associated(block))
@@ -3705,17 +3718,17 @@ module atm_time_integration
       if (debug) write(0,*) ' finished build_helmholtz_rhs '
 
 
-! Solve Helmholtz problem
-!!!**STEVE ADDING CODE TO TEST THE MULTI-GRID
-
-!!!**STEVE ADDING CODE TO TEST THE MULTI-GRID
+     ! Solve Helmholtz problem
       if (debug) write(0,*) ' mg_solve '
       call atm_mg_solve( domain, dt )
       if (debug) write(0,*) ' finished mg_solve '
 
 
-! Back substitution
+      ! Exchange presure_increment
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_inc, (/ 1 /))
 
+
+      ! Back substitution
       if (debug) write(0,*) ' si_backsub '
       block => domain % blocklist
       do while (associated(block))
@@ -3725,9 +3738,7 @@ module atm_time_integration
       if (debug) write(0,*) ' finished si_backsub '
 
 
-
-! Add half increment
-
+      ! Add half increment
       if (debug) write(0,*) ' add_si_half_inc '
       block => domain % blocklist
       do while (associated(block))
@@ -3737,17 +3748,23 @@ module atm_time_integration
       if (debug) write(0,*) ' finished add_si_half_inc '
 
 
+      ! Exchange rho_p, rw, rtheta_p, ru
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
 
 
+      if (debug) write(0,*) ' recover_derived_variables at end of dynamics'
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
+         block => block % next
+      end do
+      if (debug) write(0,*) ' finished recover_derived_variables at end of dynamics '
 
 
-
-
-
-
-
-
-
+! *** TO DO we need rho_edge for physics tendencies ?? ***
 
 
 !...  compute full velocity vectors at cell centers:
@@ -3762,6 +3779,7 @@ module atm_time_integration
                               )
          block => block % next
       end do
+
 
 !... call to parameterizations of cloud microphysics. calculation of the tendency of water vapor to horizontal and
 !... vertical advection needed for the Tiedtke parameterization of convection.
