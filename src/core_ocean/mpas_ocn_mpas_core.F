@@ -506,7 +506,7 @@ module mpas_core
             ! maximum number of frames per outfile was reached.
             if(output_frame == 1) then
                call mpas_output_state_finalize(output_obj, domain % dminfo)
-               call mpas_output_state_init(output_obj, domain, "OUTPUT", trim(timeStamp))
+               call mpas_output_state_init(output_obj, domain, "OUTPUT", 1, trim(timeStamp))
             end if
 
             block_ptr => domain % blocklist
@@ -528,7 +528,7 @@ module mpas_core
             call mpas_reset_clock_alarm(clock, restartAlarmID, ierr=ierr)
 
             ! Write one restart time per file
-            call mpas_output_state_init(restart_obj, domain, "RESTART", trim(timeStamp))
+            call mpas_output_state_init(restart_obj, domain, "RESTART", 1, trim(timeStamp))
             call mpas_output_state_for_domain(restart_obj, domain, 1)
             call mpas_output_state_finalize(restart_obj, domain % dminfo)
          end if

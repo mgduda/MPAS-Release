@@ -5000,6 +5000,8 @@ END SUBROUTINE trisolveb
       real (kind=RKIND), dimension(:,:), pointer :: zz
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
+      !logical, parameter :: debug = .false.
+      logical, parameter :: debug = .true.
 
 
 
@@ -5029,6 +5031,7 @@ END SUBROUTINE trisolveb
       a2dt2 = adt*adt
 
 
+       if(debug) write(0,*) ' Compute horizontal div and share contributions from edges '
        ! Initialize to zero
        hq(:,:) = 0.0_RKIND
 
@@ -5046,6 +5049,7 @@ END SUBROUTINE trisolveb
           end do
        end do
 
+       if(debug) write(0,*) ' Now add the contributions from columns '
        ! Now add the contributions from columns
        do iCell = 1, nCellsSolve
 
@@ -5094,8 +5098,10 @@ END SUBROUTINE trisolveb
       type(mgs_vars_type), intent(in)  			:: mgs_vars
       real(kind=RKIND), dimension(:,:),   intent(in)  	:: q, rhs
       real(kind=RKIND), dimension(:,:),   intent(out) 	:: res
-      
+      !logical, parameter :: debug = .false.
+      logical, parameter :: debug = .true.
 
+      if(debug) write(0,*) ' call atm_mg_helmholtz '
       call atm_mg_helmholtz( q, res, grid, mgs_vars, dt )
       res = rhs - res
 
@@ -5132,6 +5138,8 @@ END SUBROUTINE trisolveb
       real (kind=RKIND), dimension(:,:), pointer :: zz
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
+      !logical, parameter :: debug = .false.
+      logical, parameter :: debug = .true.
 
 
 
@@ -5161,17 +5169,14 @@ END SUBROUTINE trisolveb
       adt = alpha_si*dt
       a2dt2 = adt*adt
 
-
-
-
       allocate(res(nVertLevels,nCells+1))
       allocate(helm_diag(nVertLevels,nCells+1))
 
-
+      if(debug) write(0,*) ' Find residual '
 !     Find residual
       call atm_mg_residual( q, rhs, res, grid, mgs_vars, dt )
 
-
+      if(debug) write(0,*) ' Add to res from neighbour cells & compute the horiz contrib to the diagonal of the Helmholtz operator '
       ! Add contributions from neighbouring cells to res
       ! and compute the horizontal contribution to the diagonal of the
       ! Helmholtz operator
@@ -5266,7 +5271,8 @@ END SUBROUTINE trisolveb
       integer, dimension(:,:), pointer 	:: coarse_restrictStencil
 
       real(kind=RKIND), dimension(:,:), allocatable :: temporary
-
+!       logical, parameter :: debug = .false.
+      logical, parameter :: debug = .true.
 
 
 ! -----------
@@ -5276,21 +5282,24 @@ END SUBROUTINE trisolveb
 
       head_block => domain % blocklist
 
+      if(debug) write(0,*) ' Initialize solution to zero '
       ! Initialize solution to zero
       fine_block   => head_block
       pressure_inc => fine_block % diag % pressure_inc % array
       do while (associated(fine_block))
          pressure_inc(:,1:fine_block % mesh % nCellsSolve) = 0.0_RKIND
          fine_block   => fine_block % next
-! Need to ask John about the below line
+! ***********Need to ask John about the below line
 !         pressure_inc => fine_block % diag % pressure_inc % next % array
       end do
 
+      if(debug) write(0,*) ' Make a number of passes of the multigrid solver '
       ! Make a number of passes of the multigrid solver
       ! (For second and subsequent passes we start by computing the residual after the
       ! previous pass then compute a correction to the solution.)
       do ipass = 1, mg_solve_npass
 
+         if(debug) write(0,*) ' Start of multigrid solver '
          fine_block      => head_block
          do while (associated(fine_block))
 
@@ -5316,6 +5325,7 @@ END SUBROUTINE trisolveb
             fine_block      => fine_block % next
          enddo
 
+	 if(debug) write(0,*) ' Restrict right hand side to each grid in the hierarchy '
          ! Restrict right hand side to each grid in the hierarchy
          do mgsLevel = 2, mg_solve_depth
             fine_block                 => head_block
@@ -5340,6 +5350,7 @@ END SUBROUTINE trisolveb
             head_block => head_block % coarser
          enddo
 
+	 if(debug) write(0,*) ' FMG initail relax on coarsest grid niterc times '
 
          ! Initialize correction to zero on coarsest grid and
          ! iterate (close) to convergence on coarsest grid
@@ -5352,7 +5363,7 @@ END SUBROUTINE trisolveb
             do while (associated(fine_block))
 
                fine_grid          => fine_block % mesh
-               fine_mgs_vars => fine_block % mgs_vars
+               fine_mgs_vars      => fine_block % mgs_vars
                fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
                fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
 
@@ -5365,9 +5376,10 @@ END SUBROUTINE trisolveb
 
 
          ! Sequence of growing V-cycles
-
+         if(debug) write(0,*) ' Sequence of growing V-cycles '
          do i_vcycle_depth = 1, mg_solve_depth-1
 
+	    if(debug) write(0,*) ' Prolong solution '
             ! Prolong solution from current grid to finer one
             coarse_block           => head_block
             fine_block             => head_block % finer
@@ -5392,9 +5404,11 @@ END SUBROUTINE trisolveb
             head_block => head_block % finer
 
 
+	    if(debug) write(0,*) ' Execute one V-cycle '
             ! Execute one V-cycle starting from the new current grid
 
 
+            if(debug) write(0,*) ' Decending part of V-cycle '
             ! Descending part of V-cycle
             do mgsLevel = mg_solve_depth - i_vcycle_depth, mg_solve_depth-1
 
@@ -5461,7 +5475,7 @@ END SUBROUTINE trisolveb
 
             enddo
 
-
+            if(debug) write(0,*) ' Initialize corrc to 0 on coarsest grid and iterate niterc times to convergence on coarsest grid '
             ! Initialize correction to zero on coarsest grid and
             ! iterate (close) to convergence on coarsest grid
             do iter = 1, niterc
@@ -5481,7 +5495,7 @@ END SUBROUTINE trisolveb
                enddo
             enddo
 
-
+	    if(debug) write(0,*) ' Ascending part of V-cycle '
             ! Ascending part of V-cycle
             do mgsLevel = mg_solve_depth-1, mg_solve_depth - i_vcycle_depth, -1
 
@@ -5543,7 +5557,8 @@ END SUBROUTINE trisolveb
 
 
          enddo
- 
+
+ 	 if(debug) write(0,*) ' Add correction to pressure_inc '
          ! Add correction to pressure_inc
          fine_block    => head_block
          do while (associated(fine_block))

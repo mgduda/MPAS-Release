@@ -484,6 +484,13 @@ module mpas_io_input
 
       call MPAS_io_close(inputHandle, ierr)
 
+!STEVE_edit: adding code to poupulate dimension fieilds that are not available in the mg_*nc file or are in there but incorect. Ultimately, all of the information could be storred in init file - I need to do better than this!
+!STEVE_edit: Loop down to the coarse level starting from the top
+      block_ptr => domain % blocklist
+      do while (associated(block_ptr % coarser))
+         block_ptr => block_ptr % coarser
+      end do
+
       !
       ! Exchange halos for all of the fields that were read from the input file
       !
@@ -599,7 +606,7 @@ module mpas_io_input
 !moved from the head. This may not matter but its a simple case to swich back:
      blocklist => blocklistIN
 
-!STEVE_Ev2: looping to the % coarser level
+!STEVE_edit: looping to the % coarser level
       do while (associated(blocklist % coarser))
         blocklist => blocklist % coarser
       end do
