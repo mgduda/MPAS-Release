@@ -1375,8 +1375,8 @@ contains
       type (field_list_type), pointer :: field_list_cursor
       type (field_list_type), pointer :: new_field_list_node
 !STEVE_edit: char pointer for the multigrid and char for name read
-      character (len=StrKIND), dimension(:), pointer :: dum_dimNamesInq
-      character(len=3) :: mgslevelChar
+      character(len=StrKIND), dimension(:), pointer :: dum_dimNamesInq
+      character(len=StrKIND) :: mgslevelChar
 
 !STEVE_edit: This bit of code sets the mgslevel string
       if (stream % mgslevel.eq.1) then
@@ -1386,15 +1386,9 @@ contains
       elseif(stream % mgslevel.eq.-999) then!This is the case where the mgs-level has not been set
         mgslevelChar=''
         write(*,*) 'stream % mgslevel = -999, *_mgsLevel is not implemented'
-      elseif(stream % mgslevel.lt.10) then
-        write(mgslevelChar,'(I1)') stream % mgslevel
-        mgslevelChar='_'//trim(mgslevelChar)
-      elseif(stream % mgslevel.lt.100) then
-        write(mgslevelChar,'(I2)') stream % mgslevel
-        mgslevelChar='_'//trim(mgslevelChar)
       else
-        write(*,*) 'I doubt that there should be more than 100 layers'
-        write(*,*) '... in MPAS_streamAddField_generic'
+        write(mgslevelChar,*) stream % mgslevel
+	mgslevelChar =  '_'//trim(adjustl(mgslevelChar))
       endif
 
       if (present(ierr)) ierr = MPAS_STREAM_NOERR

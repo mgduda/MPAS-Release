@@ -41,7 +41,7 @@ module mpas_io_output
       character (len=*), optional :: outputSuffixIN
      
       !STEVE_Edit: including mgsLevel to append to out files and char for outputsuffix
-      integer :: mgsLevel
+      integer, intent(in) :: mgsLevel
       character (len=StrKIND) :: outputSuffix
 
       character (len=StrKIND) :: tempfilename
@@ -49,20 +49,16 @@ module mpas_io_output
 
       block_ptr => domain % blocklist
 
+
       !STEVE_edit: make a char to use when reading the .nc file
-      if (mgslevel.eq.1) then
+      if (mgslevel.eq.100) then
         !for the first time there is no level defined in the nc fle so make an
         !emtpy string
         outputSuffix=''
-      elseif(mgslevel.lt.10) then
-        write(outputSuffix,'(I1)') mgslevel
-        outputSuffix='_'//trim(outputSuffix)
-      elseif(mgslevel.lt.100) then
-        write(outputSuffix,'(I2)') mgslevel
-        outputSuffix='_'//trim(outputSuffix)
       else
-        write(*,*) 'I doubt that there should be more than 100 layers'
-        write(*,*) '... in mpas_input_state_for_domain_iter'
+        write(outputSuffix,*) 12!mgslevel
+	outputSuffix = adjustl(outputSuffix)
+        outputSuffix='_'//trim(outputSuffix)
       endif
       ! STEVE_Edit: concat outputSuffixIN if its read in 
       if(present(outputSuffixIN)) then

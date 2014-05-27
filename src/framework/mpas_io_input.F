@@ -200,7 +200,7 @@ module mpas_io_input
 !STEVE_edit: mgslevelChar to define a char = _mgslevel
       integer :: nGrids
       character(len=StrKIND) :: dumChar
-      character(len=3) :: mgslevelChar
+      character(len=StrKIND) :: mgslevelChar
 
       nHalos = config_num_halos
 
@@ -209,15 +209,10 @@ module mpas_io_input
         !for the first time there is no level defined in the nc fle so make an
         !emtpy string
         mgslevelChar=''
-      elseif(mgslevel.lt.10) then
-        write(mgslevelChar,'(I1)') mgslevel
-        mgslevelChar='_'//trim(mgslevelChar)
-      elseif(mgslevel.lt.100) then
-        write(mgslevelChar,'(I2)') mgslevel
-        mgslevelChar='_'//trim(mgslevelChar)
       else
-        write(*,*) 'I doubt that there should be more than 100 layers'
-        write(*,*) '... in mpas_input_state_for_domain_iter'
+        write(mgslevelChar,*) mgslevel
+	!mgslevelChar = adjustl(mgslevelChar)
+        mgslevelChar='_'//trim(adjustl(mgslevelChar))
       endif
 
 
