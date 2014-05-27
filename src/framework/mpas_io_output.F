@@ -37,7 +37,7 @@ module mpas_io_output
       type (io_output_object), intent(inout) :: output_obj
       type (domain_type), intent(in) :: domain
       character (len=*) :: stream
-!STEVE_Edit: cahnged the name of the read in suffix info so I can add mglevel to the filename
+!STEVE_Edit: changed the name of the read in suffix info so I can add mglevel to the filename
       character (len=*), optional :: outputSuffixIN
      
       !STEVE_Edit: including mgsLevel to append to out files and char for outputsuffix
@@ -46,17 +46,18 @@ module mpas_io_output
 
       character (len=StrKIND) :: tempfilename
       type (block_type), pointer :: block_ptr
+!STEVE_edit: include an integer to loop over
+      integer :: i
 
       block_ptr => domain % blocklist
 
-
       !STEVE_edit: make a char to use when reading the .nc file
-      if (mgslevel.eq.100) then
+      if (mgslevel.eq.1) then
         !for the first time there is no level defined in the nc fle so make an
         !emtpy string
         outputSuffix=''
       else
-        write(outputSuffix,*) 12!mgslevel
+        write(outputSuffix,*) mgslevel
 	outputSuffix = adjustl(outputSuffix)
         outputSuffix='_'//trim(outputSuffix)
       endif
@@ -68,22 +69,21 @@ module mpas_io_output
 
       ! STEVE_Edit: I've changed outputSuffix to outputSuffixIN so need to edit the if(pres...)statments below
       if (trim(stream) == 'OUTPUT') then
-         !if(present(outputSuffixIN)) then
+         if(present(outputSuffixIN)) then
             call mpas_insert_string_suffix(config_output_name, outputSuffix, tempfilename)
-         !else
-         !   tempfilename = config_output_name
-         !end if
+         else
+            tempfilename = config_output_name
+         end if
          output_obj % filename = trim(tempfilename)
          output_obj % stream = OUTPUT
       else if (trim(stream) == 'RESTART') then
-	 call mpas_insert_string_suffix(config_restart_name, outputSuffix, tempfilename)
          if(present(outputSuffixIN)) then
-     !       call mpas_insert_string_suffix(config_restart_name, outputSuffix, tempfilename)
+            call mpas_insert_string_suffix(config_restart_name, outputSuffix, tempfilename)
             open(22,file=trim(config_restart_timestamp_name),form='formatted',status='replace')
             write(22,*) outputSuffix
             close(22)
          else
-      !      tempfilename = config_restart_name
+            tempfilename = config_restart_name
          end if
          output_obj % filename = trim(tempfilename)
          output_obj % stream = RESTART
@@ -378,20 +378,17 @@ module mpas_io_output
 
 !STEVE_edit: need to sort out the code to work for output and maybe restart?
 print*,'code is in: ./src/framework/mpas_io_output.F'
-print*,'**I need to return here to test the code on output - before'
       if(len(trim(domain % history)) > 0) then
           write(runCmd,'(a,a,i0,a,a,a)') trim(domain % history),' mpirun -n ',domain % dminfo % nProcs, ' ', trim(domain % coreName), '_model; '
       else
           write(runCmd,'(a,i0,a,a,a)') 'mpirun -n ',domain % dminfo % nProcs, ' ', trim(domain % coreName), '_model; '
       end if
-! STEVE_TBD: Future developemnt
-!I need something like this to decied which grid to output data on
-!This has come from the input version, that one read on blocklist not doamin
- !!STEVE_edit: looping to the % coarser level
- !       do while (associated(blocklist % coarser))
- !         blocklist => blocklist % coarser
- !       end do
-write(0,*) '****STEVE test = ',output_obj % filename
+! STEVE_Edit: TBD: Future development
+! I need to loop down to the block that I want to output which requires the mgsLevel to be output to be read into this routine
+!I will look something like: and will require blocklist to be defined instead of domain - further changes to the include routines (add_output_fields.inc) will be required as they currenly use domain % blocklist
+!       do i=1:n_level-1
+!         blocklist => blocklist % coarser
+!       end do
 
       call MPAS_createStream(output_obj % io_stream, trim(output_obj % filename), MPAS_IO_PNETCDF, MPAS_IO_WRITE, 1, nferr)
 !STEVE_edit: this could be included in the above call?
