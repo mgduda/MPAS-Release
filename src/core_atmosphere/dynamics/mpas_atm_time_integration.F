@@ -4410,7 +4410,7 @@ module atm_time_integration
 
       implicit none
 
-      type (block_type) :: block
+      type (block_type), pointer :: block
       real (kind=RKIND), intent(in) :: dt
 
       integer :: iCell, k
@@ -4419,14 +4419,22 @@ module atm_time_integration
 
       real (kind=RKIND), dimension(block % mesh % nVertLevels+1) :: zz_ave
       real (kind=RKIND), dimension(:), pointer :: rdzu, rdzw, fzm, fzp
-      real (kind=RKIND), dimension(:,:), pointer :: zz, rho_base, theta_base, pressure_base
+      real (kind=RKIND), dimension(:,:), pointer :: helm_zz, rho_base, theta_base, pressure_base
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
 
- 
+      real (kind=RKIND), dimension(:,:), pointer :: fine_field, coarse_field
+      real (kind=RKIND), dimension(:,:), pointer :: coarse_restrictWeights 
+      integer, dimension(:,:), pointer :: coarse_restrictStencil
+      type (block_type), pointer :: fine_block, coarse_block 
+      type (mesh_type), pointer  :: fine_grid, coarse_grid
+
       rho_base         => block % diag % theta_base % array
       theta_base       => block % diag % theta_base % array
       pressure_base    => block % diag % pressure_base % array
+
+      ! Transfer the array from mesh to mgs_vars - maybe do this somehwere else?
+      block % mgs_vars % helm_zz % array = block % mesh % zz % array
 
       helm_c           => block % mgs_vars % helm_c % array
       helm_np          => block % mgs_vars % helm_np % array
@@ -4436,12 +4444,12 @@ module atm_time_integration
       helm_d1m         => block % mgs_vars % helm_d1m % array      
       helm_d2p         => block % mgs_vars % helm_d2p % array
       helm_d2m         => block % mgs_vars % helm_d2m % array
+      helm_zz          => block % mgs_vars % helm_zz % array
 
       rdzu        => block % mesh % rdzu % array
       rdzw        => block % mesh % rdzw % array
       fzm         => block % mesh % fzm % array
       fzp         => block % mesh % fzp % array
-      zz          => block % mesh % zz % array
 
       nVertLevels = block % mesh % nVertLevels
       nCellsSolve = block % mesh % nCellsSolve
@@ -4466,7 +4474,7 @@ module atm_time_integration
          ! and part of D2 operator needed for N operator
          helm_d2m(1,iCell) = 0.0_RKIND
          do k = 2, nVertLevels
-            zz_ave(k) = fzm(k)*zz(k,iCell) + fzp(k)*zz(k-1,iCell)
+            zz_ave(k) = fzm(k)*helm_zz(k,iCell) + fzp(k)*helm_zz(k-1,iCell)
             helm_d2p(k-1,iCell) = zz_ave(k)*fzm(k)*(theta_base(k,iCell) - theta_base(k-1,iCell))*rdzw(k-1) &
                                 / theta_base(k-1,iCell)
             helm_d2m(k  ,iCell) = zz_ave(k)*fzp(k)*(theta_base(k,iCell) - theta_base(k-1,iCell))*rdzw(k  ) &
@@ -4512,8 +4520,56 @@ module atm_time_integration
 
       enddo
 
-! *** Need to restrict all coeffs to coarser grids ***
+! *** restricting required helm_coefs to coarser grids ***
 
+      fine_block                 => block
+      coarse_block               => fine_block % coarser
+      do while (associated(coarse_block))
+
+         fine_grid              => fine_block % mesh
+         coarse_grid            => coarse_block % mesh
+         coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
+         coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
+
+         do k=1,9! loop over the varbles to be restricted - could possible make this more concise
+	   ! get the fields to restrict
+           if (k.eq.1) then
+             fine_field => fine_block % mgs_vars % helm_c % array
+	     coarse_field => coarse_block % mgs_vars % helm_c % array
+	   elseif(k.eq.2)then
+             fine_field => fine_block % mgs_vars % helm_np % array
+             coarse_field => coarse_block % mgs_vars % helm_np % array
+           elseif(k.eq.3)then
+             fine_field => fine_block % mgs_vars % helm_n0 % array
+             coarse_field => coarse_block % mgs_vars % helm_n0 % array
+           elseif(k.eq.4)then
+             fine_field => fine_block % mgs_vars % helm_nm % array
+             coarse_field => coarse_block % mgs_vars % helm_nm % array
+           elseif(k.eq.5)then
+             fine_field => fine_block % mgs_vars % helm_d1p % array
+             coarse_field => coarse_block % mgs_vars % helm_d1p % array
+           elseif(k.eq.6)then
+             fine_field => fine_block % mgs_vars % helm_d1m % array
+             coarse_field => coarse_block % mgs_vars % helm_d1m % array
+           elseif(k.eq.7)then
+             fine_field => fine_block % mgs_vars % helm_d2p % array
+             coarse_field => coarse_block % mgs_vars % helm_d2p % array
+           elseif(k.eq.8)then
+             fine_field => fine_block % mgs_vars % helm_d2m % array
+             coarse_field => coarse_block % mgs_vars % helm_d2m % array
+           elseif(k.eq.9)then
+             fine_field => fine_block % mgs_vars % helm_zz % array
+             coarse_field => coarse_block % mgs_vars % helm_zz % array
+	   endif
+           call atm_mg_restrict( fine_field,             coarse_field, &
+                                 fine_grid,              coarse_grid,     &
+                                 coarse_restrictStencil, coarse_restrictWeights )
+         enddo
+
+         ! move to coarser block
+         fine_block              => fine_block % coarser
+         coarse_block            => fine_block % coarser
+      enddo
 
    end subroutine atm_build_helmholtz_coeff
 
@@ -4904,39 +4960,32 @@ END SUBROUTINE trisolveb
       real(kind=RKIND), dimension(:,:), intent(in) :: restrictWeights
 
       real(kind=RKIND), dimension(:), pointer :: fine_cellArea, coarse_cellArea
-      integer :: iCell, iStencilCell, k, ix, nCellsSolve, nVertLevels
+      integer :: iCell, iStencilCell, k, ix, nCellsSolve
       real(kind=RKIND) :: aweight
 
 
       fine_cellArea   => fine_grid % areaCell % array
       coarse_cellArea => coarse_grid % areaCell % array
       nCellsSolve = coarse_grid % nCellsSolve
-      nVertLevels = coarse_grid % nVertLevels
 
       do iCell = 1, nCellsSolve
 
          ix = 1
          iStencilCell = restrictStencil(ix,iCell)
          aweight = fine_cellArea(iStencilCell)*restrictWeights(ix,iCell)
-         do k = 1, nVertLevels
-            coarse_field(k,iCell) = fine_field(k,iStencilCell)*aweight
-         enddo
+         coarse_field(:,iCell) = fine_field(:,iStencilCell)*aweight
+
          ix = 2
          iStencilCell = restrictStencil(ix,iCell)
          do while ((iStencilCell) > 0 .AND. (ix <= fine_grid % maxEdges))
 ! the problem here is iSetncilCell returns value larger than size of fine_cellArea - check how restrictStencil is setup
             aweight = fine_cellArea(iStencilCell)*restrictWeights(ix,iCell)
-            do k = 1, nVertLevels
-               coarse_field(k,iCell) = coarse_field(k,iCell) + fine_field(k,iStencilCell)*aweight
-            enddo
+            coarse_field(:,iCell) = coarse_field(:,iCell) + fine_field(:,iStencilCell)*aweight
+
             ix = ix + 1
-!STEVE: changed this as it was iCell,ix
-            !iStencilCell = restrictStencil(iCell,ix)
             iStencilCell = restrictStencil(ix,iCell)
          enddo
-         do k = 1, nVertLevels
-            coarse_field(k,iCell) = coarse_field(k,iCell)/coarse_cellArea(iCell)
-         enddo
+         coarse_field(:,iCell) = coarse_field(:,iCell)/coarse_cellArea(iCell)
       enddo
 
    end subroutine atm_mg_restrict
@@ -4957,12 +5006,11 @@ END SUBROUTINE trisolveb
       integer, dimension(:,:), intent(in) :: restrictStencil
       real(kind=RKIND), dimension(:,:), intent(in) :: restrictWeights
 
-      integer :: iCell, iStencilCell, k, ix, nCellsSolve, nVertLevels
+      integer :: iCell, iStencilCell, k, ix, nCellsSolve
       real(kind=RKIND) :: weight
 
 
       nCellsSolve = coarse_grid % nCellsSolve
-      nVertLevels = coarse_grid % nVertLevels
 
 
       ! Initialize fine grid field to zero
@@ -4973,23 +5021,18 @@ END SUBROUTINE trisolveb
          ix = 1
          iStencilCell = restrictStencil(ix,iCell)
          weight = restrictWeights(ix,iCell)
-         do k = 1, nVertLevels
-            fine_field(k,iStencilCell) = fine_field(k,iStencilCell) + coarse_field(k,iCell)*weight
-         enddo
+         fine_field(:,iStencilCell) = fine_field(:,iStencilCell) + coarse_field(:,iCell)*weight
 
          ix = 2
          iStencilCell = restrictStencil(ix,iCell)
          do while ((iStencilCell) > 0 .AND. (ix <= fine_grid % maxEdges))
-            weight = restrictWeights(iCell,ix)
-            do k = 1, nVertLevels
-               fine_field(k,iStencilCell) = fine_field(k,iStencilCell) + coarse_field(k,iCell)*weight
-            enddo
+            weight = restrictWeights(ix,iCell)
+            fine_field(:,iStencilCell) = fine_field(:,iStencilCell) + coarse_field(:,iCell)*weight
             ix = ix + 1
             iStencilCell = restrictStencil(ix,iCell)
          enddo
 
       enddo
-
 
    end subroutine atm_mg_prolong
 
@@ -5015,7 +5058,7 @@ END SUBROUTINE trisolveb
       real (kind=RKIND) :: r, alpha_si, adt, a2dt2
       real (kind=RKIND), dimension(grid % nVertLevels+1) :: d1q, ninvd1q
       real (kind=RKIND), dimension(:), pointer :: areaCell, dcEdge, dvEdge
-      real (kind=RKIND), dimension(:,:), pointer :: zz
+      real (kind=RKIND), dimension(:,:), pointer :: helm_zz
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
       !logical, parameter :: debug = .false.
@@ -5027,7 +5070,6 @@ END SUBROUTINE trisolveb
       dcEdge      => grid % dcEdge % array
       dvEdge      => grid % dvEdge % array
       cellsOnEdge => grid % cellsOnEdge % array
-      zz          => grid % zz % array
 
       helm_c   => mgs_vars % helm_c % array
       helm_np  => mgs_vars % helm_np % array
@@ -5037,6 +5079,7 @@ END SUBROUTINE trisolveb
       helm_d1m => mgs_vars % helm_d1m % array
       helm_d2p => mgs_vars % helm_d2p % array
       helm_d2m => mgs_vars % helm_d2m % array
+      helm_zz  => mgs_vars % helm_zz % array
 
       nVertLevels = grid % nVertLevels
       nCellsSolve = grid % nCellsSolve
@@ -5053,7 +5096,7 @@ END SUBROUTINE trisolveb
        ! Initialize to zero
        hq(:,:) = 0.0_RKIND
 
-       ! Compute horizontal div( 1/zz grad (q) )
+       ! Compute horizontal div( 1/helm_zz grad (q) )
        ! Share out the contributions from edges
        ! We'll divide by cell area below
        do iEdge=1,nEdges
@@ -5061,9 +5104,9 @@ END SUBROUTINE trisolveb
           cell2 = cellsOnEdge(2,iEdge)
           do k=1,nVertLevels
                hq(k,cell1) = hq(k,cell1) + (q(k,cell2) - q(k,cell1))*dvEdge(iEdge)     &
-                                          /(.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge))
+                                          /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge))
                hq(k,cell2) = hq(k,cell2) - (q(k,cell2) - q(k,cell1))*dvEdge(iEdge)     &
-                                          /(.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge))
+                                          /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge))
           end do
        end do
 
@@ -5153,7 +5196,7 @@ END SUBROUTINE trisolveb
                                                             ctp, ct0, ctm
       real (kind=RKIND), allocatable, dimension(:,:) :: res, helm_diag
       real (kind=RKIND), dimension(:), pointer :: areaCell, dcEdge, dvEdge
-      real (kind=RKIND), dimension(:,:), pointer :: zz
+      real (kind=RKIND), dimension(:,:), pointer :: helm_zz
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
       !logical, parameter :: debug = .false.
@@ -5165,7 +5208,6 @@ END SUBROUTINE trisolveb
       dcEdge      => grid % dcEdge % array
       dvEdge      => grid % dvEdge % array
       cellsOnEdge => grid % cellsOnEdge % array
-      zz          => grid % zz % array
 
       helm_c   => mgs_vars % helm_c % array
       helm_np  => mgs_vars % helm_np % array
@@ -5175,6 +5217,7 @@ END SUBROUTINE trisolveb
       helm_d1m => mgs_vars % helm_d1m % array
       helm_d2p => mgs_vars % helm_d2p % array
       helm_d2m => mgs_vars % helm_d2m % array
+      helm_zz  => mgs_vars % helm_zz % array
 
       nVertLevels = grid % nVertLevels
       nCells      = grid % nCells
@@ -5204,13 +5247,13 @@ END SUBROUTINE trisolveb
          cell2 = cellsOnEdge(2,iEdge)
          do k=1,nVertLevels
               res(k,cell1) = res(k,cell1) + a2dt2*q(k,cell2)*dvEdge(iEdge)     &
-                                         /(.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge)*areaCell(cell1))
+                                         /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell1))
               res(k,cell2) = res(k,cell2) + a2dt2*q(k,cell1)*dvEdge(iEdge)     &
-                                         /(.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge)*areaCell(cell2))
+                                         /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell2))
               helm_diag(k,cell1) = helm_diag(k,cell1) + a2dt2*dvEdge(iEdge)    &
-                                         /(.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge)*areaCell(cell1))
+                                         /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell1))
               helm_diag(k,cell2) = helm_diag(k,cell2) + a2dt2*dvEdge(iEdge)    &
-                                         /(.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge)*areaCell(cell2))
+                                         /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell2))
          end do
       end do
       ! Convenient to flip sign here
@@ -5305,10 +5348,9 @@ END SUBROUTINE trisolveb
       fine_block   => head_block
       pressure_inc => fine_block % diag % pressure_inc % array
       do while (associated(fine_block))
+	 pressure_inc => fine_block % diag % pressure_inc % array
          pressure_inc(:,1:fine_block % mesh % nCellsSolve) = 0.0_RKIND
          fine_block   => fine_block % next
-! ***********Need to ask John about the below line
-!         pressure_inc => fine_block % diag % pressure_inc % next % array
       end do
 
       if(debug) write(0,*) ' Make a number of passes of the multigrid solver '

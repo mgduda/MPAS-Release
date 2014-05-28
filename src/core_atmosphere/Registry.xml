@@ -1051,6 +1051,7 @@
                 <var name="helm_d1m"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
                 <var name="helm_d2p"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
                 <var name="helm_d2m"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+		<var name="helm_zz"                     type="real"     dimensions="nVertLevelsP1 nCells"           streams="o"/>
         </var_struct>
 
 </registry>
