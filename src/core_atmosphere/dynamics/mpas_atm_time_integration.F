@@ -4773,8 +4773,8 @@ module atm_time_integration
       real (kind=RKIND), dimension(grid % nVertLevels+1) :: d1pinc
       real (kind=RKIND), dimension(:), pointer :: fzm, fzp, areaCell, rdzw, &
                                                   dcEdge, dvEdge
-     real (kind=RKIND), dimension(:,:), pointer :: zz
-     real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
+      real (kind=RKIND), dimension(:,:), pointer :: zz
+      real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
  
       real (kind=RKIND), dimension(:,:), pointer :: theta_base, rtheta_base,       &
                                                     pressure_base,                 &
@@ -4784,6 +4784,8 @@ module atm_time_integration
                                                     helm_d1p, helm_d1m
       real (kind=RKIND), dimension(:,:), pointer :: fast_tend_u, fast_tend_rho, &
                                                     fast_tend_w 
+      logical, parameter :: debug = .false.
+      !logical, parameter :: debug = .true.
 
 
       theta_base       => diag % theta_base % array
@@ -4810,6 +4812,7 @@ module atm_time_integration
       zz          => grid % zz % array
       zb          => grid % zb % array
       zb3         => grid % zb3 % array
+      rdzw        => grid % rdzw % array
       areaCell    => grid % areaCell % array
       dcEdge      => grid % dcEdge % array
       dvEdge      => grid % dvEdge % array
@@ -4832,6 +4835,7 @@ module atm_time_integration
       rgamma = (cp - rgas)/cp     ! cv/cp
 
 
+      if (debug) write(0,*) ' First loop in si_backsub '
       do iCell = 1, nCellsSolve
 
          ! First recover coupled theta increment
@@ -4864,6 +4868,7 @@ module atm_time_integration
       enddo
 
 
+      if (debug) write(0,*) ' Second loop in si_backsub '
       ! Now compute V increment
       do  iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
@@ -4876,6 +4881,7 @@ module atm_time_integration
       enddo
 
 
+      if (debug) write(0,*) ' Third loop in si_backsub '
       ! Accumulate horizontal mass flux increments
       rho_pp = 0.0_RKIND
       do iEdge=1,nEdges
@@ -4888,6 +4894,7 @@ module atm_time_integration
          end do
       end do
 
+      if (debug) write(0,*) ' Fourth loop in si_backsub '
       ! Finish computing horizontal mass-flux-increment divergence,
       ! add vertical mass-flux-increment divergence and RHS of rho equation
       ! to complete rho increment
@@ -4904,6 +4911,7 @@ module atm_time_integration
       ! Obtain Omega increment from W increment: Omega = zx * ru + zz * rw
       ! in order to step forward Omega
 
+      if (debug) write(0,*) ' Fifth loop in si_backsub '
       ! First pick up d zeta / dz factor
       do iCell = 1, nCellsSolve
          do k = 2, nVertLevels
@@ -4911,6 +4919,7 @@ module atm_time_integration
          end do
       end do
 
+      if (debug) write(0,*) ' Sixth loop in si_backsub '
       ! Now include contributions from V increments
       do iEdge = 1, nEdges
          cell1 = CellsOnEdge(1,iEdge)
