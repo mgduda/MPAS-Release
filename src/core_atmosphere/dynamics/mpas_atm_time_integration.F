@@ -3878,7 +3878,7 @@ module atm_time_integration
       real (kind=RKIND), intent(in) :: dtrk
 
       integer :: iCell, iEdge, k, cell1, cell2
-      integer :: nVertLevels, nEdges, nCellsSolve
+      integer :: nVertLevels, nEdges, nCellsSolve, nEdgesSolve
       integer :: coef_3rd_order
       real (kind=RKIND), dimension(:,:), pointer :: rtheta_p_save, rho_p_save, ru_save, rw_save, &
                                                     rtheta_p,      rho_p,      ru,      rw,      &
@@ -3917,6 +3917,7 @@ module atm_time_integration
 
 
       nCellsSolve = grid % nCellsSolve
+      nEdgesSolve = grid % nEdgesSolve
       nEdges      = grid % nEdges
       nVertLevels = grid % nVertLevels
 
@@ -3957,7 +3958,7 @@ module atm_time_integration
 ! -----
 
       !  ruAvg and wwAvg will store the mass fluxes for the subsequent scalar transport.
-      !  *** Think about mass-tracer consistency ***
+      !  *** Think about mass-tracer consistency  - need to include SI contributions ***
 
       diag % ruAvg % array = ru
       diag % wwAvg % array = rw
@@ -3968,10 +3969,10 @@ module atm_time_integration
 
       if (debug) write(0,*) ' Doing one stage of RK '
 
-      rtheta_p = rtheta_p_save + dtrk*tend_theta
-      rho_p    = rho_p_save    + dtrk*tend_rho
-      ru       = ru_save       + dtrk*tend_u
-      rw       = rw_save       + dtrk*tend_w
+      rtheta_p(:,1:nCellsSolve) = rtheta_p_save(:,1:nCellsSolve) + dtrk*tend_theta(:,1:nCellsSolve)
+      rho_p(:,1:nCellsSolve)    = rho_p_save(:,1:nCellsSolve)    + dtrk*tend_rho(:,1:nCellsSolve)
+      ru(:,1:nEdgesSolve)       = ru_save(:,1:nEdgesSolve)       + dtrk*tend_u(:,1:nEdgesSolve)
+      rw(:,1:nCellsSolve)       = rw_save(:,1:nCellsSolve)       + dtrk*tend_w(:,1:nCellsSolve)
 
 
    end subroutine atm_si_advance_rk_step
@@ -4188,7 +4189,7 @@ module atm_time_integration
       ! This routine closely follows atm_recover_large_step_variables but does not
       ! compute rho_p, rtheta_p, ru, rw  because we have just time stepped those.
       ! 
-      ! Note wwAvg and ruAvg are saved BEFORE the RK step in atm_si_advance_rk_step
+      ! *** Note wwAvg and ruAvg are saved BEFORE the RK step in atm_si_advance_rk_step ***
 
       implicit none
 
@@ -4643,7 +4644,7 @@ module atm_time_integration
 !     Compute the RHS of the Helmholtz problem
 
       ! First multiply fast tendencies by dt
-      fast_tend_u(:,1:nEdgesSolve)     = dt*fast_tend_u(:,1:nEdgesSolve)
+      fast_tend_u(:,1:nEdges)          = dt*fast_tend_u(:,1:nEdges)
       fast_tend_theta(:,1:nCellsSolve) = dt*fast_tend_theta(:,1:nCellsSolve)
       fast_tend_w(:,1:nCellsSolve)     = dt*fast_tend_w(:,1:nCellsSolve)
       fast_tend_rho(:,1:nCellsSolve)   = dt*fast_tend_rho(:,1:nCellsSolve)
@@ -5641,7 +5642,6 @@ END SUBROUTINE trisolveb
 
 ! ================================================================
 
-!! SOME JUNK FOR TESTING !!
 
 
 end module atm_time_integration
