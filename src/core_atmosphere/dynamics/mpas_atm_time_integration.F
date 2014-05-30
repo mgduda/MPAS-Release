@@ -3497,9 +3497,42 @@ module atm_time_integration
 ! *** TO DO ***
 
 
-! Copy updated state into time_levs(1)
 
-! *** TO DO ***         *** DO we need a call to compute solve diagnostics here ? ***
+
+      ! Exchange rho_p, rw, rtheta_p, ru
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
+
+
+      ! The next two subroutine calls compute various diagnostic quantities needed by compute_dyn_tend
+
+      if (debug) write(0,*) ' Before RK loop: recover_derived_variables '
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
+         block => block % next
+      end do
+      if (debug) write(0,*) ' finished recover_derived_variables '
+
+
+      if(debug) write(0,*) ' Before RK loop: compute_solve_diagnostics '
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
+         block => block % next
+      end do
+      if(debug) write(0,*) ' finished compute_solve_diagnostics '
+
+
+      ! Exchange w, pv_edge, and rho_edge
+      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
+
+
+! Copy updated state into time_levs(1)
 
 !     Copy time_levs(1) into time_levs(2) and also save
 !     density weighted coupled variables
@@ -3519,39 +3552,6 @@ module atm_time_integration
       do rk_step = 1, 3  ! Runge-Kutta loop
 
          if(debug) write(0,*) ' rk substep ', rk_step
-
-
-         ! Exchange rho_p, rw, rtheta_p, ru
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
-
-
-         ! The next two subroutine calls compute various diagnostic quantities needed by compute_dyn_tend
-
-         if (debug) write(0,*) ' recover_derived_variables '
-         block => domain % blocklist
-         do while (associated(block))
-            call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
-            block => block % next
-         end do
-         if (debug) write(0,*) ' finished recover_derived_variables '
-
-
-         if(debug) write(0,*) ' compute_solve_diagnostics '
-         block => domain % blocklist
-         do while (associated(block))
-            call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
-            block => block % next
-         end do
-         if(debug) write(0,*) ' finished compute_solve_diagnostics '
-
-
-         ! Exchange w, pv_edge, and rho_edge
-         call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
 
 
          ! Compute coefficients to modifiy density to allow for moisture
@@ -3624,7 +3624,37 @@ module atm_time_integration
          if (debug) write(0,*) ' si_advance_rk_step '
 
 
-! *** TO DO we need the updated value of rho_zz for scalar advection ***
+         ! Exchange rho_p, rw, rtheta_p, ru
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
+
+
+         ! The next two subroutine calls compute various diagnostic quantities needed by compute_dyn_tend
+
+         if (debug) write(0,*) ' recover_derived_variables '
+         block => domain % blocklist
+         do while (associated(block))
+            call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
+            block => block % next
+         end do
+         if (debug) write(0,*) ' finished recover_derived_variables '
+
+
+         if(debug) write(0,*) ' compute_solve_diagnostics '
+         block => domain % blocklist
+         do while (associated(block))
+            call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
+            block => block % next
+         end do
+         if(debug) write(0,*) ' finished compute_solve_diagnostics '
+
+
+         ! Exchange w, pv_edge, and rho_edge
+         call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
 
 
          ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
@@ -3672,9 +3702,6 @@ module atm_time_integration
 
 
       if(debug) write(0,*) ' RK steps completed '
-
-
-! *** TO DO we need to update pressure_p for the next call to compute_fast_tend ***
 
 
       ! Exchange pressure_p and ru
@@ -3764,7 +3791,19 @@ module atm_time_integration
       if (debug) write(0,*) ' finished recover_derived_variables at end of dynamics '
 
 
-! *** TO DO we need rho_edge for physics tendencies ?? ***
+      if(debug) write(0,*) ' compute_solve_diagnostics at end of dynamics'
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
+         block => block % next
+      end do
+      if(debug) write(0,*) ' finished compute_solve_diagnostics at end of dynamics '
+
+
+      ! Exchange w, pv_edge, and rho_edge
+      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
 
 
 !...  compute full velocity vectors at cell centers:
