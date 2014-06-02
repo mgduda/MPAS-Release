@@ -3751,8 +3751,9 @@ module atm_time_integration
       if (debug) write(0,*) ' finished mg_solve '
 
 
-      ! Exchange presure_increment
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_inc, (/ 1 /))
+!     *** JOHN halo exchange moved inside atm_mg_solve
+!      ! Exchange presure_increment
+!      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_inc, (/ 1 /))
 
 
       ! Back substitution
@@ -5376,11 +5377,10 @@ END SUBROUTINE trisolveb
       real(kind=RKIND), dimension(:,:), pointer :: pressure_inc, rhs,  &
                                                    fine_helm_rhs,   fine_helm_inc,   &
                                                    coarse_helm_rhs, coarse_helm_inc, &
-                                                   coarse_restrictWeights
+                                                   coarse_restrictWeights, temporary
       type(mgs_vars_type), pointer 	:: fine_mgs_vars
       integer, dimension(:,:), pointer 	:: coarse_restrictStencil
 
-      real(kind=RKIND), dimension(:,:), allocatable :: temporary
 !       logical, parameter :: debug = .false.
       logical, parameter :: debug = .true.
 
@@ -5392,15 +5392,17 @@ END SUBROUTINE trisolveb
 
       head_block => domain % blocklist
 
+
       if(debug) write(0,*) ' Initialize solution to zero '
       ! Initialize solution to zero
       fine_block   => head_block
       pressure_inc => fine_block % diag % pressure_inc % array
       do while (associated(fine_block))
 	 pressure_inc => fine_block % diag % pressure_inc % array
-         pressure_inc(:,1:fine_block % mesh % nCellsSolve) = 0.0_RKIND
+         pressure_inc(:,1:fine_block % mesh % nCells) = 0.0_RKIND
          fine_block   => fine_block % next
       end do
+
 
       if(debug) write(0,*) ' Make a number of passes of the multigrid solver '
       ! Make a number of passes of the multigrid solver
@@ -5408,17 +5410,16 @@ END SUBROUTINE trisolveb
       ! previous pass then compute a correction to the solution.)
       do ipass = 1, mg_solve_npass
 
-         if(debug) write(0,*) ' Start of multigrid solver '
+
+         if(debug) write(0,*) ' Start of multigrid solver pass',ipass
          fine_block      => head_block
          do while (associated(fine_block))
-
             fine_grid       => fine_block % mesh
             fine_mgs_vars   => fine_block % mgs_vars
             fine_helm_rhs   => fine_block % mgs_vars % helm_rhs % array
             fine_helm_inc   => fine_Block % mgs_vars % helm_inc % array
             pressure_inc    => fine_block % diag % pressure_inc % array
             rhs             => fine_block % diag % rhs % array
-
             ! Initialize rhs as residual using latest estimate
             if (ipass == 1) then
                ! No need to do the calculation; just copy data
@@ -5430,57 +5431,60 @@ END SUBROUTINE trisolveb
                                      fine_grid, fine_mgs_vars, dt )
             endif
             ! And initialize finest grid correction to zero
-            fine_helm_inc(:,1:fine_block % mesh % nCellsSolve) = 0.0_RKIND
+            fine_helm_inc(:,1:fine_block % mesh % nCells) = 0.0_RKIND
             fine_block      => fine_block % next
          enddo
+
 
 	 if(debug) write(0,*) ' Restrict right hand side to each grid in the hierarchy '
          ! Restrict right hand side to each grid in the hierarchy
          do mgsLevel = 2, mg_solve_depth
-            fine_block                 => head_block
-            coarse_block               => head_block % coarser
-! *** TO DO Halo exchange ***
+            fine_block                => head_block
+            coarse_block              => head_block % coarser
+            ! Exchange rhs field ready for restriction
+            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_rhs, (/ 1 /))
             do while (associated(fine_block))
-
-                fine_grid              => fine_block % mesh
-                fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
-                coarse_grid            => coarse_block % mesh
-                coarse_helm_rhs        => coarse_block % mgs_vars % helm_rhs % array
-                coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
-                coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
-
+               fine_grid              => fine_block % mesh
+               fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
+               coarse_grid            => coarse_block % mesh
+               coarse_helm_rhs        => coarse_block % mgs_vars % helm_rhs % array
+               coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
+               coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
                call atm_mg_restrict( fine_helm_rhs,          coarse_helm_rhs, &
                                      fine_grid,              coarse_grid,     &
                                      coarse_restrictStencil, coarse_restrictWeights )
-
-               fine_block              => fine_block % next
-               coarse_block            => coarse_block % next
+               fine_block             => fine_block % next
+               coarse_block           => coarse_block % next
             enddo
             head_block => head_block % coarser
          enddo
 
-	 if(debug) write(0,*) ' FMG initail relax on coarsest grid niterc times '
 
+	 if(debug) write(0,*) ' FMG initial relax on coarsest grid ', niterc, ' times '
          ! Initialize correction to zero on coarsest grid and
          ! iterate (close) to convergence on coarsest grid
          ! It is logical to refer to this as the `fine' grid here because
          ! it is the finest grid on which we have a solution at this pass, and this
          ! will be consistent with the handling of V-cycles below
+         fine_block      => head_block
+         do while (associated(fine_block))
+            fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
+            fine_helm_inc(:,1:fine_block % mesh % nCells) = 0.0_RKIND
+            fine_block         => fine_block % next
+         enddo
          do iter = 1, niterc
             fine_block      => head_block
-! *** TO DO Halo exchange ***
             do while (associated(fine_block))
-
                fine_grid          => fine_block % mesh
                fine_mgs_vars      => fine_block % mgs_vars
                fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
                fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
-
                call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
                                   fine_mgs_vars, dt )
-               fine_block      => fine_block % next
-
+               fine_block         => fine_block % next
             enddo
+            ! Exchange inc field
+            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
          enddo
 
 
@@ -5488,29 +5492,27 @@ END SUBROUTINE trisolveb
          if(debug) write(0,*) ' Sequence of growing V-cycles '
          do i_vcycle_depth = 1, mg_solve_depth-1
 
+
 	    if(debug) write(0,*) ' Prolong solution '
             ! Prolong solution from current grid to finer one
             coarse_block           => head_block
             fine_block             => head_block % finer
-
             do while (associated(coarse_block))
-
                coarse_grid            => coarse_block % mesh
                coarse_helm_inc        => coarse_block % mgs_vars % helm_inc % array
                coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
                coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
                fine_grid              => fine_block % mesh
                fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
-
                call atm_mg_prolong( fine_helm_inc,          coarse_helm_inc, &
                                     fine_grid,              coarse_grid,   &
                                     coarse_restrictStencil, coarse_restrictWeights )
-
                coarse_block           => coarse_block % next
                fine_block             => fine_block % next
-
             enddo
             head_block => head_block % finer
+            ! Exchange inc field
+            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
 
 
 	    if(debug) write(0,*) ' Execute one V-cycle '
@@ -5524,141 +5526,140 @@ END SUBROUTINE trisolveb
 
                ! Relax on the current (fine) grid
                do iter = 1, niter
-! *** TO DO Halo exchange ***
                   fine_block             => head_block
-
                   do while (associated(fine_block))
-
                      fine_grid           => fine_block % mesh
+                     fine_mgs_vars       => fine_block % mgs_vars
                      fine_helm_rhs       => fine_block % mgs_vars % helm_rhs % array
                      fine_helm_inc       => fine_block % mgs_vars % helm_inc % array
-                     fine_mgs_vars  => fine_block % mgs_vars
-
                      call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
                                         fine_mgs_vars, dt )
-
-                     fine_block      => fine_block % next
-
+                     fine_block          => fine_block % next
                   enddo
+                 ! Exchange inc field
+                 call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
                enddo
 
 
+               ! Calculate residual on current grid
+               fine_block             => head_block
+               do while (associated(fine_block))
+                  fine_grid              => fine_block % mesh
+                  fine_mgs_vars          => fine_block % mgs_vars
+                  fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
+                  fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
+                  temporary              => fine_block % mgs_vars % temporary % array
+                  call atm_mg_residual( fine_helm_inc, fine_helm_rhs, temporary, &
+                                        fine_grid,     fine_mgs_vars, dt )
+                  fine_block             => fine_block % next
+               enddo
+               ! Exchange residual field prior to restriction
+               call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
+
+
+               ! Restrict residual to coarser grid
                fine_block             => head_block
                coarse_block           => head_block % coarser
                do while (associated(fine_block))
-
                   fine_grid              => fine_block % mesh
-                  fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
-                  fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
-                  fine_mgs_vars          => fine_block % mgs_vars
+                  temporary              => fine_block % mgs_vars % temporary % array
                   coarse_grid            => coarse_block % mesh
                   coarse_helm_rhs        => coarse_block % mgs_vars % helm_rhs % array
                   coarse_helm_inc        => coarse_block % mgs_vars % helm_inc % array
                   coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
                   coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
-
-                  allocate(temporary(1:fine_grid % nVertLevels,1:fine_grid % nCells+1))
-! *** TO DO Halo exchange ***
-                  ! Calculate residual on current grid
-                  call atm_mg_residual( fine_helm_inc, fine_helm_rhs, temporary, &
-                                        fine_grid,     fine_mgs_vars, dt )
-
-! *** TO DO Halo exchange ***
-                  ! Restrict residual to coarser grid
                   call atm_mg_restrict( temporary,     coarse_helm_rhs, &
                                         fine_grid,     coarse_grid,             &
                                         coarse_restrictStencil, coarse_restrictWeights )
-
                   ! Initialize correction to zero on coarse grid
                   coarse_helm_inc = 0.0_RKIND
-
                   fine_block             => fine_block % next
                   coarse_block           => coarse_block % next
-
-                  deallocate(temporary)
-
                enddo
+
 
                ! Get pointer ready for next iteration
                head_block => head_block % coarser
 
             enddo
 
+
             if(debug) write(0,*) ' Initialize corrc to 0 on coarsest grid and iterate niterc times to convergence on coarsest grid '
             ! Initialize correction to zero on coarsest grid and
             ! iterate (close) to convergence on coarsest grid
             do iter = 1, niterc
                fine_block      => head_block
-! *** TO DO Halo exchange ***
                do while (associated(fine_block))
-
                   fine_grid          => fine_block % mesh
-                  fine_mgs_vars => fine_block % mgs_vars
+                  fine_mgs_vars      => fine_block % mgs_vars
                   fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
                   fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
-
                   call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
                                      fine_mgs_vars, dt )
-
-                  fine_block      => fine_block % next
+                  fine_block         => fine_block % next
                enddo
+               ! Exchange inc field
+               call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
             enddo
+
 
 	    if(debug) write(0,*) ' Ascending part of V-cycle '
             ! Ascending part of V-cycle
             do mgsLevel = mg_solve_depth-1, mg_solve_depth - i_vcycle_depth, -1
 
-               head_block             => head_block % finer
+
+               ! Get pointer ready for this iteration
+               head_block => head_block % finer
+
+
+               ! Prolong correction to finer grid
                fine_block             => head_block
                coarse_block           => head_block % coarser
-
                do while (associated(fine_block))
-
-! *** TO DO Halo exchange ***
-
                   fine_grid              => fine_block % mesh
-                  fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
+                  temporary              => fine_block % mgs_vars % temporary % array
                   coarse_grid            => coarse_block % mesh
                   coarse_helm_inc        => coarse_block % mgs_vars % helm_inc % array
                   coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
                   coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
-
-                  allocate(temporary(1:fine_grid % nVertLevels,1:fine_grid % nCells+1))
-
-                  ! Prolong correction to finer grid
                   call atm_mg_prolong( temporary,              coarse_helm_inc,  &
                                        fine_grid,              coarse_grid,      &
                                        coarse_restrictStencil, coarse_restrictWeights )
-
-                  ! Add correction to update fine grid solution
-                  fine_helm_inc(:,1:fine_grid % nCellsSolve)             &
-                            = fine_helm_inc(:,1:fine_grid % nCellsSolve) &
-                            + temporary(:,1:fine_grid % nCellsSolve)
-
                   fine_block             => fine_block % next
                   coarse_block           => coarse_block % next
-                  deallocate(temporary)
+               enddo
+               ! Exchange increment field after prolong
+               call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
 
+
+               ! Add correction to update fine grid solution
+               fine_block             => head_block
+               coarse_block           => head_block % coarser
+               do while (associated(fine_block))
+                  fine_grid              => fine_block % mesh
+                  fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
+                  temporary              => fine_block % mgs_vars % temporary % array
+                  fine_helm_inc(:,1:fine_grid % nCellsSolve)             &
+                            = fine_helm_inc(:,1:fine_grid % nCells) &
+                            + temporary(:,1:fine_grid % nCells)
+                  fine_block             => fine_block % next
                enddo
 
 
                ! Relax on the current (fine) grid
                do iter = 1, niter
-! *** TO DO Halo exchange ***
-                  fine_block             => head_block
-
+                  fine_block         => head_block
                   do while (associated(fine_block))
-
                      fine_grid          => fine_block % mesh
+                     fine_mgs_vars      => fine_block % mgs_vars
                      fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
                      fine_helm_inc      => fine_block % mgs_vars % helm_inc % array
-                     fine_mgs_vars => fine_block % mgs_vars
-
                      call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
                                         fine_mgs_vars, dt )
-
                      fine_block      => fine_block % next
                   enddo
+                 ! Exchange inc field
+                 call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
                enddo
 
 
@@ -5667,19 +5668,25 @@ END SUBROUTINE trisolveb
 
          enddo
 
+
  	 if(debug) write(0,*) ' Add correction to pressure_inc '
          ! Add correction to pressure_inc
          fine_block    => head_block
          do while (associated(fine_block))
             pressure_inc  => fine_block % diag % pressure_inc % array
             fine_helm_inc => fine_block % mgs_vars % helm_inc % array
-
-            pressure_inc(:,1:fine_block % mesh % nCellsSolve) = pressure_inc(:,1:fine_block % mesh % nCellsSolve) &
-                                                              + fine_helm_inc(:,1:fine_block % mesh % nCellsSolve)
-
-
+            pressure_inc(:,1:fine_block % mesh % nCells) = pressure_inc(:,1:fine_block % mesh % nCells) &
+                                                         + fine_helm_inc(:,1:fine_block % mesh % nCells)
             fine_block    => fine_block % next
          end do
+
+
+!        This should not be necessary: we've exchanged helm_inc earlier and hence calculated
+!        pressure_inc on nCells
+!        ! Exchange pressure_increment
+!        call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_inc, (/ 1 /))
+
+
 
       enddo
 

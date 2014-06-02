@@ -1041,6 +1041,7 @@
         <var_struct name="mgs_vars" time_levs="1">
 		<var name="helm_inc"                    type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
                 <var name="helm_rhs"                	type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
+                <var name="temporary"                	type="real"     dimensions="nVertLevels nCells Time"        streams=""/>
 		<var name="restrictStencil"             type="integer"  dimensions="maxEdges nCells"                streams="iro"/>
 		<var name="restrictWeights"             type="real"     dimensions="maxEdges nCells"                streams="iro"/>
                 <var name="helm_c"                      type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
