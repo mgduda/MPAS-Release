@@ -1033,10 +1033,7 @@
         </var_struct>
 
         <!-- multi-grid mesh variables used in solution of Helmholtz problem -->
-        <!-- STEVE: Need to work out exactly the variables to use -->
-        <!-- STEVE_edit -->
-        <!-- JOHN: Helmholtz coefficients packed into a single array helm_coeff -->
-        <!-- JOHN: and pressure_inc and rhs_helm renamed helm_inc and helm_rhs -->
+        <!-- JOHN: Sorted out vertical dimensions of arrays -->
         <!-- JOHN_edit -->
         <var_struct name="mgs_vars" time_levs="1">
 		<var name="helm_inc"                    type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
@@ -1044,15 +1041,15 @@
                 <var name="temporary"                	type="real"     dimensions="nVertLevels nCells Time"        streams=""/>
 		<var name="restrictStencil"             type="integer"  dimensions="maxEdges nCells"                streams="iro"/>
 		<var name="restrictWeights"             type="real"     dimensions="maxEdges nCells"                streams="iro"/>
-                <var name="helm_c"                      type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
+                <var name="helm_c"                      type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
                 <var name="helm_np"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
                 <var name="helm_n0"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
                 <var name="helm_nm"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
                 <var name="helm_d1p"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
                 <var name="helm_d1m"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
-                <var name="helm_d2p"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
-                <var name="helm_d2m"                    type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
-		<var name="helm_zz"                     type="real"     dimensions="nVertLevelsP1 nCells"           streams="o"/>
+                <var name="helm_d2p"                    type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
+                <var name="helm_d2m"                    type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
+		<var name="helm_zz"                     type="real"     dimensions="nVertLevels nCells"             streams="o"/>
         </var_struct>
 
 </registry>

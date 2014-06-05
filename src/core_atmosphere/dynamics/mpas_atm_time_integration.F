@@ -3459,7 +3459,7 @@ module atm_time_integration
       real (kind=RKIND) :: global_scalar_min, global_scalar_max
 
 
-      !
+
       ! Initialize RK weights
 
       rk_timestep(1) = dt/3._RKIND
@@ -3470,6 +3470,41 @@ module atm_time_integration
 
       ! Exchange scalars
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % scalars)
+
+
+
+! *** DEBUG ***
+      write(0,*)
+      write(0,*) 'Start of atm_si'
+      block => domain % blocklist
+      do while (associated(block))
+         scalar_min = 0.
+         scalar_max = 0.
+         do iCell = 1, block % mesh % nCellsSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % state % time_levs(2) % state % w % array(k,iCell))
+            scalar_max = max(scalar_max, block % state % time_levs(2) % state % w % array(k,iCell))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+         write(0,*) 'global min, max w ',global_scalar_min, global_scalar_max
+
+         scalar_min = 0.
+         scalar_max = 0.
+         do iEdge = 1, block % mesh % nEdgesSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % state % time_levs(2) % state % u % array(k,iEdge))
+            scalar_max = max(scalar_max, block % state % time_levs(2) % state % u % array(k,iEdge))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+         write(0,*) 'global min, max u ',global_scalar_min, global_scalar_max
+
+         block => block % next
+      end do
+
 
 
 
@@ -3495,8 +3530,6 @@ module atm_time_integration
 ! OR, if this is the first step, set up and solve the Helmholtz problem ...
 
 ! *** TO DO ***
-
-
 
 
       ! Exchange rho_p, rw, rtheta_p, ru
@@ -3544,6 +3577,31 @@ module atm_time_integration
       end do
 
 
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'state      u      w     rho_zz      theta_m    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
+            enddo
+         endif
+
+
+
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'b4rk      ru      rw     rho_p      rtheta_p    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % diag % ru % array(k,100),  &
+                          domain % blocklist % diag % rw % array(k,100),  &
+                          domain % blocklist % diag % rho_p % array(k,100),  &
+                          domain % blocklist % diag % rtheta_p % array(k,100)
+            enddo
+         endif
+
+
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
       ! BEGIN Runge-Kutta loop 
@@ -3574,6 +3632,17 @@ module atm_time_integration
          end do
          if (debug) write(0,*) ' finished compute_dyn_tend '
 
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'tend      u      w     rho_zz      theta_m    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % tend % u % array(k,100),  &
+                          domain % blocklist % tend % w % array(k,100),  &
+                          domain % blocklist % tend % rho_zz % array(k,100),  &
+                          domain % blocklist % tend % theta_m % array(k,100)
+            enddo
+         endif
+
 
 #ifdef DO_PHYSICS
          ! Add physics tendencies
@@ -3603,6 +3672,17 @@ module atm_time_integration
          end do
          if (debug) write(0,*) ' finished compute_fast_tend '
 
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'fast_tend      u      w     rho_zz      theta_m    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
+                          domain % blocklist % tend % w_fast % array(k,100),  &
+                          domain % blocklist % tend % rho_zz_fast % array(k,100),  &
+                          domain % blocklist % tend % theta_m_fast % array(k,100)
+            enddo
+         endif
+
 
          ! Subtract fast tendencies from total to get slow tendencies
          if (debug) write(0,*) ' subtract_fast_tend '
@@ -3612,6 +3692,18 @@ module atm_time_integration
             block => block % next
          end do
          if (debug) write(0,*) ' finished subtract_fast_tend '
+
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'tend      u      w     rho_zz      theta_m    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % tend % u % array(k,100),  &
+                          domain % blocklist % tend % w % array(k,100),  &
+                          domain % blocklist % tend % rho_zz % array(k,100),  &
+                          domain % blocklist % tend % theta_m % array(k,100)
+            enddo
+         endif
+
 
 
          ! RK update using slow tendencies
@@ -3704,6 +3796,64 @@ module atm_time_integration
       if(debug) write(0,*) ' RK steps completed '
 
 
+
+! *** DEBUG ***
+      write(0,*)
+      write(0,*) 'aftrRK'
+      block => domain % blocklist
+      do while (associated(block))
+         scalar_min = 0.
+         scalar_max = 0.
+         do iCell = 1, block % mesh % nCellsSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % state % time_levs(2) % state % w % array(k,iCell))
+            scalar_max = max(scalar_max, block % state % time_levs(2) % state % w % array(k,iCell))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+         write(0,*) 'global min, max w ',global_scalar_min, global_scalar_max
+
+         scalar_min = 0.
+         scalar_max = 0.
+         do iEdge = 1, block % mesh % nEdgesSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % state % time_levs(2) % state % u % array(k,iEdge))
+            scalar_max = max(scalar_max, block % state % time_levs(2) % state % u % array(k,iEdge))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+         write(0,*) 'global min, max u ',global_scalar_min, global_scalar_max
+
+         block => block % next
+      end do
+
+
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'state      u      w     rho_zz      theta_m    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
+            enddo
+         endif
+
+
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'aftrrk      ru      rw     rho_p      rtheta_p    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % diag % ru % array(k,100),  &
+                          domain % blocklist % diag % rw % array(k,100),  &
+                          domain % blocklist % diag % rho_p % array(k,100),  &
+                          domain % blocklist % diag % rtheta_p % array(k,100)
+            enddo
+         endif
+
+
       ! Exchange pressure_p and ru
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p, (/ 1 /))
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
@@ -3717,10 +3867,24 @@ module atm_time_integration
          block => block % next
       end do
       if (debug) write(0,*) ' finished compute_fast_tend for RHS helmholtz'
-
-
       ! Exchange fast u tendency
       call mpas_dmpar_exch_halo_field(domain % blocklist % tend % u_fast, (/ 1 /))
+
+
+
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'fast_tend      u      w     rho_zz      theta_m    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
+                          domain % blocklist % tend % w_fast % array(k,100),  &
+                          domain % blocklist % tend % rho_zz_fast % array(k,100),  &
+                          domain % blocklist % tend % theta_m_fast % array(k,100)
+            enddo
+         endif
+
+
+      write(0,*) domain % dminfo % nProcs,' processes running; this one ',domain % dminfo % my_proc_id
 
 
       ! Set up Helmholtz coefficients
@@ -3733,6 +3897,11 @@ module atm_time_integration
          block => block % next
       end do
       if (debug) write(0,*) ' finished build_helmholtz_coeff '
+
+
+      if (debug) write(0,*) ' restrict_helmholtz_coeff '
+      call atm_restrict_helmholtz_coeff( domain % blocklist )
+      if (debug) write(0,*) ' finished restrict_helmholtz_coeff '
 
 
       ! Set up RHS of Helmholtz
@@ -3749,11 +3918,6 @@ module atm_time_integration
       if (debug) write(0,*) ' mg_solve '
       call atm_mg_solve( domain, dt )
       if (debug) write(0,*) ' finished mg_solve '
-
-
-!     *** JOHN halo exchange moved inside atm_mg_solve
-!      ! Exchange presure_increment
-!      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_inc, (/ 1 /))
 
 
       ! Back substitution
@@ -3799,6 +3963,18 @@ module atm_time_integration
          block => block % next
       end do
       if(debug) write(0,*) ' finished compute_solve_diagnostics at end of dynamics '
+
+
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'state      u      w     rho_zz      theta_m    '
+            do k = 1, domain % blocklist % mesh % nVertLevels
+               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
+                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
+            enddo
+         endif
 
 
       ! Exchange w, pv_edge, and rho_edge
@@ -3897,6 +4073,7 @@ module atm_time_integration
 
          block => block % next
       end do
+
 
    end subroutine atm_si
 
@@ -4446,7 +4623,7 @@ module atm_time_integration
 
    subroutine atm_build_helmholtz_coeff( block, dt )
 
-!  Construct the coefficients for the helmholtz problem (on the finest grid).
+!  Construct the coefficients for the helmholtz problem on the finest grid.
 !
 
       implicit none
@@ -4469,13 +4646,11 @@ module atm_time_integration
       integer, dimension(:,:), pointer :: coarse_restrictStencil
       type (block_type), pointer :: fine_block, coarse_block 
       type (mesh_type), pointer  :: fine_grid, coarse_grid
+      logical :: debug = .false.
 
-      rho_base         => block % diag % theta_base % array
+      rho_base         => block % diag % rho_base % array
       theta_base       => block % diag % theta_base % array
       pressure_base    => block % diag % pressure_base % array
-
-      ! Transfer the array from mesh to mgs_vars - maybe do this somehwere else?
-      block % mgs_vars % helm_zz % array = block % mesh % zz % array
 
       helm_c           => block % mgs_vars % helm_c % array
       helm_np          => block % mgs_vars % helm_np % array
@@ -4494,6 +4669,9 @@ module atm_time_integration
 
       nVertLevels = block % mesh % nVertLevels
       nCellsSolve = block % mesh % nCellsSolve
+
+      ! Transfer the array from mesh to mgs_vars - maybe do this somehwere else?
+      block % mgs_vars % helm_zz % array = block % mesh % zz % array(1:nVertLevels,:)
 
 
 !     Useful constants
@@ -4561,58 +4739,141 @@ module atm_time_integration
 
       enddo
 
-! *** restricting required helm_coefs to coarser grids ***
 
-      fine_block                 => block
-      coarse_block               => fine_block % coarser
-      do while (associated(coarse_block))
+! *** DEBUG ***
+         if (debug) then
+            write(0,*) 'build_helm_coeff      rho_base            pressure_base   '
+            do k = 1, nVertLevels
+               write(0,*) block % diag % rho_base % array(k,100),  &
+                          block % diag % pressure_base % array(k,100)
+            enddo
+         endif
+         if (debug) then
+            write(0,*) 'build_helm_coeff      c            zz   '
+            do k = 1, nVertLevels
+               write(0,*) block % mgs_vars % helm_c % array(k,100),  &
+                          block % mgs_vars % helm_zz % array(k,100)
+            enddo
+         endif
+         if (debug) then
+            write(0,*) 'build_helm_coeff      np            n0             nm   '
+            do k = 1, nVertLevels+1
+               write(0,*) block % mgs_vars % helm_np % array(k,100),  &
+                          block % mgs_vars % helm_n0 % array(k,100),  &
+                          block % mgs_vars % helm_nm % array(k,100)
+            enddo
+         endif
+         if (debug) then
+            write(0,*) 'build_helm_coeff      d1p            d1m   '
+            do k = 1, nVertLevels+1
+               write(0,*) block % mgs_vars % helm_d1p % array(k,100),  &
+                          block % mgs_vars % helm_d1m % array(k,100)
+            enddo
+         endif
+         if (debug) then
+            write(0,*) 'build_helm_coeff      d2p            d2m   '
+            do k = 1, nVertLevels
+               write(0,*) block % mgs_vars % helm_d2p % array(k,100),  &
+                          block % mgs_vars % helm_d2m % array(k,100)
+            enddo
+         endif
 
-         fine_grid              => fine_block % mesh
-         coarse_grid            => coarse_block % mesh
-         coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
-         coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
 
-         do k=1,9! loop over the varbles to be restricted - could possible make this more concise
-	   ! get the fields to restrict
-           if (k.eq.1) then
-             fine_field => fine_block % mgs_vars % helm_c % array
-	     coarse_field => coarse_block % mgs_vars % helm_c % array
-	   elseif(k.eq.2)then
-             fine_field => fine_block % mgs_vars % helm_np % array
-             coarse_field => coarse_block % mgs_vars % helm_np % array
-           elseif(k.eq.3)then
-             fine_field => fine_block % mgs_vars % helm_n0 % array
-             coarse_field => coarse_block % mgs_vars % helm_n0 % array
-           elseif(k.eq.4)then
-             fine_field => fine_block % mgs_vars % helm_nm % array
-             coarse_field => coarse_block % mgs_vars % helm_nm % array
-           elseif(k.eq.5)then
-             fine_field => fine_block % mgs_vars % helm_d1p % array
-             coarse_field => coarse_block % mgs_vars % helm_d1p % array
-           elseif(k.eq.6)then
-             fine_field => fine_block % mgs_vars % helm_d1m % array
-             coarse_field => coarse_block % mgs_vars % helm_d1m % array
-           elseif(k.eq.7)then
-             fine_field => fine_block % mgs_vars % helm_d2p % array
-             coarse_field => coarse_block % mgs_vars % helm_d2p % array
-           elseif(k.eq.8)then
-             fine_field => fine_block % mgs_vars % helm_d2m % array
-             coarse_field => coarse_block % mgs_vars % helm_d2m % array
-           elseif(k.eq.9)then
-             fine_field => fine_block % mgs_vars % helm_zz % array
-             coarse_field => coarse_block % mgs_vars % helm_zz % array
-	   endif
-           call atm_mg_restrict( fine_field,             coarse_field, &
-                                 fine_grid,              coarse_grid,     &
-                                 coarse_restrictStencil, coarse_restrictWeights )
-         enddo
-
-         ! move to coarser block
-         fine_block              => fine_block % coarser
-         coarse_block            => fine_block % coarser
-      enddo
 
    end subroutine atm_build_helmholtz_coeff
+
+! ---------------------------------------------------------------------------------
+
+   subroutine atm_restrict_helmholtz_coeff( head_block_in )
+
+!  Restrict the coefficients for the helmholtz problem to all the coarser grids.
+!
+
+      implicit none
+
+      type (block_type), pointer :: head_block_in, headblock
+
+      integer :: k
+      type(field2dReal), pointer :: fine_field, coarse_field
+      real (kind=RKIND), dimension(:,:), pointer :: coarse_restrictWeights 
+      integer, dimension(:,:), pointer :: coarse_restrictStencil
+      type (block_type), pointer :: fine_block, coarse_block 
+      type (mesh_type), pointer  :: fine_grid, coarse_grid
+      logical :: debug = .false.
+
+
+
+!     Restricting helm_coefs to coarser grids
+
+      headblock                  => head_block_in
+      do while (associated(headblock % coarser))
+
+         do k=1,9! loop over the variables to be restricted - could possible make this more concise
+
+           fine_block             => headblock
+           coarse_block           => fine_block % coarser
+
+	   ! get the fields to restrict
+           if (k.eq.1) then
+             fine_field => fine_block % mgs_vars % helm_c
+	     coarse_field => coarse_block % mgs_vars % helm_c
+	   elseif(k.eq.2)then
+             fine_field => fine_block % mgs_vars % helm_np
+             coarse_field => coarse_block % mgs_vars % helm_np
+           elseif(k.eq.3)then
+             fine_field => fine_block % mgs_vars % helm_n0
+             coarse_field => coarse_block % mgs_vars % helm_n0
+           elseif(k.eq.4)then
+             fine_field => fine_block % mgs_vars % helm_nm
+             coarse_field => coarse_block % mgs_vars % helm_nm
+           elseif(k.eq.5)then
+             fine_field => fine_block % mgs_vars % helm_d1p
+             coarse_field => coarse_block % mgs_vars % helm_d1p
+           elseif(k.eq.6)then
+             fine_field => fine_block % mgs_vars % helm_d1m
+             coarse_field => coarse_block % mgs_vars % helm_d1m
+           elseif(k.eq.7)then
+             fine_field => fine_block % mgs_vars % helm_d2p
+             coarse_field => coarse_block % mgs_vars % helm_d2p
+           elseif(k.eq.8)then
+             fine_field => fine_block % mgs_vars % helm_d2m
+             coarse_field => coarse_block % mgs_vars % helm_d2m
+           elseif(k.eq.9)then
+             fine_field => fine_block % mgs_vars % helm_zz
+             coarse_field => coarse_block % mgs_vars % helm_zz
+	   endif
+
+           ! Exchange field ready for restriction
+           call mpas_dmpar_exch_halo_field(fine_field, (/ 1 /))
+
+           do while (associated(fine_block))
+             fine_grid              => fine_block % mesh
+             coarse_grid            => coarse_block % mesh
+             coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
+             coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
+             call atm_mg_restrict( fine_field % array,     coarse_field % array, &
+                                   fine_grid,              coarse_grid,     &
+                                   coarse_restrictStencil, coarse_restrictWeights )
+             fine_block             => fine_block % next
+             fine_field             => fine_field % next
+             coarse_block           => coarse_block % next
+             coarse_field           => coarse_field % next
+           enddo
+
+         enddo
+
+         ! Move to coarser block
+         headblock => headblock % coarser
+
+      enddo
+
+
+      ! helm_zz also needs to be exchanged on the coarsest grid (others are only needed
+      ! on owned cells).
+      call mpas_dmpar_exch_halo_field(headblock % mgs_vars % helm_zz, (/ 1 /))
+
+
+   end subroutine atm_restrict_helmholtz_coeff
 
 ! ---------------------------------------------------------------------------------
 
@@ -4847,8 +5108,8 @@ module atm_time_integration
 
          ! Compute D1(pressure_inc)
          do k = 2, nVertLevels
-           d1pinc(k) = helm_d1p(k,iCell)*pressure_inc(k+1,iCell) &
-                     + helm_d1m(k,iCell)*pressure_inc(k  ,iCell)
+           d1pinc(k) = helm_d1p(k,iCell)*pressure_inc(k  ,iCell) &
+                     + helm_d1m(k,iCell)*pressure_inc(k-1,iCell)
          enddo
 
          ! Invert N operator to find contribution to W increment
@@ -5018,6 +5279,7 @@ END SUBROUTINE trisolveb
       coarse_cellArea => coarse_grid % areaCell % array
       nCellsSolve = coarse_grid % nCellsSolve
 
+
       do iCell = 1, nCellsSolve
 
          ix = 1
@@ -5028,15 +5290,15 @@ END SUBROUTINE trisolveb
          ix = 2
          iStencilCell = restrictStencil(ix,iCell)
          do while ((iStencilCell) > 0 .AND. (ix <= fine_grid % maxEdges))
-! the problem here is iSetncilCell returns value larger than size of fine_cellArea - check how restrictStencil is setup
+! *** the problem here is iStencilCell returns value larger than size of fine_cellArea - check how restrictStencil is setup
             aweight = fine_cellArea(iStencilCell)*restrictWeights(ix,iCell)
-            coarse_field(:,iCell) = coarse_field(:,iCell) + fine_field(:,iStencilCell)*aweight
-
+           coarse_field(:,iCell) = coarse_field(:,iCell) + fine_field(:,iStencilCell)*aweight
             ix = ix + 1
             iStencilCell = restrictStencil(ix,iCell)
          enddo
          coarse_field(:,iCell) = coarse_field(:,iCell)/coarse_cellArea(iCell)
       enddo
+
 
    end subroutine atm_mg_restrict
 
@@ -5047,6 +5309,7 @@ END SUBROUTINE trisolveb
                               restrictStencil, restrictWeights )
 
       ! Perform the prolongation operation needed for a multigrid solver.
+      ! Note that the results for only the owned fine cells can be trusted
 
       implicit none
 
@@ -5056,17 +5319,17 @@ END SUBROUTINE trisolveb
       integer, dimension(:,:), intent(in) :: restrictStencil
       real(kind=RKIND), dimension(:,:), intent(in) :: restrictWeights
 
-      integer :: iCell, iStencilCell, k, ix, nCellsSolve
+      integer :: iCell, iStencilCell, k, ix, nCells
       real(kind=RKIND) :: weight
 
 
-      nCellsSolve = coarse_grid % nCellsSolve
+      nCells = coarse_grid % nCells
 
 
       ! Initialize fine grid field to zero
       fine_field = 0.0_RKIND
 
-      do iCell = 1, nCellsSolve
+      do iCell = 1, nCells
 
          ix = 1
          iStencilCell = restrictStencil(ix,iCell)
@@ -5111,8 +5374,8 @@ END SUBROUTINE trisolveb
       real (kind=RKIND), dimension(:,:), pointer :: helm_zz
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
-      !logical, parameter :: debug = .false.
-      logical, parameter :: debug = .true.
+      logical, parameter :: debug = .false.
+      !logical, parameter :: debug = .true.
 
 
 
@@ -5209,8 +5472,8 @@ END SUBROUTINE trisolveb
       type(mgs_vars_type), intent(in)  			:: mgs_vars
       real(kind=RKIND), dimension(:,:),   intent(in)  	:: q, rhs
       real(kind=RKIND), dimension(:,:),   intent(out) 	:: res
-      !logical, parameter :: debug = .false.
-      logical, parameter :: debug = .true.
+      logical, parameter :: debug = .false.
+      !logical, parameter :: debug = .true.
 
       if(debug) write(0,*) ' call atm_mg_helmholtz '
       call atm_mg_helmholtz( q, res, grid, mgs_vars, dt )
@@ -5249,8 +5512,8 @@ END SUBROUTINE trisolveb
       real (kind=RKIND), dimension(:,:), pointer :: helm_zz
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
-      !logical, parameter :: debug = .false.
-      logical, parameter :: debug = .true.
+      logical, parameter :: debug = .false.
+      !logical, parameter :: debug = .true.
 
 
 
@@ -5287,27 +5550,19 @@ END SUBROUTINE trisolveb
 !     Find residual
       call atm_mg_residual( q, rhs, res, grid, mgs_vars, dt )
 
-      if(debug) write(0,*) ' Add to res from neighbour cells & compute the horiz contrib to the diagonal of the Helmholtz operator '
-      ! Add contributions from neighbouring cells to res
-      ! and compute the horizontal contribution to the diagonal of the
-      ! Helmholtz operator
+      if(debug) write(0,*) ' Add the horiz contrib to the diagonal of the Helmholtz operator '
+      ! Add the horizontal contribution to the diagonal of the Helmholtz operator
       helm_diag = helm_c
       do iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
          do k=1,nVertLevels
-              res(k,cell1) = res(k,cell1) + a2dt2*q(k,cell2)*dvEdge(iEdge)     &
-                                         /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell1))
-              res(k,cell2) = res(k,cell2) + a2dt2*q(k,cell1)*dvEdge(iEdge)     &
-                                         /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell2))
               helm_diag(k,cell1) = helm_diag(k,cell1) + a2dt2*dvEdge(iEdge)    &
                                          /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell1))
               helm_diag(k,cell2) = helm_diag(k,cell2) + a2dt2*dvEdge(iEdge)    &
                                          /(.5*(helm_zz(k,cell2)+helm_zz(k,cell1))*dcEdge(iEdge)*areaCell(cell2))
          end do
       end do
-      ! Convenient to flip sign here
-      res = -res
 
 
       do iCell = 1, nCellsSolve
@@ -5381,14 +5636,15 @@ END SUBROUTINE trisolveb
       type(mgs_vars_type), pointer 	:: fine_mgs_vars
       integer, dimension(:,:), pointer 	:: coarse_restrictStencil
 
-!       logical, parameter :: debug = .false.
-      logical, parameter :: debug = .true.
+      logical, parameter :: debug = .false.
+!      logical, parameter :: debug = .true.
 
 
 ! -----------
 
       mg_solve_npass = config_mg_solve_npass
       mg_solve_depth = config_num_mgslevels
+
 
       head_block => domain % blocklist
 
@@ -5411,7 +5667,7 @@ END SUBROUTINE trisolveb
       do ipass = 1, mg_solve_npass
 
 
-         if(debug) write(0,*) ' Start of multigrid solver pass',ipass
+         if(debug) write(0,*) ' Start of multigrid solver pass ',ipass
          fine_block      => head_block
          do while (associated(fine_block))
             fine_grid       => fine_block % mesh
@@ -5584,7 +5840,7 @@ END SUBROUTINE trisolveb
             enddo
 
 
-            if(debug) write(0,*) ' Initialize corrc to 0 on coarsest grid and iterate niterc times to convergence on coarsest grid '
+            if(debug) write(0,*) ' Initialize corrc to 0 on coarsest grid and iterate niterc times '
             ! Initialize correction to zero on coarsest grid and
             ! iterate (close) to convergence on coarsest grid
             do iter = 1, niterc
@@ -5639,7 +5895,7 @@ END SUBROUTINE trisolveb
                   fine_grid              => fine_block % mesh
                   fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
                   temporary              => fine_block % mgs_vars % temporary % array
-                  fine_helm_inc(:,1:fine_grid % nCellsSolve)             &
+                  fine_helm_inc(:,1:fine_grid % nCells)             &
                             = fine_helm_inc(:,1:fine_grid % nCells) &
                             + temporary(:,1:fine_grid % nCells)
                   fine_block             => fine_block % next
@@ -5679,13 +5935,6 @@ END SUBROUTINE trisolveb
                                                          + fine_helm_inc(:,1:fine_block % mesh % nCells)
             fine_block    => fine_block % next
          end do
-
-
-!        This should not be necessary: we've exchanged helm_inc earlier and hence calculated
-!        pressure_inc on nCells
-!        ! Exchange pressure_increment
-!        call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_inc, (/ 1 /))
-
 
 
       enddo

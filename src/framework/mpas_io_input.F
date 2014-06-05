@@ -61,12 +61,12 @@ module mpas_io_input
       !STEVE_edit routine added to test the multigrid
       !call test_mgs(domain)
 
-!	write(0,*)'weights =', domain % blocklist % mgs_vars % restrictStencil % array(1,1:5)
-!	write(0,*)'weights =', domain % blocklist % mgs_vars % restrictWeights % array(1,1:5)
-!	if (n_mgslevel == 2) then
-!	  write(0,*)'mgslevel = 2 and sten =', domain % blocklist % coarser % mgs_vars % restrictStencil % array(1,1:5)
-!	  write(0,*)'weights =', domain % blocklist % coarser % mgs_vars % restrictWeights % array(1,1:5)
-!	end if
+!       write(0,*)'weights =', domain % blocklist % mgs_vars % restrictStencil % array(:,10)
+!       write(0,*)'weights =', domain % blocklist % mgs_vars % restrictWeights % array(:,10)
+!       if (n_mgslevel == 2) then
+!         write(0,*)'mgslevel = 2 and sten =', domain % blocklist % coarser % mgs_vars % restrictStencil % array(:,10)
+!         write(0,*)'weights =', domain % blocklist % coarser % mgs_vars % restrictWeights % array(:,10)
+!       end if
 ! check resict is being read in
       
    end subroutine mpas_input_state_for_domain!}}}
@@ -127,7 +127,7 @@ module mpas_io_input
 !  subroutine mpas_input_state_for_domain_iter(domain,mgslevel)!{{{
 !
 !       STEVE_edit: this routine is called from mpas_input_state_for_domain
-!       n_mgslevel times. This routine is based on the original to handle mulple grids
+!       n_mgslevel times. This routine is based on the original to handle multiple grids
 !
    subroutine mpas_input_state_for_domain_iter(domain,mgslevel)!{{{
 
@@ -277,7 +277,12 @@ module mpas_io_input
 ! Steve_edit: I have edited the parser to include the additional mgs meshes in the following include
 ! using *_mgsLevel defined above as mgslevelChar
 #include "read_dims.inc"
-   
+      if (mgslevel > 1) then
+           ! nVertLevels is set to 1 in the MG grid file, so we need to overwrite
+           ! with the value read from the initial data file
+           nVertLevels = domain % blocklist % mesh % nVertLevels
+      endif
+
       !
       ! Determine the range of cells/edges/vertices that a processor will initially read
       !   from the input file
@@ -424,9 +429,12 @@ module mpas_io_input
         block_ptr => block_ptr % coarser
       end do
 
+      ! Some variables need to be set to the values on the finest grid because they're set
+      ! along with the initial data and so are not in the MG grid file
       do while (associated(block_ptr))
         block_ptr % mesh % sphere_radius = domain % blocklist % mesh % sphere_radius
         block_ptr % mesh % on_a_sphere = domain % blocklist % mesh % on_a_sphere
+
 
         ! Link the sendList and recvList pointers in each field type to the appropriate lists 
         !   in parinfo, e.g., cellsToSend and cellsToRecv; in future, it can also be extended to 
@@ -486,12 +494,19 @@ module mpas_io_input
          block_ptr => block_ptr % coarser
       end do
 
+      ! Code to rescale lengths and area of unit sphere
+      if (mgslevel>1) then
+        call rescale_unit_dims(block_ptr)
+      endif
+
       !
       ! Exchange halos for all of the fields that were read from the input file
       !
       call mpas_exch_input_field_halos(domain, input_obj)
 
       call mpas_block_creator_reindex_block_fields(domain % blocklist)
+!JOHN_edit: new routine to reindex restrictStencil array
+      call mpas_block_creator_reindex_block_mg_fields(domain % blocklist)
 
       call mpas_dmpar_destroy_mulithalo_exchange_list(indexToCellIDField % sendList)
       call mpas_dmpar_destroy_mulithalo_exchange_list(indexToCellIDField % recvList)
@@ -536,6 +551,45 @@ module mpas_io_input
       deallocate(readingBlock)
 
    end subroutine mpas_input_state_for_domain_iter!}}}
+
+   ! STEVE: adding a routine to rescale lengths and areas
+   ! routine for rescalling 
+   subroutine rescale_unit_dims(block_ptr_in)!{{{
+  
+      implicit none
+
+      type (block_type), pointer :: block_ptr_in
+
+      type (block_type), pointer :: block_ptr
+      type (mesh_type), pointer :: grid
+
+      block_ptr => block_ptr_in
+
+      do while (associated(block_ptr))
+
+        grid  => block_ptr % mesh
+
+	! Scalling the lengths by r and areas by r^2
+        grid % xCell % array = grid % xCell % array * grid % sphere_radius
+        grid % yCell % array = grid % yCell % array * grid % sphere_radius
+        grid % zCell % array = grid % zCell % array * grid % sphere_radius
+        grid % xVertex % array = grid % xVertex % array * grid % sphere_radius
+        grid % yVertex % array = grid % yVertex % array * grid % sphere_radius
+        grid % zVertex % array = grid % zVertex % array * grid % sphere_radius
+        grid % xEdge % array = grid % xEdge % array * grid % sphere_radius
+        grid % yEdge % array = grid % yEdge % array * grid % sphere_radius
+        grid % zEdge % array = grid % zEdge % array * grid % sphere_radius
+        grid % dvEdge % array = grid % dvEdge % array * grid % sphere_radius
+        grid % dcEdge % array = grid % dcEdge % array * grid % sphere_radius
+        grid % areaCell % array = grid % areaCell % array * grid % sphere_radius**2.0
+        grid % areaTriangle % array = grid % areaTriangle % array * grid % sphere_radius**2.0
+        grid % kiteAreasOnVertex % array = grid % kiteAreasOnVertex % array * grid % sphere_radius**2.0
+
+	block_ptr => block_ptr % next
+      end do
+
+
+   end subroutine rescale_unit_dims!}}}
 
    !CR:TODO: an identical subroutine is found in module_io_output - merge
    subroutine mpas_insert_string_suffix(stream, suffix, filename)!{{{

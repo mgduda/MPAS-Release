@@ -1,8 +1,9 @@
 &nhyd_model
-   config_dt = 450.0
+   config_dt = 1800.0
    config_start_time   = '2010-10-23_00:00:00'
-   config_run_duration = '0_00:30:00'
-   config_num_mgslevels = 2
+   config_run_duration = '0_06:00:00'
+   config_num_mgslevels = 3
+   config_mg_solve_npass = 2
    config_time_integration = 'SI'
 /
    config_stop_time  = '0000-01-16_00:00:00'
@@ -12,8 +13,8 @@
    config_mg_input_name       = 'MG_nr5_grid.nc'
    config_output_name         = 'nr5.output.nc'
    config_restart_name        = 'nr5.restart.nc'
-   config_restart_interval    = '0_00:07:30'
-   config_output_interval     = '0_00:07:30'
+   config_restart_interval    = '0_06:00:30'
+   config_output_interval     = '0_01:00:00'
    config_frames_per_outfile  = 1
 /
 

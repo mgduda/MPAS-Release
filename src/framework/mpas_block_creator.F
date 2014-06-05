@@ -1225,7 +1225,7 @@ module mpas_block_creator
 !>  can later be found in the indexTo* arrays). After this routine is called,
 !>  indices are provided as local indices now (1:nCells+1 ... etc).
 !>
-!>  Steve_edit: Subroutine edited to deal with muliple grids
+!>  Steve_edit: Subroutine edited to deal with multiple grids
 !
 !-----------------------------------------------------------------------
 
@@ -1361,5 +1361,88 @@ module mpas_block_creator
      end do
 
    end subroutine mpas_block_creator_reindex_block_fields!}}}
+
+!***********************************************************************
+!
+!  routine mpas_block_creator_reindex_block_mg_fields
+!
+!> \brief   Reindex mesh restrictStencil array
+!> \author  John Thuburn
+!> \date    06/04/2014   (US notation!)
+!> \details 
+!>  This routine re-indexes the array restrictStencil
+!>  It closely follows mpas_block_creator_reindex_block_fields,
+!>  but allows for the fact that the restriction operator maps between
+!>  a fine and a coarse grid, so we need info about both of them here
+!
+!-----------------------------------------------------------------------
+
+   subroutine mpas_block_creator_reindex_block_mg_fields(blocklist)!{{{
+     type (block_type), pointer :: blocklist !< Input/Output: Linked list of blocks
+
+     type (block_type), pointer :: fine_block_ptr, coarse_block_ptr
+
+     integer :: i, j, k, iStencilCell
+     integer, dimension(:,:), pointer :: cellIDSorted
+
+
+     coarse_block_ptr => blocklist
+
+     ! First find the coarsest block currently available
+     do while (associated(coarse_block_ptr % coarser))
+       coarse_block_ptr => coarse_block_ptr % coarser
+     end do
+
+     ! If this is the finest grid then we don't need to do anything
+     ! restrictStencil is not used on the finest grid)
+     if (.not. associated(coarse_block_ptr % finer)) return
+     fine_block_ptr => coarse_block_ptr % finer
+
+     ! Loop over blocks
+     do while(associated(coarse_block_ptr))
+       !
+       ! Rename restrictStencil to local indices
+       !
+       allocate(cellIDSorted(2, fine_block_ptr % mesh % nCells))
+
+       do i=1,fine_block_ptr % mesh % nCells
+         cellIDSorted(1,i) = fine_block_ptr % mesh % indexToCellID % array(i)
+         cellIDSorted(2,i) = i
+       end do
+       call mpas_quicksort(fine_block_ptr % mesh % nCells, cellIDSorted) 
+ 
+       ! Note that for cells in the coarse grid halo, not all of their stencil
+       ! cells will be within the fine grid halos available to this process.
+       ! However, we do need to keep track of all the coarse cells that contribute to owned
+       ! fine cells in prolongation. Thus we loop over nCells here. If a stencil cell is not
+       ! found in the list it is assigned to the junk cell (k = nCells + 1).
+       do i=1,coarse_block_ptr % mesh % nCells
+         do j=1,coarse_block_ptr % mesh % maxEdges
+           iStencilCell = coarse_block_ptr % mgs_vars % restrictStencil % array(j,i)
+           if (iStencilCell < 0) then
+             ! Do nothing
+           else
+             k = mpas_binary_search(cellIDSorted, 2, 1, fine_block_ptr % mesh % nCells, &
+                                    iStencilCell)
+             if (k <= fine_block_ptr % mesh % nCells) then
+               coarse_block_ptr % mgs_vars % restrictStencil % array(j,i) = cellIDSorted(2,k)
+             else
+               coarse_block_ptr % mgs_vars % restrictStencil % array(j,i) = k
+             end if
+           end if 
+         end do
+       end do
+    
+       deallocate(cellIDSorted)
+
+       coarse_block_ptr => coarse_block_ptr % next
+       fine_block_ptr => fine_block_ptr % next
+     end do
+
+   end subroutine mpas_block_creator_reindex_block_mg_fields!}}}
+
+
+
+
 
 end module mpas_block_creator
