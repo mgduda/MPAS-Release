@@ -4844,7 +4844,12 @@ module atm_time_integration
 	   endif
 
            ! Exchange field ready for restriction
-           call mpas_dmpar_exch_halo_field(fine_field, (/ 1 /))
+           ! helm_zz needs a full halo exchange to avoid arithmetic errors in helmholtz
+           if (k < 9)then
+             call mpas_dmpar_exch_halo_field(fine_field, (/ 1 /))
+           else
+             call mpas_dmpar_exch_halo_field(fine_field)
+           endif
 
            do while (associated(fine_block))
              fine_grid              => fine_block % mesh
@@ -4870,7 +4875,7 @@ module atm_time_integration
 
       ! helm_zz also needs to be exchanged on the coarsest grid (others are only needed
       ! on owned cells).
-      call mpas_dmpar_exch_halo_field(headblock % mgs_vars % helm_zz, (/ 1 /))
+      call mpas_dmpar_exch_halo_field(headblock % mgs_vars % helm_zz)
 
 
    end subroutine atm_restrict_helmholtz_coeff
@@ -5360,7 +5365,7 @@ END SUBROUTINE trisolveb
       type (mesh_type), intent(in) 			:: grid
       real(kind=RKIND), intent(in) 			:: dt
       type(mgs_vars_type), intent(in) 			:: mgs_vars
-      real(kind=RKIND), dimension(:,:),   intent(in)  	:: q
+      real(kind=RKIND), dimension(:,:),   intent(inout) :: q
       real(kind=RKIND), dimension(:,:),   intent(out) 	:: hq
       
 
@@ -5375,7 +5380,7 @@ END SUBROUTINE trisolveb
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
       logical, parameter :: debug = .false.
-      !logical, parameter :: debug = .true.
+!      logical, parameter :: debug = .true.
 
 
 
@@ -5404,6 +5409,9 @@ END SUBROUTINE trisolveb
       adt = alpha_si*dt
       a2dt2 = adt*adt
 
+! ***      ! Assign a value to the junk cell to avoid arithmetic error in redundant calculations below
+!      helm_zz(:,grid % nCells+1) = 1.0_RKIND
+!      q(:,grid % nCells+1) = 1.0_RKIND      
 
        if(debug) write(0,*) ' Compute horizontal div and share contributions from edges '
        ! Initialize to zero
@@ -5470,14 +5478,18 @@ END SUBROUTINE trisolveb
       type(mesh_type), intent(in) 			:: grid
       real(kind=RKIND), intent(in) 			:: dt
       type(mgs_vars_type), intent(in)  			:: mgs_vars
-      real(kind=RKIND), dimension(:,:),   intent(in)  	:: q, rhs
+      real(kind=RKIND), dimension(:,:),   intent(inout) :: q
+      real(kind=RKIND), dimension(:,:),   intent(in)    :: rhs
       real(kind=RKIND), dimension(:,:),   intent(out) 	:: res
+      integer :: nCellsSolve
       logical, parameter :: debug = .false.
       !logical, parameter :: debug = .true.
 
+      nCellsSolve = grid % nCellsSolve
+
       if(debug) write(0,*) ' call atm_mg_helmholtz '
       call atm_mg_helmholtz( q, res, grid, mgs_vars, dt )
-      res = rhs - res
+      res(:,1:nCellsSolve) = rhs(:,1:nCellsSolve) - res(:,1:nCellsSolve)
 
 
    end subroutine atm_mg_residual
@@ -5513,7 +5525,7 @@ END SUBROUTINE trisolveb
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
       logical, parameter :: debug = .false.
-      !logical, parameter :: debug = .true.
+!      logical, parameter :: debug = .true.
 
 
 
@@ -5546,11 +5558,15 @@ END SUBROUTINE trisolveb
       allocate(res(nVertLevels,nCells+1))
       allocate(helm_diag(nVertLevels,nCells+1))
 
-      if(debug) write(0,*) ' Find residual '
+! ***      ! Assign a value to the junk cell to avoid arithmetic error in redundant calculations below
+      areaCell(nCells+1) = 1.0_RKIND
+    
+
+      if(debug) write(0,*) ' relax: find residual '
 !     Find residual
       call atm_mg_residual( q, rhs, res, grid, mgs_vars, dt )
 
-      if(debug) write(0,*) ' Add the horiz contrib to the diagonal of the Helmholtz operator '
+      if(debug) write(0,*) ' relax: add the horiz contrib to the diagonal of the Helmholtz operator '
       ! Add the horizontal contribution to the diagonal of the Helmholtz operator
       helm_diag = helm_c
       do iEdge=1,nEdges
@@ -5564,7 +5580,7 @@ END SUBROUTINE trisolveb
          end do
       end do
 
-
+      if(debug) write(0,*) ' relax: solve for increment '
       do iCell = 1, nCellsSolve
 
          ! Divide residual by diagonal coefficient of Helmholtz
@@ -5636,8 +5652,8 @@ END SUBROUTINE trisolveb
       type(mgs_vars_type), pointer 	:: fine_mgs_vars
       integer, dimension(:,:), pointer 	:: coarse_restrictStencil
 
-      logical, parameter :: debug = .false.
-!      logical, parameter :: debug = .true.
+!      logical, parameter :: debug = .false.
+      logical, parameter :: debug = .true.
 
 
 ! -----------
