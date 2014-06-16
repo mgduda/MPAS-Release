@@ -71,7 +71,19 @@ module init_atm_cases
 
 
 
-      if ((config_init_case == 1) .or. (config_init_case == 2) .or. (config_init_case == 3)) then
+      if (config_init_case == 0) then
+
+         write(0,*) ' Isothermal resting state (for testing / debugging) '
+         block_ptr => domain % blocklist
+         do while (associated(block_ptr))
+            write(0,*) ' calling test case setup '
+            call init_atm_case_isothermal_rest(block_ptr % mesh, block_ptr % state % time_levs(1) % state, block_ptr % diag )
+            call decouple_variables(block_ptr % mesh, block_ptr % state % time_levs(1) % state, block_ptr % diag)
+            write(0,*) ' returned from test case setup '
+            block_ptr => block_ptr % next
+         end do
+
+      else if ((config_init_case == 1) .or. (config_init_case == 2) .or. (config_init_case == 3)) then
 
          write(0,*) ' Jablonowski and Williamson baroclinic wave test case '
          if (config_init_case == 1) write(0,*) ' no initial perturbation '
@@ -160,7 +172,7 @@ module init_atm_cases
 
          write(0,*) ' '
          write(0,*) ' ****************************************************'
-         write(0,*) ' Only test cases 1 through 8 are currently supported.'
+         write(0,*) ' Only test cases 0 through 8 are currently supported.'
          write(0,*) ' ****************************************************'
          write(0,*) ' '
          call mpas_dmpar_abort(domain % dminfo)
@@ -190,6 +202,444 @@ module init_atm_cases
    end subroutine init_atm_setup_case
 
 !----------------------------------------------------------------------------------------------------------
+
+   subroutine init_atm_case_isothermal_rest(grid, state, diag )
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Isothermal state of rest for testing / debugging
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Much of the code here is borrowed from init_atm_case_jw
+   ! John Thuburn 16/June/2014
+
+      implicit none
+
+      type (mesh_type), intent(inout) :: grid
+      type (state_type), intent(inout) :: state
+      type (diag_type), intent(inout) :: diag
+
+      real (kind=RKIND), parameter :: alpha_grid = 0.  ! no grid rotation
+
+      real (kind=RKIND) :: omega_e
+
+      real (kind=RKIND), parameter :: t0b = 250., t0 = 288.
+
+      real (kind=RKIND), dimension(:), pointer :: rdzw, dzu, rdzu, fzm, fzp
+      real (kind=RKIND), dimension(:), pointer :: surface_pressure
+      real (kind=RKIND), dimension(:,:), pointer :: zgrid, zx, zz, hx
+      real (kind=RKIND), dimension(:,:), pointer :: pressure, ppb, pb, rho_zz, rb, rr, tb, rtb, p, pp, dss, t, rt
+      real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
+      real (kind=RKIND), dimension(:,:,:), pointer :: deriv_two
+      
+!.. initialization of moisture:
+      real (kind=RKIND),dimension(:,:,:),pointer:: scalars
+!.. end initialization of moisture.
+
+      integer :: iCell, iCell1, iCell2 , iEdge, vtx1, vtx2, ivtx, i, k, nz, nz1, itr, cell1, cell2, nCellsSolve
+
+      !This is temporary variable here. It just need when calculate tangential velocity v.
+      integer :: eoe, j
+      integer, dimension(:), pointer :: nEdgesOnEdge 
+      integer, dimension(:,:), pointer :: edgesOnEdge, CellsOnEdge
+      real (kind=RKIND), dimension(:), pointer :: dvEdge, AreaCell 
+      real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
+
+      real (kind=RKIND) :: flux, p0
+      real (kind=RKIND) :: r_earth, ztemp, zt, dz, str, ttemp, zzu
+
+      real (kind=RKIND), dimension(grid % nVertLevels + 1 ) :: sh, zw, ah
+      real (kind=RKIND), dimension(grid % nVertLevels ) :: zu, dzw, rdzwp, rdzwm
+      real (kind=RKIND), dimension(grid % nVertLevels ) :: tt, ppi
+
+      real (kind=RKIND) :: d1, d2, d3, cf1, cf2, cf3, cof1, cof2
+
+      real (kind=RKIND) :: z_edge, z_edge3, d2fdx2_cell1, d2fdx2_cell2
+
+! ---------------
+
+      !
+      ! Scale all distances and areas from a unit sphere to one with radius sphere_radius
+      !
+      grid % xCell % array = grid % xCell % array * grid % sphere_radius
+      grid % yCell % array = grid % yCell % array * grid % sphere_radius
+      grid % zCell % array = grid % zCell % array * grid % sphere_radius
+      grid % xVertex % array = grid % xVertex % array * grid % sphere_radius
+      grid % yVertex % array = grid % yVertex % array * grid % sphere_radius
+      grid % zVertex % array = grid % zVertex % array * grid % sphere_radius
+      grid % xEdge % array = grid % xEdge % array * grid % sphere_radius
+      grid % yEdge % array = grid % yEdge % array * grid % sphere_radius
+      grid % zEdge % array = grid % zEdge % array * grid % sphere_radius
+      grid % dvEdge % array = grid % dvEdge % array * grid % sphere_radius
+      grid % dcEdge % array = grid % dcEdge % array * grid % sphere_radius
+      grid % areaCell % array = grid % areaCell % array * grid % sphere_radius**2.0
+      grid % areaTriangle % array = grid % areaTriangle % array * grid % sphere_radius**2.0
+      grid % kiteAreasOnVertex % array = grid % kiteAreasOnVertex % array * grid % sphere_radius**2.0
+
+      weightsOnEdge     => grid % weightsOnEdge % array
+      nEdgesOnEdge      => grid % nEdgesOnEdge % array
+      edgesOnEdge       => grid % edgesOnEdge % array
+      dvEdge            => grid % dvEdge % array
+      AreaCell          => grid % AreaCell % array
+      CellsOnEdge       => grid % CellsOnEdge % array
+
+      deriv_two  => grid % deriv_two % array
+      zb  => grid % zb % array
+      zb3 => grid % zb3% array
+      
+      nz1 = grid % nVertLevels
+      nz = nz1 + 1
+      nCellsSolve = grid % nCellsSolve
+
+      zgrid => grid % zgrid % array
+      rdzw => grid % rdzw % array
+      dzu => grid % dzu % array
+      rdzu => grid % rdzu % array
+      fzm => grid % fzm % array
+      fzp => grid % fzp % array
+      zx => grid % zx % array
+      zz => grid % zz % array
+      hx => grid % hx % array
+      dss => grid % dss % array
+
+      pb => diag % exner_base % array
+      rb => diag % rho_base % array
+      tb => diag % theta_base % array
+      rtb => diag % rtheta_base % array
+      p => diag % exner % array
+
+      ppb => diag % pressure_base % array
+      pp  => diag % pressure_p % array
+
+      rho_zz => state % rho_zz % array
+      rr => diag % rho_p % array
+      t => state % theta_m % array      
+      rt => diag % rtheta_p % array
+
+      surface_pressure => diag % surface_pressure % array
+
+!.. initialization of moisture:
+      scalars => state % scalars % array
+      scalars(:,:,:) = 0.0
+!.. end initialization of moisture.
+
+      surface_pressure(:) = 0.0
+
+      call atm_initialize_advection_rk(grid) 
+      call atm_initialize_deformation_weights(grid) 
+
+
+      r_earth = grid % sphere_radius
+      omega_e = omega
+      p0 = 1.e+05
+
+
+! We may pass in an hx(:,:) that has been precomputed elsewhere.
+! For now it is independent of k
+
+      do iCell=1,grid % nCells
+        do k=1,nz
+          hx(k,iCell) = 0.0_RKIND
+        enddo
+      enddo
+      write(0,*) ' hx computation complete '
+
+
+      !     Metrics for hybrid coordinate and vertical stretching
+      str = 1.8
+      zt = 45000.
+      dz = zt/float(nz1)
+      do k=1,nz
+		
+!           sh(k) is the stretching specified for height surfaces
+
+            sh(k) = (real(k-1)*dz/zt)**str 
+				
+!           to specify specific heights zc(k) for coordinate surfaces,
+!           input zc(k) and define sh(k) = zc(k)/zt
+!           zw(k) is the hieght of zeta surfaces
+!                zw(k) = (k-1)*dz yields constant dzeta
+!                        and nonconstant dzeta/dz
+!                zw(k) = sh(k)*zt yields nonconstant dzeta
+!                        and nearly constant dzeta/dz 
+
+            zw(k) = float(k-1)*dz
+!            zw(k) = sh(k)*zt
+!
+!           ah(k) governs the transition between terrain-following 
+!           and pureheight coordinates
+!                ah(k) = 0 is a terrain-following coordinate
+!                ah(k) = 1 is a height coordinate
+ 
+            ah(k) = 1.-cos(.5*pii*(k-1)*dz/zt)**6
+!            ah(k) = 0.
+	    write(0,*) ' k, sh, zw, ah ',k,sh(k),zw(k),ah(k)
+      end do
+      do k=1,nz1
+         dzw (k) = zw(k+1)-zw(k)
+         rdzw(k) = 1./dzw(k)
+         zu(k  ) = .5*(zw(k)+zw(k+1))
+      end do
+      do k=2,nz1
+         dzu (k)  = .5*(dzw(k)+dzw(k-1))
+         rdzu(k)  =  1./dzu(k)
+         fzp (k)  = .5* dzw(k  )/dzu(k)
+         fzm (k)  = .5* dzw(k-1)/dzu(k)
+         rdzwp(k) = dzw(k-1)/(dzw(k  )*(dzw(k)+dzw(k-1)))
+         rdzwm(k) = dzw(k  )/(dzw(k-1)*(dzw(k)+dzw(k-1)))
+      end do
+
+!**********  how are we storing cf1, cf2 and cf3?
+
+      COF1 = (2.*DZU(2)+DZU(3))/(DZU(2)+DZU(3))*DZW(1)/DZU(2) 
+      COF2 =     DZU(2)        /(DZU(2)+DZU(3))*DZW(1)/DZU(3) 
+      CF1  = FZP(2) + COF1
+      CF2  = FZM(2) - COF1 - COF2
+      CF3  = COF2       
+
+!      d1  = .5*dzw(1)
+!      d2  = dzw(1)+.5*dzw(2)
+!      d3  = dzw(1)+dzw(2)+.5*dzw(3)
+!      cf1 = d2*d3*(d3-d2)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+!      cf2 = d1*d3*(d1-d3)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+!      cf3 = d1*d2*(d2-d1)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+
+      write(0,*) ' cf1, cf2, cf3 = ',cf1,cf2,cf3
+
+      grid % cf1 % scalar = cf1
+      grid % cf2 % scalar = cf2
+      grid % cf3 % scalar = cf3
+
+      do iCell=1,grid % nCells
+        do k=1,nz	
+          zgrid(k,iCell) = (1.-ah(k))*(sh(k)*(zt-hx(k,iCell))+hx(k,iCell))  &
+                         + ah(k) * sh(k)* zt	
+        end do
+        do k=1,nz1
+          zz (k,iCell) = (zw(k+1)-zw(k))/(zgrid(k+1,iCell)-zgrid(k,iCell))
+        end do
+      end do
+
+      do i=1, grid % nEdges
+        iCell1 = grid % CellsOnEdge % array(1,i)
+        iCell2 = grid % CellsOnEdge % array(2,i)
+        do k=1,nz
+          zx (k,i) = (zgrid(k,iCell2)-zgrid(k,iCell1)) / grid % dcEdge % array(i)
+        end do
+      end do
+      do i=1, grid % nCells
+        do k=1,nz1
+           dss(k,i) = 0.
+        end do
+      enddo
+      write(0,*) ' grid metrics setup complete '
+
+
+      do i=1, grid % nCells
+
+!       Reference sounding based on dry isothermal atmosphere
+        do k=1,nz1
+          ztemp    = .5*(zgrid(k+1,i)+zgrid(k,i))
+          ppb(k,i) = p0*exp(-gravity*ztemp/(rgas*t0b)) 
+          pb (k,i) = (ppb(k,i)/p0)**(rgas/cp)
+          rb (k,i) = ppb(k,i)/(rgas*t0b*zz(k,i))
+          tb (k,i) = t0b/pb(k,i)
+          rtb(k,i) = rb(k,i)*tb(k,i)
+          p  (k,i) = pb(k,i)
+          pp (k,i) = 0.
+          rr (k,i) = 0.
+        end do
+
+
+        ! Set a 1D temperature profile
+        do k=1,nz1
+          tt(k) = t0b
+        end do
+
+        ! First guess for pressure profile, by integrating the hydrostatic equation
+        ! (at this point pp is the full pressure)
+        ttemp = (1.25*tt(1) - 0.25*tt(2))*zz(1,i)
+        pp(1,i) = p0*exp(-0.5*dzw(1)*gravity/(rgas*ttemp))
+        do k=1,nz1-1
+          zzu = 1.0 / (fzp(k+1)/zz(k,i) + fzm(k+1)/zz(k+1,i))
+          ttemp = fzp(k+1)*tt(k) + fzm(k+1)*tt(k+1)
+          pp(k+1,i) = pp(k,i)*exp(-dzu(k+1)*gravity/(rgas*ttemp*zzu))
+        end do
+        
+        ! Convert to a density profile using the gas law
+        do k = 1, nz1
+          rho_zz(k,i) = pp(k,i)/(rgas*tt(k)*zz(k,i))
+          rr(k,i) = rho_zz(k,i) - rb(k,i)
+        enddo
+
+        ! Now recompute the pressure perturbation profile needed for discrete hydrostatic balance
+        pp(1,i) = 0.0         ! We'll figure out the offset later to get surface pressure p0
+        do k=1,nz1-1
+          pp(k+1,i) = pp(k,i)-dzu(k+1)*gravity*   &
+                           ( rr(k  ,i)*fzp(k+1)   &
+                           + rr(k+1,i)*fzm(k+1) )
+        end do
+        pp(:,i) = pp(:,i) + p0 - ( ppb(1,i) + pp(1,i) + .5*dzw(1)*gravity        &
+                                                      *(1.25*(rr(1,i)+rb(1,i))   &
+                                                        -.25*(rr(2,i)+rb(2,i))) )
+
+        ! Convert pressure to theta
+        do k=1,nz1	
+          p (k,i) = ((ppb(k,i)+pp(k,i))/p0)**(rgas/cp)
+          rt(k,i) = (p(k,i)**(cv/cp))*(p0/(rgas*zz(k,i))) - rtb(k,i)
+          t(k,i) = (rtb(k,i) + rt(k,i))/rho_zz(k,i)
+        end do
+
+        !calculation of surface pressure:
+        surface_pressure(i) = p0
+
+!        if (i == 1) then
+!          do k = 1, nz1
+!            ztemp = 0.5*(zgrid(k,i) + zgrid(k+1,i))
+!            write(0,'(i4,5e16.4)') k, ztemp, rho_zz(k,i)*zz(k,i), (ppb(k,i) + pp(k,i)), &
+!                                      p0*exp(-ztemp*gravity/(rgas*t0b)), t(k,i)*p(k,i)
+!          end do
+!        end if
+
+      end do  ! end loop over cells
+
+
+      do iEdge=1,grid % nEdges
+
+         do k=1,grid % nVertLevels
+           state % u % array(k,iEdge) = 0.0_RKIND
+         end do
+
+         cell1 = grid % CellsOnEdge % array(1,iEdge)
+         cell2 = grid % CellsOnEdge % array(2,iEdge)
+         do k=1,nz1
+            diag % ru % array (k,iEdge)  = 0.5*(rho_zz(k,cell1)+rho_zz(k,cell2))*state % u % array (k,iEdge)
+         end do
+      !
+      ! Generate rotated Coriolis field
+      !
+         grid % fEdge % array(iEdge) = 2.0 * omega_e * &
+                                       ( -cos(grid%lonEdge%array(iEdge)) * cos(grid%latEdge%array(iEdge)) * sin(alpha_grid) + &
+                                         sin(grid%latEdge%array(iEdge)) * cos(alpha_grid) &
+                                       )
+      end do
+
+      do iVtx=1,grid % nVertices
+         grid % fVertex % array(iVtx) = 2.0 * omega_e * &
+                                         (-cos(grid%lonVertex%array(iVtx)) * cos(grid%latVertex%array(iVtx)) * sin(alpha_grid) + &
+                                          sin(grid%latVertex%array(iVtx)) * cos(alpha_grid) &
+                                         )
+      end do
+
+      !
+      !  CALCULATION OF OMEGA, RW = ZX * RU + ZZ * RW
+      !
+      !     pre-calculation z-metric terms in omega eqn.
+      !
+      do iEdge = 1,grid % nEdges
+         cell1 = CellsOnEdge(1,iEdge)
+         cell2 = CellsOnEdge(2,iEdge)
+
+         do k = 1, grid%nVertLevels
+
+            if (config_theta_adv_order == 2) then
+
+               z_edge = (zgrid(k,cell1)+zgrid(k,cell2))/2.
+
+            else if (config_theta_adv_order == 3 .or. config_theta_adv_order ==4) then !theta_adv_order == 3 or 4 
+
+               d2fdx2_cell1 = deriv_two(1,1,iEdge) * zgrid(k,cell1)
+               d2fdx2_cell2 = deriv_two(1,2,iEdge) * zgrid(k,cell2)
+
+!  WCS fix 20120711
+
+                  do i=1, grid % nEdgesOnCell % array (cell1)
+                     if ( grid % CellsOnCell % array (i,cell1) > 0)       &
+                     d2fdx2_cell1 = d2fdx2_cell1 + deriv_two(i+1,1,iEdge) * zgrid(k,grid % CellsOnCell % array (i,cell1))
+                  end do
+                  do i=1, grid % nEdgesOnCell % array (cell2)
+                     if ( grid % CellsOnCell % array (i,cell2) > 0)       &
+                     d2fdx2_cell2 = d2fdx2_cell2 + deriv_two(i+1,2,iEdge) * zgrid(k,grid % CellsOnCell % array (i,cell2))
+                  end do             
+
+               z_edge =  0.5*(zgrid(k,cell1) + zgrid(k,cell2))         &
+                             - (grid % dcEdge % array(iEdge) **2) * (d2fdx2_cell1 + d2fdx2_cell2) / 12.
+
+               if (config_theta_adv_order == 3) then
+                  z_edge3 =  - (grid % dcEdge % array(iEdge) **2) * (d2fdx2_cell1 - d2fdx2_cell2) / 12.
+               else
+                  z_edge3 = 0.
+               end if
+
+            end if
+
+               zb(k,1,iEdge) = (z_edge-zgrid(k,cell1))*dvEdge(iEdge)/AreaCell(cell1)
+               zb(k,2,iEdge) = (z_edge-zgrid(k,cell2))*dvEdge(iEdge)/AreaCell(cell2)
+               zb3(k,1,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell1)
+               zb3(k,2,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell2)
+
+         end do
+
+      end do
+
+      ! for including terrain
+      diag % rw % array = 0.
+      state % w % array = 0.
+      do iEdge = 1,grid % nEdges
+
+         cell1 = CellsOnEdge(1,iEdge)
+         cell2 = CellsOnEdge(2,iEdge)
+
+         do k = 2, grid%nVertLevels
+            flux =  (fzm(k)*diag % ru % array(k,iEdge)+fzp(k)*diag % ru % array(k-1,iEdge))
+            diag % rw % array(k,cell2) = diag % rw % array(k,cell2) + (fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2))*zb(k,2,iEdge)*flux
+            diag % rw % array(k,cell1) = diag % rw % array(k,cell1) - (fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1))*zb(k,1,iEdge)*flux
+
+            if (config_theta_adv_order ==3) then 
+               diag % rw % array(k,cell2) = diag % rw % array(k,cell2)    &
+                                            - sign(1.0_RKIND,diag % ru % array(k,iEdge))*config_coef_3rd_order* &
+                                              (fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2))*zb3(k,2,iEdge)*flux
+               diag % rw % array(k,cell1) = diag % rw % array(k,cell1)    &
+                                            + sign(1.0_RKIND,diag % ru % array(k,iEdge))*config_coef_3rd_order* &
+                                              (fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1))*zb3(k,1,iEdge)*flux
+            end if
+
+         end do
+
+      end do
+
+      ! Compute w from rho_zz and rw
+      do iCell=1,grid%nCells
+         do k=2,grid%nVertLevels
+            state % w % array(k,iCell) = diag % rw % array(k,iCell)     &
+                                       / (fzp(k) * state % rho_zz % array(k-1,iCell) + fzm(k) * state % rho_zz % array(k,iCell))
+         end do
+      end do
+
+
+      !
+      ! Compute mass fluxes tangential to each edge (i.e., through the faces of dual grid cells)
+      !
+      diag % v % array(:,:) = 0.0
+      do iEdge = 1, grid%nEdges
+         do i=1,nEdgesOnEdge(iEdge)
+            eoe = edgesOnEdge(i,iEdge)
+            do k = 1, grid%nVertLevels
+               diag % v % array(k,iEdge) = diag % v %array(k,iEdge) + weightsOnEdge(i,iEdge) * state % u % array(k, eoe)
+           end do
+         end do
+      end do
+
+
+      ! Compute rho and theta from rho_zz and theta_m
+      do iCell=1,grid%nCells
+         do k=1,grid%nVertLevels
+            diag % rho % array(k,iCell) = state % rho_zz % array(k,iCell) * zz(k,iCell)
+            diag % theta % array(k,iCell) = state % theta_m % array(k,iCell)
+         end do
+      end do
+
+   end subroutine init_atm_case_isothermal_rest
+
+! ------------------------------------------------------------------------------------
+
 
    subroutine init_atm_case_jw(grid, state, diag, test_case)
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
