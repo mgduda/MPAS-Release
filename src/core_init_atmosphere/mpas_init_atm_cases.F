@@ -483,20 +483,20 @@ module init_atm_cases
         ! Convert pressure to theta
         do k=1,nz1	
           p (k,i) = ((ppb(k,i)+pp(k,i))/p0)**(rgas/cp)
-          rt(k,i) = (p(k,i)**(cv/cp))*(p0/(rgas*zz(k,i))) - rtb(k,i)
+          rt(k,i) = (p(k,i)**(cv/rgas))*(p0/(rgas*zz(k,i))) - rtb(k,i)
           t(k,i) = (rtb(k,i) + rt(k,i))/rho_zz(k,i)
         end do
 
         !calculation of surface pressure:
         surface_pressure(i) = p0
 
-!        if (i == 1) then
-!          do k = 1, nz1
-!            ztemp = 0.5*(zgrid(k,i) + zgrid(k+1,i))
-!            write(0,'(i4,5e16.4)') k, ztemp, rho_zz(k,i)*zz(k,i), (ppb(k,i) + pp(k,i)), &
-!                                      p0*exp(-ztemp*gravity/(rgas*t0b)), t(k,i)*p(k,i)
-!          end do
-!        end if
+        if (i == 1) then
+          do k = 1, nz1
+            ztemp = 0.5*(zgrid(k,i) + zgrid(k+1,i))
+            write(0,'(i4,5e16.4)') k, ztemp, rho_zz(k,i)*zz(k,i), (ppb(k,i) + pp(k,i)), &
+                                      p0*exp(-ztemp*gravity/(rgas*t0b)), t(k,i)*p(k,i)
+          end do
+        end if
 
       end do  ! end loop over cells
 
