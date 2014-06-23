@@ -3472,6 +3472,9 @@ module atm_time_integration
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % scalars)
 
 
+! ***
+      write(0,*) 'cells on edge 100   ',domain % blocklist % mesh % cellsOnEdge % array(:,100)
+
 
 ! *** DEBUG ***
       write(0,*)
@@ -3482,8 +3485,8 @@ module atm_time_integration
          scalar_max = 0.
          do iCell = 1, block % mesh % nCellsSolve
          do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(2) % state % w % array(k,iCell))
-            scalar_max = max(scalar_max, block % state % time_levs(2) % state % w % array(k,iCell))
+            scalar_min = min(scalar_min, block % state % time_levs(1) % state % w % array(k,iCell))
+            scalar_max = max(scalar_max, block % state % time_levs(1) % state % w % array(k,iCell))
          end do
          end do
          call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
@@ -3494,8 +3497,8 @@ module atm_time_integration
          scalar_max = 0.
          do iEdge = 1, block % mesh % nEdgesSolve
          do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(2) % state % u % array(k,iEdge))
-            scalar_max = max(scalar_max, block % state % time_levs(2) % state % u % array(k,iEdge))
+            scalar_min = min(scalar_min, block % state % time_levs(1) % state % u % array(k,iEdge))
+            scalar_max = max(scalar_max, block % state % time_levs(1) % state % u % array(k,iEdge))
          end do
          end do
          call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
@@ -3507,25 +3510,21 @@ module atm_time_integration
 
 
 
-
-
-
-! theta_m
-!!      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % theta_m)
- 
-
-! pressure_p
-!!      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p)
-
-! rtheta_p
-
-
-
-
 ! Add half increment carried over from the end of the previous time step
 ! **** Do we need to save said increment in restart files? YES ***
 
 ! *** TO DO ***
+
+
+      ! Add half increment
+      if (debug) write(0,*) ' add_si_half_inc (start of step)'
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_add_si_half_inc( block % diag, block % mesh )
+         block => block % next
+      end do
+      if (debug) write(0,*) ' finished add_si_half_inc '
+
 
 ! OR, if this is the first step, set up and solve the Helmholtz problem ...
 
@@ -3565,42 +3564,61 @@ module atm_time_integration
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
 
 
-! Copy updated state into time_levs(1)
-
-!     Copy time_levs(1) into time_levs(2) and also save
+!     Copy time_levs(1) scalars into time_levs(2) and also save
 !     density weighted coupled variables
       if (debug) write(0,*) ' copy step in rk solver '
       block => domain % blocklist
       do while (associated(block))
-         call atm_rk_integration_setup( block % state % time_levs(2) % state, block % state % time_levs(1) % state, block % diag )
+         call atm_rk_integration_setup_scalars( block % state % time_levs(2) % state, block % state % time_levs(1) % state, block % diag )
          block => block % next
       end do
 
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'state      u      w     rho_zz      theta_m    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
-            enddo
-         endif
+      write(0,*)
+      write(0,*) 'After add_si_half_inc and diagnostics'
+      block => domain % blocklist
+      do while (associated(block))
+         scalar_min = 0.
+         scalar_max = 0.
+         do iCell = 1, block % mesh % nCellsSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % state % time_levs(2) % state % w % array(k,iCell))
+            scalar_max = max(scalar_max, block % state % time_levs(2) % state % w % array(k,iCell))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+         write(0,*) 'global min, max w ',global_scalar_min, global_scalar_max
+
+         scalar_min = 0.
+         scalar_max = 0.
+         do iEdge = 1, block % mesh % nEdgesSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % state % time_levs(2) % state % u % array(k,iEdge))
+            scalar_max = max(scalar_max, block % state % time_levs(2) % state % u % array(k,iEdge))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+         write(0,*) 'global min, max u ',global_scalar_min, global_scalar_max
+
+         block => block % next
+      end do
 
 
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'b4rk      ru      rw     rho_p      rtheta_p    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % diag % ru % array(k,100),  &
-                          domain % blocklist % diag % rw % array(k,100),  &
-                          domain % blocklist % diag % rho_p % array(k,100),  &
-                          domain % blocklist % diag % rtheta_p % array(k,100)
-            enddo
-         endif
-
+!         if (debug) then
+!            write(0,*) 'state      u(100)     rho_zz(19)    rho_zz(2661)      theta_m(19)    theta_m(2661)    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,19),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,2661),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,19),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,2661)
+!            enddo
+!         endif
 
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
@@ -3610,6 +3628,7 @@ module atm_time_integration
       do rk_step = 1, 3  ! Runge-Kutta loop
 
          if(debug) write(0,*) ' rk substep ', rk_step
+
 
 
          ! Compute coefficients to modifiy density to allow for moisture
@@ -3632,16 +3651,19 @@ module atm_time_integration
          end do
          if (debug) write(0,*) ' finished compute_dyn_tend '
 
+
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'tend      u      w     rho_zz      theta_m    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % tend % u % array(k,100),  &
-                          domain % blocklist % tend % w % array(k,100),  &
-                          domain % blocklist % tend % rho_zz % array(k,100),  &
-                          domain % blocklist % tend % theta_m % array(k,100)
-            enddo
-         endif
+!         if (debug) then
+!            write(0,*) 'tend:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % tend % u % array(k,100),  &
+!                          domain % blocklist % tend % rho_zz % array(k,19),  &
+!                          domain % blocklist % tend % rho_zz % array(k,2661),  &
+!                          domain % blocklist % tend % theta_m % array(k,19),  &
+!                          domain % blocklist % tend % theta_m % array(k,2661)
+!            enddo
+!         endif
+
 
 
 #ifdef DO_PHYSICS
@@ -3673,15 +3695,16 @@ module atm_time_integration
          if (debug) write(0,*) ' finished compute_fast_tend '
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'fast_tend      u      w     rho_zz      theta_m    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
-                          domain % blocklist % tend % w_fast % array(k,100),  &
-                          domain % blocklist % tend % rho_zz_fast % array(k,100),  &
-                          domain % blocklist % tend % theta_m_fast % array(k,100)
-            enddo
-         endif
+!         if (debug) then
+!            write(0,*) 'tend_fast:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
+!                          domain % blocklist % tend % rho_zz_fast % array(k,19),  &
+!                          domain % blocklist % tend % rho_zz_fast % array(k,2661),  &
+!                          domain % blocklist % tend % theta_m_fast % array(k,19),  &
+!                          domain % blocklist % tend % theta_m_fast % array(k,2661)
+!            enddo
+!         endif
 
 
          ! Subtract fast tendencies from total to get slow tendencies
@@ -3694,16 +3717,16 @@ module atm_time_integration
          if (debug) write(0,*) ' finished subtract_fast_tend '
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'tend      u      w     rho_zz      theta_m    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % tend % u % array(k,100),  &
-                          domain % blocklist % tend % w % array(k,100),  &
-                          domain % blocklist % tend % rho_zz % array(k,100),  &
-                          domain % blocklist % tend % theta_m % array(k,100)
-            enddo
-         endif
-
+!         if (debug) then
+!            write(0,*) 'tend:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % tend % u % array(k,100),  &
+!                          domain % blocklist % tend % rho_zz % array(k,19),  &
+!                          domain % blocklist % tend % rho_zz % array(k,2661),  &
+!                          domain % blocklist % tend % theta_m % array(k,19),  &
+!                          domain % blocklist % tend % theta_m % array(k,2661)
+!            enddo
+!         endif
 
 
          ! RK update using slow tendencies
@@ -3831,32 +3854,48 @@ module atm_time_integration
 
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'state      u      w     rho_zz      theta_m    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
-            enddo
-         endif
-
+!         if (debug) then
+!            write(0,*) 'state      u      w     rho_zz      theta_m    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
+!            enddo
+!         endif
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'aftrrk      ru      rw     rho_p      rtheta_p    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % diag % ru % array(k,100),  &
-                          domain % blocklist % diag % rw % array(k,100),  &
-                          domain % blocklist % diag % rho_p % array(k,100),  &
-                          domain % blocklist % diag % rtheta_p % array(k,100)
-            enddo
-         endif
+!         if (debug) then
+!            write(0,*) 'state      u(100)     rho_zz(19)    rho_zz(2661)      theta_m(19)    theta_m(2661)    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,19),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,2661),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,19),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,2661)
+!            enddo
+!         endif
+
 
 
       ! Exchange pressure_p and ru
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p, (/ 1 /))
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
+
+
+
+! *** DEBUG ***
+!         if (debug) then
+!            write(0,*) 'coupled variables:     ru(100)    rw(19)    rho_p(19)    rtheta_p(19)  '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % diag % ru % array(k,100),    &
+!                          domain % blocklist % diag % rw % array(k,19),     &
+!                          domain % blocklist % diag % rho_p % array(k,19),  &
+!                          domain % blocklist % diag % rtheta_p % array(k,19)
+!            enddo
+!         endif
+
+
 
 
       ! Compute `fast' tendencies for RHS of helmholtz
@@ -3873,18 +3912,19 @@ module atm_time_integration
 
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'fast_tend      u      w     rho_zz      theta_m    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
-                          domain % blocklist % tend % w_fast % array(k,100),  &
-                          domain % blocklist % tend % rho_zz_fast % array(k,100),  &
-                          domain % blocklist % tend % theta_m_fast % array(k,100)
-            enddo
-         endif
+!         if (debug) then
+!            write(0,*) 'tend_fast:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
+!                          domain % blocklist % tend % rho_zz_fast % array(k,19),  &
+!                          domain % blocklist % tend % rho_zz_fast % array(k,2661),  &
+!                          domain % blocklist % tend % theta_m_fast % array(k,19),  &
+!                          domain % blocklist % tend % theta_m_fast % array(k,2661)
+!            enddo
+!         endif
 
 
-      write(0,*) domain % dminfo % nProcs,' processes running; this one ',domain % dminfo % my_proc_id
+
 
 
       ! Set up Helmholtz coefficients
@@ -3914,7 +3954,7 @@ module atm_time_integration
       if (debug) write(0,*) ' finished build_helmholtz_rhs '
 
 
-     ! Solve Helmholtz problem
+      ! Solve Helmholtz problem
       if (debug) write(0,*) ' mg_solve '
       call atm_mg_solve( domain, dt )
       if (debug) write(0,*) ' finished mg_solve '
@@ -3930,8 +3970,23 @@ module atm_time_integration
       if (debug) write(0,*) ' finished si_backsub '
 
 
+! *** DEBUG ***
+!         if (debug) then
+!            write(0,*) 'coupled increments:     ru_p(100)    rw_p(19)    rho_pp(19)    rtheta_pp(19)  '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % diag % ru_p % array(k,100),   &
+!                          domain % blocklist % diag % rw_p % array(k,19),    &
+!                          domain % blocklist % diag % rho_pp % array(k,19),  &
+!                          domain % blocklist % diag % rtheta_pp % array(k,19)
+!            enddo
+!         endif
+
+
+
+
+
       ! Add half increment
-      if (debug) write(0,*) ' add_si_half_inc '
+      if (debug) write(0,*) ' add_si_half_inc (end of step)'
       block => domain % blocklist
       do while (associated(block))
          call atm_add_si_half_inc( block % diag, block % mesh )
@@ -3966,15 +4021,28 @@ module atm_time_integration
 
 
 ! *** DEBUG ***
-         if (debug) then
-            write(0,*) 'state      u      w     rho_zz      theta_m    '
-            do k = 1, domain % blocklist % mesh % nVertLevels
-               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
-                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
-            enddo
-         endif
+!         if (debug) then
+!            write(0,*) 'state      u      w     rho_zz      theta_m    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
+!            enddo
+!         endif
+
+
+! *** DEBUG ***
+!         if (debug) then
+!            write(0,*) 'state      u(100)     rho_zz(19)    rho_zz(2661)      theta_m(19)    theta_m(2661)    '
+!            do k = 1, domain % blocklist % mesh % nVertLevels
+!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,19),  &
+!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,2661),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,19),  &
+!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,2661)
+!            enddo
+!         endif
 
 
       ! Exchange w, pv_edge, and rho_edge
@@ -4078,6 +4146,27 @@ module atm_time_integration
    end subroutine atm_si
 
 ! -------------------------------------------------------------------------------
+
+   subroutine atm_rk_integration_setup_scalars( s_old, s_new, diag )
+
+! Like atm_rk_integration_setup, but only scalars are copied in state.
+! This version is used by atm_si
+
+      implicit none
+
+      type (state_type) :: s_new, s_old
+      type (diag_type) :: diag
+
+      diag % ru_save % array       = diag % ru % array
+      diag % rw_save % array       = diag % rw % array
+      diag % rtheta_p_save % array = diag % rtheta_p % array
+      diag % rho_p_save % array    = diag % rho_p % array
+
+      s_old % scalars % array = s_new % scalars % array
+
+   end subroutine atm_rk_integration_setup_scalars
+
+!---------------------------------------------------------------------------------
 
    subroutine atm_si_advance_rk_step( diag, tend, grid, dtrk )
 
@@ -4222,14 +4311,15 @@ module atm_time_integration
       real (kind=RKIND), dimension(:), pointer ::  dcEdge, dvEdge, areaCell
       integer, dimension(:,:), pointer :: cellsOnEdge
 
-      real (kind=RKIND), dimension(:,:), pointer :: ru, rw, rr, pp, zz, theta_base, &
+      real (kind=RKIND), dimension(:,:), pointer :: ru, rw, rr, zz, theta_base, &
                                                     fast_tend_u, fast_tend_rho, &
-                                                    fast_tend_theta, fast_tend_w
+                                                    fast_tend_theta, fast_tend_w, &
+                                                    pb, rtheta_base, rtheta_p
       real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
       real (kind=RKIND), dimension(:), pointer :: rdzu, rdzw, fzm, fzp
 
       real (kind=RKIND), dimension( grid % nVertLevels + 1 ) :: wdtz
-      real (kind=RKIND), allocatable, dimension(:,:) :: divergence_ru, wdzdz
+      real (kind=RKIND), allocatable, dimension(:,:) :: divergence_ru, wdzdz, pp_lin
       real (kind=RKIND) :: r, cf1, cf2, cf3
 
       logical, parameter :: debug = .false.
@@ -4241,10 +4331,12 @@ module atm_time_integration
       coef_3rd_order = config_coef_3rd_order
 
       theta_base   => diag % theta_base % array
+      rtheta_base  => diag % rtheta_base % array
+      rtheta_p     => diag % rtheta_p % array
       rr           => diag % rho_p % array
       ru           => diag % ru % array
       rw           => diag % rw % array
-      pp           => diag % pressure_p % array
+      pb           => diag % pressure_base % array
 
       cellsOnEdge       => grid % cellsOnEdge % array
       dcEdge            => grid % dcEdge % array
@@ -4283,6 +4375,16 @@ module atm_time_integration
       if (config_theta_adv_order /=3) coef_3rd_order = 0
 
 ! -----
+
+      ! Pressure perturbation obtained from linearized pressure - coupled-theta relation
+      ! (Almost identical to diag % pressure_p , but this is consistent with the
+      ! Helmholtz problem)
+      allocate(pp_lin(nVertLevels, nCells+1))
+      do iCell = 1, nCells
+        do k = 1, nVertLevels
+          pp_lin(k,iCell) = (cp*rtheta_p(k,iCell)*pb(k,iCell))/(cv*rtheta_base(k,iCell))
+        end do
+      end do
 
       ! Recover W dzeta/dz  from Omega, reversing the calculation in mpas_init_atm_cases.F
       ! Omega = zx * ru + zz * rw
@@ -4357,7 +4459,7 @@ module atm_time_integration
          wdtz(nvertLevels+1) = 0.0_RKIND
          do k = 1,nVertLevels
             fast_tend_theta(k,iCell) = -theta_base(k,iCell)*divergence_ru(k,iCell) &
-                                       -rdzw(k)*(wdtz(k) - wdtz(k+1))
+                                       -rdzw(k)*(wdtz(k+1) - wdtz(k))
          end do
       end do
 
@@ -4369,7 +4471,7 @@ module atm_time_integration
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
          do k=1,nVertLevels
-            fast_tend_u(k,iEdge) =  - ( pp(k,cell2)-pp(k,cell1) )                 &
+            fast_tend_u(k,iEdge) =  - ( pp_lin(k,cell2)-pp_lin(k,cell1) )                 &
                                / (.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge))
          end do
       enddo
@@ -4381,7 +4483,7 @@ module atm_time_integration
       do iCell = 1, nCellsSolve
          fast_tend_w(1,iCell) = 0.0_RKIND
          do k=2,nVertLevels
-            fast_tend_w(k,iCell) = - ( rdzu(k)*(pp(k,iCell)-pp(k-1,iCell))        &
+            fast_tend_w(k,iCell) = - ( rdzu(k)*(pp_lin(k,iCell)-pp_lin(k-1,iCell))        &
                                   + gravity*(fzm(k)*rr(k,iCell) + fzp(k)*rr(k-1,iCell)) )
          end do
          fast_tend_w(nVertLevels+1,iCell) = 0.0_RKIND
@@ -4391,6 +4493,7 @@ module atm_time_integration
 
       deallocate(divergence_ru)
       deallocate(wdzdz)
+      deallocate(pp_lin)
 
 
    end subroutine atm_compute_fast_tend
@@ -4499,8 +4602,6 @@ module atm_time_integration
       end do
 
 
-      ! we will compute u here, given we are here, even though we only need them on nEdgesSolve
-
       ! Avoid FP errors caused by a potential division by zero below by 
       ! initializing the "garbage cell" of rho_zz to a non-zero value
       rho_zz(:,nCells+1) = 1.0
@@ -4510,6 +4611,7 @@ module atm_time_integration
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
 
+         ! we will compute u here, given we are here, even though we only need them on nEdgesSolve
          do k = 1, nVertLevels
             u(k,iEdge) = 2.*ru(k,iEdge)/(rho_zz(k,cell1)+rho_zz(k,cell2))
          end do
@@ -4740,37 +4842,28 @@ module atm_time_integration
       enddo
 
 
-! *** DEBUG ***
          if (debug) then
             write(0,*) 'build_helm_coeff      rho_base            pressure_base   '
             do k = 1, nVertLevels
                write(0,*) block % diag % rho_base % array(k,100),  &
                           block % diag % pressure_base % array(k,100)
             enddo
-         endif
-         if (debug) then
             write(0,*) 'build_helm_coeff      c            zz   '
             do k = 1, nVertLevels
                write(0,*) block % mgs_vars % helm_c % array(k,100),  &
                           block % mgs_vars % helm_zz % array(k,100)
             enddo
-         endif
-         if (debug) then
             write(0,*) 'build_helm_coeff      np            n0             nm   '
             do k = 1, nVertLevels+1
                write(0,*) block % mgs_vars % helm_np % array(k,100),  &
                           block % mgs_vars % helm_n0 % array(k,100),  &
                           block % mgs_vars % helm_nm % array(k,100)
             enddo
-         endif
-         if (debug) then
             write(0,*) 'build_helm_coeff      d1p            d1m   '
             do k = 1, nVertLevels+1
                write(0,*) block % mgs_vars % helm_d1p % array(k,100),  &
                           block % mgs_vars % helm_d1m % array(k,100)
             enddo
-         endif
-         if (debug) then
             write(0,*) 'build_helm_coeff      d2p            d2m   '
             do k = 1, nVertLevels
                write(0,*) block % mgs_vars % helm_d2p % array(k,100),  &
@@ -4989,6 +5082,7 @@ module atm_time_integration
                               + fzp(k)*( fast_tend_theta(k-1,iCell) - fast_tend_rho(k-1,iCell) ) )
          enddo
 
+
          ! Now solve tridiagonal system (effectively dividing by (1 + adt^2 * N^2) but
          ! undoing some vertical averaging at the same time)
          call trisolveb( fast_tend_w(2:nVertLevels,icell), &
@@ -4999,6 +5093,7 @@ module atm_time_integration
                              nVertLevels-1 )
          fast_tend_w(1,iCell) = 0.0_RKIND
          fast_tend_w(nVertLevels+1,iCell) = 0.0_RKIND
+
 
          ! Combine contributions to RHS of Helmholtz
          do k = 1, nVertLevels
@@ -5102,7 +5197,6 @@ module atm_time_integration
       rgamma = (cp - rgas)/cp     ! cv/cp
 
 
-      if (debug) write(0,*) ' First loop in si_backsub '
       do iCell = 1, nCellsSolve
 
          ! First recover coupled theta increment
@@ -5126,68 +5220,48 @@ module atm_time_integration
                       nVertLevels-1 )
 
          ! Complete the calculation of W increment
+         ! (recall fast_tend_w was modified in atm_build_helmholtz_rhs)
+         ! and include dzeta/dz factor to begin conversion to an Omega increment
          rw_p(1,iCell) = 0.0_RKIND
          do k = 2, nVertLevels
-           rw_p(k,iCell) = fast_tend_w(k,iCell) - adt*rw_p(k,iCell)
+           rw_p(k,iCell) = (fast_tend_w(k,iCell) - adt*rw_p(k,iCell))            &
+                          *(fzm(k)*zz(k  ,iCell) + fzp(k)*zz(k-1,iCell))
          enddo
          rw_p(nVertLevels+1,iCell) = 0.0_RKIND
 
       enddo
 
 
-      if (debug) write(0,*) ' Second loop in si_backsub '
-      ! Now compute V increment
+      ! Now compute V increment, and accumulate horizontal mass flux increments
+      rho_pp = 0.0_RKIND
       do  iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
          do k=1,nVertLevels
-            ru_p(k,iEdge) =  fast_tend_u(k,iEdge)                                &
-                          - ( pressure_inc(k,cell2) - pressure_inc(k,cell1) )    &
-                               / (.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge))
-         end do
-      enddo
-
-
-      if (debug) write(0,*) ' Third loop in si_backsub '
-      ! Accumulate horizontal mass flux increments
-      rho_pp = 0.0_RKIND
-      do iEdge=1,nEdges
-         cell1 = cellsOnEdge(1,iEdge)
-         cell2 = cellsOnEdge(2,iEdge)
-         do k=1,nVertLevels
+            ru_p(k,iEdge) = fast_tend_u(k,iEdge)                                &
+                          - adt*( pressure_inc(k,cell2) - pressure_inc(k,cell1) )    &
+                                   / (.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge))
             flux = ru_p(k,iEdge)*dvEdge(iEdge)
             rho_pp(k,cell1) = rho_pp(k,cell1) + flux
             rho_pp(k,cell2) = rho_pp(k,cell2) - flux
          end do
-      end do
+      enddo
 
-      if (debug) write(0,*) ' Fourth loop in si_backsub '
+
       ! Finish computing horizontal mass-flux-increment divergence,
       ! add vertical mass-flux-increment divergence and RHS of rho equation
       ! to complete rho increment
       do iCell = 1, nCellsSolve
          r = 1.0 / areaCell(iCell)
          do k = 1,nVertLevels
-            rho_pp(k,iCell) = fast_tend_rho(k,iCell)                      &
-                            - rho_pp(k,iCell)*r                           &
-                            - rdzw(k)*(rw_p(k+1,iCell) - rw_p(k,iCell))
+            rho_pp(k,iCell) = fast_tend_rho(k,iCell)                           &
+                            - adt*(rho_pp(k,iCell)*r                           &
+                                 + rdzw(k)*(rw_p(k+1,iCell) - rw_p(k,iCell)))
          end do
       end do
 
 
-      ! Obtain Omega increment from W increment: Omega = zx * ru + zz * rw
-      ! in order to step forward Omega
-
-      if (debug) write(0,*) ' Fifth loop in si_backsub '
-      ! First pick up d zeta / dz factor
-      do iCell = 1, nCellsSolve
-         do k = 2, nVertLevels
-            rw_p(k,iCell) = (fzm(k)*zz(k  ,iCell) + fzp(k)*zz(k-1,iCell))*rw_p(k,iCell)
-         end do
-      end do
-
-      if (debug) write(0,*) ' Sixth loop in si_backsub '
-      ! Now include contributions from V increments
+      ! Now include contributions from V increments to finish computing Omega increment
       do iEdge = 1, nEdges
          cell1 = CellsOnEdge(1,iEdge)
          cell2 = CellsOnEdge(2,iEdge)
@@ -5652,8 +5726,8 @@ END SUBROUTINE trisolveb
       type(mgs_vars_type), pointer 	:: fine_mgs_vars
       integer, dimension(:,:), pointer 	:: coarse_restrictStencil
 
-!      logical, parameter :: debug = .false.
-      logical, parameter :: debug = .true.
+      logical, parameter :: debug = .false.
+!      logical, parameter :: debug = .true.
 
 
 ! -----------

@@ -220,7 +220,7 @@ module init_atm_cases
 
       real (kind=RKIND) :: omega_e
 
-      real (kind=RKIND), parameter :: t0b = 250., t0 = 288.
+      real (kind=RKIND), parameter :: t0b = 250., t0 = 250.
 
       real (kind=RKIND), dimension(:), pointer :: rdzw, dzu, rdzu, fzm, fzp
       real (kind=RKIND), dimension(:), pointer :: surface_pressure
@@ -242,8 +242,8 @@ module init_atm_cases
       real (kind=RKIND), dimension(:), pointer :: dvEdge, AreaCell 
       real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
 
-      real (kind=RKIND) :: flux, p0
-      real (kind=RKIND) :: r_earth, ztemp, zt, dz, str, ttemp, zzu
+      real (kind=RKIND) :: p0
+      real (kind=RKIND) :: r_earth, ztemp, zt, dz, str, ttemp
 
       real (kind=RKIND), dimension(grid % nVertLevels + 1 ) :: sh, zw, ah
       real (kind=RKIND), dimension(grid % nVertLevels ) :: zu, dzw, rdzwp, rdzwm
@@ -448,37 +448,24 @@ module init_atm_cases
         end do
 
 
-        ! Set a 1D temperature profile
+        ! Set a 1D temperature profile and corresponding rho
         do k=1,nz1
-          tt(k) = t0b
-        end do
-
-        ! First guess for pressure profile, by integrating the hydrostatic equation
-        ! (at this point pp is the full pressure)
-        ttemp = (1.25*tt(1) - 0.25*tt(2))*zz(1,i)
-        pp(1,i) = p0*exp(-0.5*dzw(1)*gravity/(rgas*ttemp))
-        do k=1,nz1-1
-          zzu = 1.0 / (fzp(k+1)/zz(k,i) + fzm(k+1)/zz(k+1,i))
-          ttemp = fzp(k+1)*tt(k) + fzm(k+1)*tt(k+1)
-          pp(k+1,i) = pp(k,i)*exp(-dzu(k+1)*gravity/(rgas*ttemp*zzu))
-        end do
-        
-        ! Convert to a density profile using the gas law
-        do k = 1, nz1
-          rho_zz(k,i) = pp(k,i)/(rgas*tt(k)*zz(k,i))
+          tt(k) = t0
+          ztemp    = .5*(zgrid(k+1,i)+zgrid(k,i))
+          rho_zz(k,i) = p0*exp(-gravity*ztemp/(rgas*t0))/(rgas*t0*zz(k,i))
           rr(k,i) = rho_zz(k,i) - rb(k,i)
-        enddo
+        end do
 
-        ! Now recompute the pressure perturbation profile needed for discrete hydrostatic balance
+
+        ! Now compute the pressure perturbation profile needed for discrete hydrostatic balance
         pp(1,i) = 0.0         ! We'll figure out the offset later to get surface pressure p0
         do k=1,nz1-1
           pp(k+1,i) = pp(k,i)-dzu(k+1)*gravity*   &
                            ( rr(k  ,i)*fzp(k+1)   &
                            + rr(k+1,i)*fzm(k+1) )
         end do
-        pp(:,i) = pp(:,i) + p0 - ( ppb(1,i) + pp(1,i) + .5*dzw(1)*gravity        &
-                                                      *(1.25*(rr(1,i)+rb(1,i))   &
-                                                        -.25*(rr(2,i)+rb(2,i))) )
+        ztemp    = .5*(zgrid(2,i)+zgrid(2,i))
+        pp(:,i) = pp(:,i) + p0*exp(-0.5*ztemp*gravity/(rgas*tt(1))) - ppb(1,i)
 
         ! Convert pressure to theta
         do k=1,nz1	
@@ -501,16 +488,18 @@ module init_atm_cases
       end do  ! end loop over cells
 
 
+      ! Include an external acoustic mode structure in u at one edge
       do iEdge=1,grid % nEdges
-
-         do k=1,grid % nVertLevels
-           state % u % array(k,iEdge) = 0.0_RKIND
-         end do
 
          cell1 = grid % CellsOnEdge % array(1,iEdge)
          cell2 = grid % CellsOnEdge % array(2,iEdge)
-         do k=1,nz1
-            diag % ru % array (k,iEdge)  = 0.5*(rho_zz(k,cell1)+rho_zz(k,cell2))*state % u % array (k,iEdge)
+         do k=1,grid % nVertLevels
+            ztemp    = 0.5_RKIND*(zgrid(k,cell1) + zgrid(k,cell2))
+            state % u % array(k,iEdge) = 0.0_RKIND
+            if (iEdge == 100) then
+               state % u % array(k,iEdge) = 0.1_RKIND*exp(gravity*ztemp/(cp*t0))
+            end if
+            diag % ru % array (k,iEdge)  = 0.5_RKIND*(rho_zz(k,cell1)+rho_zz(k,cell2))*state % u % array (k,iEdge)
          end do
       !
       ! Generate rotated Coriolis field
@@ -579,38 +568,21 @@ module init_atm_cases
 
       end do
 
-      ! for including terrain
-      diag % rw % array = 0.
-      state % w % array = 0.
-      do iEdge = 1,grid % nEdges
 
-         cell1 = CellsOnEdge(1,iEdge)
-         cell2 = CellsOnEdge(2,iEdge)
-
-         do k = 2, grid%nVertLevels
-            flux =  (fzm(k)*diag % ru % array(k,iEdge)+fzp(k)*diag % ru % array(k-1,iEdge))
-            diag % rw % array(k,cell2) = diag % rw % array(k,cell2) + (fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2))*zb(k,2,iEdge)*flux
-            diag % rw % array(k,cell1) = diag % rw % array(k,cell1) - (fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1))*zb(k,1,iEdge)*flux
-
-            if (config_theta_adv_order ==3) then 
-               diag % rw % array(k,cell2) = diag % rw % array(k,cell2)    &
-                                            - sign(1.0_RKIND,diag % ru % array(k,iEdge))*config_coef_3rd_order* &
-                                              (fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2))*zb3(k,2,iEdge)*flux
-               diag % rw % array(k,cell1) = diag % rw % array(k,cell1)    &
-                                            + sign(1.0_RKIND,diag % ru % array(k,iEdge))*config_coef_3rd_order* &
-                                              (fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1))*zb3(k,1,iEdge)*flux
-            end if
-
-         end do
-
-      end do
-
-      ! Compute w from rho_zz and rw
+      ! Include an acoustic mode structure in w and compute rw
+      ! This assumes levels are flat (or u = 0 everywhere)
       do iCell=1,grid%nCells
+         state % w % array(1,iCell) = 0.0_RKIND
+         diag % rw % array(1,iCell) = 0.0_RKIND
          do k=2,grid%nVertLevels
-            state % w % array(k,iCell) = diag % rw % array(k,iCell)     &
-                                       / (fzp(k) * state % rho_zz % array(k-1,iCell) + fzm(k) * state % rho_zz % array(k,iCell))
+           ztemp    = zgrid(k,iCell)
+           state % w % array(k,iCell) = 0.0_RKIND
+!           state % w % array(k,iCell) = 0.01_RKIND*sin(pii*ztemp/zt)*exp(0.5*gravity*ztemp/(rgas*t0))
+           diag % rw % array(k,iCell) = state % w % array(k,iCell) &
+                                        *(fzp(k) * state % rho_zz % array(k-1,iCell) + fzm(k) * state % rho_zz % array(k,iCell))
          end do
+         state % w % array(nz,iCell) = 0.0_RKIND
+         diag % rw % array(nz,iCell) = 0.0_RKIND
       end do
 
 
