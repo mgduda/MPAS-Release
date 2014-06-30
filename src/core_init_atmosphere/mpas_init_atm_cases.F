@@ -220,7 +220,7 @@ module init_atm_cases
 
       real (kind=RKIND) :: omega_e
 
-      real (kind=RKIND), parameter :: t0b = 250., t0 = 250.
+      real (kind=RKIND), parameter :: t0b = 250., t0 = 300.
 
       real (kind=RKIND), dimension(:), pointer :: rdzw, dzu, rdzu, fzm, fzp
       real (kind=RKIND), dimension(:), pointer :: surface_pressure

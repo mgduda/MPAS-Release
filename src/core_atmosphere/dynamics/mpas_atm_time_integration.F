@@ -2704,8 +2704,7 @@ module atm_time_integration
       !  Note: next we are also dividing through by the cell area after the horizontal flux divergence
 
          do k=2,nVertLevels
-
-            tend_w(k,iCell) = tend_w(k,iCell)/areaCell(iCell) -rdzu(k)*(wdwz(k+1)-wdwz(k))    &
+             tend_w(k,iCell) = tend_w(k,iCell)/areaCell(iCell) -rdzu(k)*(wdwz(k+1)-wdwz(k))    &
                                   - cqw(k,iCell)*( rdzu(k)*(pp(k,iCell)-pp(k-1,iCell))        &
                                   + gravity*  &
                                    ( fzm(k)*(rb(k,iCell)*(qtot(k,iCell)) +         &
@@ -2713,6 +2712,7 @@ module atm_time_integration
                                     +fzp(k)*(rb(k-1,iCell)*(qtot(k-1,iCell))  +  &
                                              rr(k-1,iCell)*(1.+qtot(k-1,iCell))) ))
          end do
+
       end do
 
       !
@@ -3428,7 +3428,7 @@ module atm_time_integration
    subroutine atm_si(domain, dt, itimestep)
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
    ! Advance model state forward in time by the specified time step using 
-   !   a semi-implicit Strang carryover scheme
+   !   a semi-implicit scheme based on iterating towards a Crank-Nicolson scheme
    !
    ! Nonhydrostatic atmospheric solver
    !
@@ -3445,10 +3445,10 @@ module atm_time_integration
       real (kind=RKIND), intent(in) :: dt
       integer, intent(in) :: itimestep
 
-      integer :: iCell, k, iEdge
+      integer :: iCell, k, iEdge, itemp
       type (block_type), pointer :: block
 
-      integer :: rk_step
+      integer :: rk_step, iter
       integer :: iScalar
 
       real (kind=RKIND), dimension(3) :: rk_timestep
@@ -3460,210 +3460,114 @@ module atm_time_integration
 
 
 
-      ! Initialize RK weights
+      ! Initialize RK weights for scalar advection
 
       rk_timestep(1) = dt/3._RKIND
       rk_timestep(2) = dt/2._RKIND
       rk_timestep(3) = dt
 
 
-
-      ! Exchange scalars
+!     Exchange theta_m, scalars, pressure_p and rtheta_p
+      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % theta_m)
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % scalars)
-
-
-! ***
-      write(0,*) 'cells on edge 100   ',domain % blocklist % mesh % cellsOnEdge % array(:,100)
-
-
-! *** DEBUG ***
-      write(0,*)
-      write(0,*) 'Start of atm_si'
-      block => domain % blocklist
-      do while (associated(block))
-         scalar_min = 0.
-         scalar_max = 0.
-         do iCell = 1, block % mesh % nCellsSolve
-         do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(1) % state % w % array(k,iCell))
-            scalar_max = max(scalar_max, block % state % time_levs(1) % state % w % array(k,iCell))
-         end do
-         end do
-         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
-         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
-         write(0,*) 'global min, max w ',global_scalar_min, global_scalar_max
-
-         scalar_min = 0.
-         scalar_max = 0.
-         do iEdge = 1, block % mesh % nEdgesSolve
-         do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(1) % state % u % array(k,iEdge))
-            scalar_max = max(scalar_max, block % state % time_levs(1) % state % u % array(k,iEdge))
-         end do
-         end do
-         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
-         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
-         write(0,*) 'global min, max u ',global_scalar_min, global_scalar_max
-
-         block => block % next
-      end do
-
-
-
-! Add half increment carried over from the end of the previous time step
-! **** Do we need to save said increment in restart files? YES ***
-
-! *** TO DO ***
-
-
-      ! Add half increment
-      if (debug) write(0,*) ' add_si_half_inc (start of step)'
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_add_si_half_inc( block % diag, block % mesh )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished add_si_half_inc '
-
-
-! OR, if this is the first step, set up and solve the Helmholtz problem ...
-
-! *** TO DO ***
-
-
-      ! Exchange rho_p, rw, rtheta_p, ru
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
+      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p)
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
 
 
-      ! The next two subroutine calls compute various diagnostic quantities needed by compute_dyn_tend
-
-      if (debug) write(0,*) ' Before RK loop: recover_derived_variables '
+      ! Copy time_levs(1) state variables into time_levs(2) and also save
+      ! density weighted coupled variables
+      if (debug) write(0,*) ' copy step in si solver '
       block => domain % blocklist
       do while (associated(block))
-         call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished recover_derived_variables '
-
-
-      if(debug) write(0,*) ' Before RK loop: compute_solve_diagnostics '
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
-         block => block % next
-      end do
-      if(debug) write(0,*) ' finished compute_solve_diagnostics '
-
-
-      ! Exchange w, pv_edge, and rho_edge
-      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
-
-
-!     Copy time_levs(1) scalars into time_levs(2) and also save
-!     density weighted coupled variables
-      if (debug) write(0,*) ' copy step in rk solver '
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_rk_integration_setup_scalars( block % state % time_levs(2) % state, block % state % time_levs(1) % state, block % diag )
+         call atm_rk_integration_setup( block % state % time_levs(2) % state, block % state % time_levs(1) % state, block % diag )
          block => block % next
       end do
 
 
-! *** DEBUG ***
-      write(0,*)
-      write(0,*) 'After add_si_half_inc and diagnostics'
+      ! Set up Helmholtz coefficients
+      if (debug) write(0,*) ' build_helmholtz_coeff '
       block => domain % blocklist
       do while (associated(block))
-         scalar_min = 0.
-         scalar_max = 0.
-         do iCell = 1, block % mesh % nCellsSolve
-         do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(2) % state % w % array(k,iCell))
-            scalar_max = max(scalar_max, block % state % time_levs(2) % state % w % array(k,iCell))
-         end do
-         end do
-         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
-         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
-         write(0,*) 'global min, max w ',global_scalar_min, global_scalar_max
-
-         scalar_min = 0.
-         scalar_max = 0.
-         do iEdge = 1, block % mesh % nEdgesSolve
-         do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(2) % state % u % array(k,iEdge))
-            scalar_max = max(scalar_max, block % state % time_levs(2) % state % u % array(k,iEdge))
-         end do
-         end do
-         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
-         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
-         write(0,*) 'global min, max u ',global_scalar_min, global_scalar_max
-
+         call atm_build_helmholtz_coeff( block, dt )
          block => block % next
       end do
+      if (debug) write(0,*) ' finished build_helmholtz_coeff '
 
 
+      if (debug) write(0,*) ' restrict_helmholtz_coeff '
+      call atm_restrict_helmholtz_coeff( domain % blocklist )
+      if (debug) write(0,*) ' finished restrict_helmholtz_coeff '
 
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'state      u(100)     rho_zz(19)    rho_zz(2661)      theta_m(19)    theta_m(2661)    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,19),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,2661),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,19),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,2661)
-!            enddo
-!         endif
+
+      ! Compute dynamical tendencies at old time level
+
+      ! Compute coefficients to modifiy density to allow for moisture
+      if(debug) write(0,*) ' compute_moist_coefficients '
+      block => domain % blocklist
+      do while (associated(block))
+         ! The coefficients are set for owned cells (cqw) and for all edges of owned cells, 
+         call atm_compute_moist_coefficients( block % state % time_levs(2) % state, block % diag, block % mesh )
+         block => block % next
+      end do
+      if(debug) write(0,*) ' finished compute_moist_coefficients '
+
+      ! Compute dynamical tendencies and save them for later use
+      if (debug) write(0,*) ' compute_dyn_tend '
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_compute_dyn_tend( block % tend, block % state % time_levs(2) % state, block % diag, block % mesh, 1, dt )
+         call atm_save_dyn_tend(block % tend, block % mesh)
+         block => block % next
+      end do
+      if (debug) write(0,*) ' finished compute_dyn_tend '
 
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
-      ! BEGIN Runge-Kutta loop 
+      ! BEGIN iterative solution loop
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 
-      do rk_step = 1, 3  ! Runge-Kutta loop
+      do iter = 1, config_niter_si  ! Iterative solution loop
 
-         if(debug) write(0,*) ' rk substep ', rk_step
-
-
-
-         ! Compute coefficients to modifiy density to allow for moisture
-         if(debug) write(0,*) ' compute_moist_coefficients '
-         block => domain % blocklist
-         do while (associated(block))
-            ! The coefficients are set for owned cells (cqw) and for all edges of owned cells, 
-            call atm_compute_moist_coefficients( block % state % time_levs(2) % state, block % diag, block % mesh )
-            block => block % next
-         end do
-         if(debug) write(0,*) ' finished compute_moist_coefficients '
+         if(debug) write(0,*) ' Solver iteration ', iter
 
 
-         ! Compute dynamical tendencies
-         if (debug) write(0,*) ' compute_dyn_tend '
-         block => domain % blocklist
-         do while (associated(block))
-            call atm_compute_dyn_tend( block % tend, block % state % time_levs(2) % state, block % diag, block % mesh, rk_step, dt )
-            block => block % next
-         end do
-         if (debug) write(0,*) ' finished compute_dyn_tend '
+         ! Compute dynamical tendencies using latest estimate of new time level values
+         ! If iter = 1 then this calculation can be omitted since the first guess for the
+         ! new time level is the old time level, and we just calculated the tendencies for
+         ! the old time level
+
+         if (iter > 1) then
+
+            ! Compute coefficients to modifiy density to allow for moisture
+            if(debug) write(0,*) ' compute_moist_coefficients '
+            block => domain % blocklist
+            do while (associated(block))
+               ! The coefficients are set for owned cells (cqw) and for all edges of owned cells, 
+               call atm_compute_moist_coefficients( block % state % time_levs(2) % state, block % diag, block % mesh )
+               block => block % next
+            end do
+            if(debug) write(0,*) ' finished compute_moist_coefficients '
+
+            ! Compute dynamical tendencies
+            if (debug) write(0,*) ' compute_dyn_tend '
+            block => domain % blocklist
+            do while (associated(block))
+               call atm_compute_dyn_tend( block % tend, block % state % time_levs(2) % state, block % diag, block % mesh, iter, dt )
+               block => block % next
+            end do
+            if (debug) write(0,*) ' finished compute_dyn_tend '
+
+            ! Combine old and new dynamical tendencies
+            if (debug) write(0,*) ' combine_dyn_tend '
+            block => domain % blocklist
+            do while (associated(block))
+               call atm_combine_dyn_tend(block % tend, block % mesh)
+               block => block % next
+            end do
+            if (debug) write(0,*) ' finished combine_dyn_tend '
 
 
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'tend:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % tend % u % array(k,100),  &
-!                          domain % blocklist % tend % rho_zz % array(k,19),  &
-!                          domain % blocklist % tend % rho_zz % array(k,2661),  &
-!                          domain % blocklist % tend % theta_m % array(k,19),  &
-!                          domain % blocklist % tend % theta_m % array(k,2661)
-!            enddo
-!         endif
-
+         endif
 
 
 #ifdef DO_PHYSICS
@@ -3678,75 +3582,72 @@ module atm_time_integration
                          block % tend_physics, &
                          block % state % time_levs(2) % state % rho_zz % array(:,:), &
                          block % diag % rho_edge % array(:,:), & 
-                         rk_step )
+                         iter - config_niter_si + 3 )                 ! Trick to get printed diagnostics on last call!
             block => block % next
          end do
          if (debug) write(0,*) ' finished add physics tendencies '
 #endif
 
 
-         ! Compute `fast' dynamical tendencies
-         if (debug) write(0,*) ' compute_fast_tend '
+         ! Compute residuals
+         if (debug) write(0,*) ' compute_residuals '
          block => domain % blocklist
          do while (associated(block))
-            call atm_compute_fast_tend( block % tend, block % diag, block % mesh )
+            call atm_compute_residuals( block % diag, block % tend, block % mesh, dt )
             block => block % next
          end do
-         if (debug) write(0,*) ' finished compute_fast_tend '
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'tend_fast:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
-!                          domain % blocklist % tend % rho_zz_fast % array(k,19),  &
-!                          domain % blocklist % tend % rho_zz_fast % array(k,2661),  &
-!                          domain % blocklist % tend % theta_m_fast % array(k,19),  &
-!                          domain % blocklist % tend % theta_m_fast % array(k,2661)
-!            enddo
-!         endif
+         if (debug) write(0,*) ' finished compute_residuals '
 
 
-         ! Subtract fast tendencies from total to get slow tendencies
-         if (debug) write(0,*) ' subtract_fast_tend '
+!        Exchange the residual in the u equation (tend_u) as we need to take its div
+         call mpas_dmpar_exch_halo_field(domain % blocklist % tend % u, (/ 1 /))
+
+
+         ! Set up RHS of Helmholtz
+         if (debug) write(0,*) ' build_helmholtz_rhs '
          block => domain % blocklist
          do while (associated(block))
-            call atm_subtract_fast_tend( block % tend, block % mesh )
+            call atm_build_helmholtz_rhs( block % tend, block % state % time_levs(1) % state, &
+                                          block % diag, block % mgs_vars, block % mesh, dt )
+
             block => block % next
          end do
-         if (debug) write(0,*) ' finished subtract_fast_tend '
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'tend:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % tend % u % array(k,100),  &
-!                          domain % blocklist % tend % rho_zz % array(k,19),  &
-!                          domain % blocklist % tend % rho_zz % array(k,2661),  &
-!                          domain % blocklist % tend % theta_m % array(k,19),  &
-!                          domain % blocklist % tend % theta_m % array(k,2661)
-!            enddo
-!         endif
+         if (debug) write(0,*) ' finished build_helmholtz_rhs '
 
 
-         ! RK update using slow tendencies
-         if (debug) write(0,*) ' si_advance_rk_step '
+         ! Solve Helmholtz problem
+         if (debug) write(0,*) ' mg_solve '
+         call atm_mg_solve( domain, dt )
+         if (debug) write(0,*) ' finished mg_solve '
+
+
+         ! Back substitution
+         if (debug) write(0,*) ' si_backsub '
          block => domain % blocklist
          do while (associated(block))
-            call atm_si_advance_rk_step( block % diag, block % tend, block % mesh, rk_timestep(rk_step) )
+            call atm_si_backsub( block % tend, block % state % time_levs(1) % state, &
+                                 block % diag, block % mgs_vars, block % mesh, dt )
             block => block % next
          end do
-         if (debug) write(0,*) ' si_advance_rk_step '
+         if (debug) write(0,*) ' finished si_backsub '
 
 
-         ! Exchange rho_p, rw, rtheta_p, ru
+         ! Add increment
+         if (debug) write(0,*) ' add_si_inc '
+         block => domain % blocklist
+         do while (associated(block))
+            call atm_add_si_inc( block % diag, block % mesh )
+            block => block % next
+         end do
+         if (debug) write(0,*) ' finished add_si_inc '
+
+
+         ! Exchange recently updated coupled variables: rho_p, rw, rtheta_p, ru
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
 
-
-         ! The next two subroutine calls compute various diagnostic quantities needed by compute_dyn_tend
 
          if (debug) write(0,*) ' recover_derived_variables '
          block => domain % blocklist
@@ -3766,16 +3667,16 @@ module atm_time_integration
          if(debug) write(0,*) ' finished compute_solve_diagnostics '
 
 
-         ! Exchange w, pv_edge, and rho_edge
-         call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
-         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
-
 
          ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
          ! PD or monotonicity constraints applied only on the final Runge-Kutta substep.
 
          if (config_scalar_advection) then
+
+
+!***
+      write(0,*) '*** need to sort out scalar advection'
+
 
          if (debug) write(0,*) ' scalar advection '
          block => domain % blocklist
@@ -3808,247 +3709,21 @@ module atm_time_integration
          end if
 
 
+         ! Exchange w, pv_edge, and rho_edge
+         call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
+         call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
+
+
          ! Exchange scalars
-         if (rk_step < 3) then
+         if (iter < config_niter_si) then
             call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % scalars)
          end if
 
-      end do ! rk_step loop
+      end do ! iteration loop
 
 
-      if(debug) write(0,*) ' RK steps completed '
-
-
-
-! *** DEBUG ***
-      write(0,*)
-      write(0,*) 'aftrRK'
-      block => domain % blocklist
-      do while (associated(block))
-         scalar_min = 0.
-         scalar_max = 0.
-         do iCell = 1, block % mesh % nCellsSolve
-         do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(2) % state % w % array(k,iCell))
-            scalar_max = max(scalar_max, block % state % time_levs(2) % state % w % array(k,iCell))
-         end do
-         end do
-         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
-         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
-         write(0,*) 'global min, max w ',global_scalar_min, global_scalar_max
-
-         scalar_min = 0.
-         scalar_max = 0.
-         do iEdge = 1, block % mesh % nEdgesSolve
-         do k = 1, block % mesh % nVertLevels
-            scalar_min = min(scalar_min, block % state % time_levs(2) % state % u % array(k,iEdge))
-            scalar_max = max(scalar_max, block % state % time_levs(2) % state % u % array(k,iEdge))
-         end do
-         end do
-         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
-         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
-         write(0,*) 'global min, max u ',global_scalar_min, global_scalar_max
-
-         block => block % next
-      end do
-
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'state      u      w     rho_zz      theta_m    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
-!            enddo
-!         endif
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'state      u(100)     rho_zz(19)    rho_zz(2661)      theta_m(19)    theta_m(2661)    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,19),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,2661),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,19),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,2661)
-!            enddo
-!         endif
-
-
-
-      ! Exchange pressure_p and ru
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p, (/ 1 /))
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
-
-
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'coupled variables:     ru(100)    rw(19)    rho_p(19)    rtheta_p(19)  '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % diag % ru % array(k,100),    &
-!                          domain % blocklist % diag % rw % array(k,19),     &
-!                          domain % blocklist % diag % rho_p % array(k,19),  &
-!                          domain % blocklist % diag % rtheta_p % array(k,19)
-!            enddo
-!         endif
-
-
-
-
-      ! Compute `fast' tendencies for RHS of helmholtz
-      if (debug) write(0,*) ' compute_fast_tend for RHS helmholtz '
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_compute_fast_tend( block % tend, block % diag, block % mesh )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished compute_fast_tend for RHS helmholtz'
-      ! Exchange fast u tendency
-      call mpas_dmpar_exch_halo_field(domain % blocklist % tend % u_fast, (/ 1 /))
-
-
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'tend_fast:     tend_u(100)    tend_rho(19)  tend_rho(2261)  tend_theta(19)   tend_theta(2661)    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % tend % u_fast % array(k,100),  &
-!                          domain % blocklist % tend % rho_zz_fast % array(k,19),  &
-!                          domain % blocklist % tend % rho_zz_fast % array(k,2661),  &
-!                          domain % blocklist % tend % theta_m_fast % array(k,19),  &
-!                          domain % blocklist % tend % theta_m_fast % array(k,2661)
-!            enddo
-!         endif
-
-
-
-
-
-      ! Set up Helmholtz coefficients
-      ! *** THIS REALLY ONLY NEEDS TO BE DONE ONCE AT THE START ***
-      ! *** UNLESS WE MODIFY THE REFERENCE STATE ON THE FLY ***
-      if (debug) write(0,*) ' build_helmholtz_coeff '
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_build_helmholtz_coeff( block, dt )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished build_helmholtz_coeff '
-
-
-      if (debug) write(0,*) ' restrict_helmholtz_coeff '
-      call atm_restrict_helmholtz_coeff( domain % blocklist )
-      if (debug) write(0,*) ' finished restrict_helmholtz_coeff '
-
-
-      ! Set up RHS of Helmholtz
-      if (debug) write(0,*) ' build_helmholtz_rhs '
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_build_helmholtz_rhs( block % tend, block % diag, block % mgs_vars, block % mesh, dt )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished build_helmholtz_rhs '
-
-
-      ! Solve Helmholtz problem
-      if (debug) write(0,*) ' mg_solve '
-      call atm_mg_solve( domain, dt )
-      if (debug) write(0,*) ' finished mg_solve '
-
-
-      ! Back substitution
-      if (debug) write(0,*) ' si_backsub '
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_si_backsub( block % tend, block % diag, block % mgs_vars, block % mesh, dt )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished si_backsub '
-
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'coupled increments:     ru_p(100)    rw_p(19)    rho_pp(19)    rtheta_pp(19)  '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % diag % ru_p % array(k,100),   &
-!                          domain % blocklist % diag % rw_p % array(k,19),    &
-!                          domain % blocklist % diag % rho_pp % array(k,19),  &
-!                          domain % blocklist % diag % rtheta_pp % array(k,19)
-!            enddo
-!         endif
-
-
-
-
-
-      ! Add half increment
-      if (debug) write(0,*) ' add_si_half_inc (end of step)'
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_add_si_half_inc( block % diag, block % mesh )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished add_si_half_inc '
-
-
-      ! Exchange rho_p, rw, rtheta_p, ru
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
-
-
-      if (debug) write(0,*) ' recover_derived_variables at end of dynamics'
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
-         block => block % next
-      end do
-      if (debug) write(0,*) ' finished recover_derived_variables at end of dynamics '
-
-
-      if(debug) write(0,*) ' compute_solve_diagnostics at end of dynamics'
-      block => domain % blocklist
-      do while (associated(block))
-         call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
-         block => block % next
-      end do
-      if(debug) write(0,*) ' finished compute_solve_diagnostics at end of dynamics '
-
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'state      u      w     rho_zz      theta_m    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % w % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,100)
-!            enddo
-!         endif
-
-
-! *** DEBUG ***
-!         if (debug) then
-!            write(0,*) 'state      u(100)     rho_zz(19)    rho_zz(2661)      theta_m(19)    theta_m(2661)    '
-!            do k = 1, domain % blocklist % mesh % nVertLevels
-!               write(0,*) domain % blocklist % state % time_levs(2) % state % u % array(k,100),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,19),  &
-!                          domain % blocklist % state % time_levs(2) % state % rho_zz % array(k,2661),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,19),  &
-!                          domain % blocklist % state % time_levs(2) % state % theta_m % array(k,2661)
-!            enddo
-!         endif
-
-
-      ! Exchange w, pv_edge, and rho_edge
-      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
-      call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
+      if(debug) write(0,*) ' SI iterations completed '
 
 
 !...  compute full velocity vectors at cell centers:
@@ -4063,6 +3738,17 @@ module atm_time_integration
                               )
          block => block % next
       end do
+
+
+!...  compute some diagnostics
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_diagnostics( block % state % time_levs(2) % state, &
+                               block % diag,                         &
+                               block % mesh )
+         block => block % next
+      end do
+
 
 
 !... call to parameterizations of cloud microphysics. calculation of the tendency of water vapor to horizontal and
@@ -4111,7 +3797,7 @@ module atm_time_integration
          end do
          call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
          call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
-         write(0,*) 'global min, max w ',global_scalar_min, global_scalar_max
+         write(0,*) ' global min, max w ',global_scalar_min, global_scalar_max
 
          scalar_min = 0.
          scalar_max = 0.
@@ -4143,6 +3829,27 @@ module atm_time_integration
       end do
 
 
+! *** DEBUG ***
+      itemp = 0
+      block => domain % blocklist
+      do while (associated(block))
+         scalar_min = 1.0e7
+         scalar_max = -1.0e7
+         do iCell = 1, block % mesh % nCellsSolve
+            if (block % diag % surface_pressure % array(iCell) < scalar_min) itemp = iCell
+            scalar_min = min(scalar_min, block % diag % surface_pressure % array(iCell))
+            scalar_max = max(scalar_max, block % diag % surface_pressure % array(iCell))
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+         write(0,*) 'global min, max surface_pressure ',global_scalar_min, global_scalar_max,' column ',itemp, &
+                    ' lon-lat ',block % mesh % lonCell % array(itemp), block % mesh % latCell % array(itemp)
+
+         block => block % next
+      end do
+
+
+
    end subroutine atm_si
 
 ! -------------------------------------------------------------------------------
@@ -4150,7 +3857,8 @@ module atm_time_integration
    subroutine atm_rk_integration_setup_scalars( s_old, s_new, diag )
 
 ! Like atm_rk_integration_setup, but only scalars are copied in state.
-! This version is used by atm_si
+! This version is used by atm_si in the Strang-carryover version
+! *** OBSOLETE   JT
 
       implicit none
 
@@ -4175,6 +3883,7 @@ module atm_time_integration
       ! in the diag array.
 
       ! The mass flux is saved in ruAvg and wwAvg for later tracer transport
+! *** OBSOLETE    JT
 
       implicit none
 
@@ -4231,6 +3940,7 @@ module atm_time_integration
       if(config_theta_adv_order /=3) coef_3rd_order = 0
 
 
+
       ! we solve for omega instead of w (see Klemp et al MWR 2007),
       ! so here we change the w tendency to an omega tendency
 
@@ -4281,11 +3991,95 @@ module atm_time_integration
       rw(:,1:nCellsSolve)       = rw_save(:,1:nCellsSolve)       + dtrk*tend_w(:,1:nCellsSolve)
 
 
+
+
    end subroutine atm_si_advance_rk_step
 
 ! ---------------------------------------------------------------------------------
 
+   subroutine atm_compute_residuals( diag, tend, grid, dt )
+
+      ! Compute the residual in each governing equation:
+      ! R_x = dt * tend_x  + x_old - x_new
+
+
+      implicit none
+
+      type (diag_type) :: diag
+      type (tend_type) :: tend
+      type (mesh_type), intent(in) :: grid
+      real (kind=RKIND), intent(in) :: dt
+
+      integer :: iCell, iEdge, k, cell1, cell2
+      integer :: nVertLevels, nEdges, nCellsSolve, nEdgesSolve
+      integer :: coef_3rd_order
+      real (kind=RKIND), dimension(:,:), pointer :: rtheta_p_save, rho_p_save, ru_save, rw_save, &
+                                                    rtheta_p,      rho_p,      ru,      rw,      &
+                                                    tend_theta,    tend_rho,   tend_u,  tend_w,  &
+                                                    zz
+      integer, dimension(:,:), pointer :: cellsOnEdge
+      real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
+      real (kind=RKIND), dimension(:), pointer :: fzm, fzp
+      real (kind=RKIND) :: flux
+
+      logical, parameter :: debug = .true.
+!--
+
+      fzm           => grid % fzm % array
+      fzp           => grid % fzp % array
+      zz            => grid % zz % array
+      zb            => grid % zb % array
+      zb3           => grid % zb3 % array
+
+      rtheta_p_save => diag % rtheta_p_save % array
+      rho_p_save    => diag % rho_p_save % array
+      ru_save       => diag % ru_save % array
+      rw_save       => diag % rw_save % array
+
+      rtheta_p      => diag % rtheta_p % array
+      rho_p         => diag % rho_p % array
+      ru            => diag % ru % array
+      rw            => diag % rw % array
+
+      tend_theta  => tend % theta_m % array
+      tend_rho    => tend % rho_zz % array
+      tend_u      => tend % u % array
+      tend_w      => tend % w % array
+
+      cellsOnEdge => grid % cellsOnEdge % array
+
+
+      nCellsSolve = grid % nCellsSolve
+      nEdgesSolve = grid % nEdgesSolve
+      nEdges      = grid % nEdges
+      nVertLevels = grid % nVertLevels
+
+      coef_3rd_order = config_coef_3rd_order
+      if(config_theta_adv_order /=3) coef_3rd_order = 0
+
+
+! -----
+
+     ! Compute residuals
+     if (debug) write(0,*) ' Computing residuals '
+
+     tend_theta(:,1:nCellsSolve) = dt*tend_theta(:,1:nCellsSolve) + rtheta_p_save(:,1:nCellsSolve) &
+                                                                  - rtheta_p(:,1:nCellsSolve)
+     tend_rho(:,1:nCellsSolve)   = dt*tend_rho(:,1:nCellsSolve)   + rho_p_save(:,1:nCellsSolve)    &
+                                                                  - rho_p(:,1:nCellsSolve)
+     tend_u(:,1:nEdgesSolve)     = dt*tend_u(:,1:nEdgesSolve)     + ru_save(:,1:nEdgesSolve)       &
+                                                                  - ru(:,1:nEdgesSolve)
+     tend_w(:,1:nCellsSolve)     = dt*tend_w(:,1:nCellsSolve)     + rw_save(:,1:nCellsSolve)       &
+                                                                  - rw(:,1:nCellsSolve)
+
+
+   end subroutine atm_compute_residuals
+
+! ---------------------------------------------------------------------------------
+
+
    subroutine atm_compute_fast_tend(tend, diag, grid)
+! *** OBSOLETE    JT
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
    ! Compute fast tendencies
    !
@@ -4483,6 +4277,11 @@ module atm_time_integration
       do iCell = 1, nCellsSolve
          fast_tend_w(1,iCell) = 0.0_RKIND
          do k=2,nVertLevels
+! ***
+            if (iCell == 3) then
+              write(0,*) 'FPG = ', rdzu(k)*(pp_lin(k,iCell)-pp_lin(k-1,iCell)), &
+                         ' FBuoy = ',gravity*(fzm(k)*rr(k,iCell) + fzp(k)*rr(k-1,iCell))
+            end if
             fast_tend_w(k,iCell) = - ( rdzu(k)*(pp_lin(k,iCell)-pp_lin(k-1,iCell))        &
                                   + gravity*(fzm(k)*rr(k,iCell) + fzp(k)*rr(k-1,iCell)) )
          end do
@@ -4509,7 +4308,6 @@ module atm_time_integration
       ! This routine closely follows atm_recover_large_step_variables but does not
       ! compute rho_p, rtheta_p, ru, rw  because we have just time stepped those.
       ! 
-      ! *** Note wwAvg and ruAvg are saved BEFORE the RK step in atm_si_advance_rk_step ***
 
       implicit none
 
@@ -4574,6 +4372,7 @@ module atm_time_integration
       coef_3rd_order = config_coef_3rd_order
       if (config_theta_adv_order /=3) coef_3rd_order = 0
 
+
       ! compute new density everywhere so we can compute u from ru.
       ! we will also need it to compute theta_m below
 
@@ -4606,6 +4405,7 @@ module atm_time_integration
       ! initializing the "garbage cell" of rho_zz to a non-zero value
       rho_zz(:,nCells+1) = 1.0
 
+
       do iEdge = 1, nEdges
 
          cell1 = cellsOnEdge(1,iEdge)
@@ -4625,7 +4425,6 @@ module atm_time_integration
                                 *flux/(cf1*rho_zz(1,cell2)+cf2*rho_zz(2,cell2)+cf3*rho_zz(3,cell2))
          w(1,cell1) = w(1,cell1) + (zb(1,1,iEdge) + sign(1.0_RKIND,flux)*coef_3rd_order*zb3(1,1,iEdge))  &
                                 *flux/(cf1*rho_zz(1,cell1)+cf2*rho_zz(2,cell1)+cf3*rho_zz(3,cell1))
-
          do k = 2, nVertLevels
             flux = (fzm(k)*ru(k,iEdge)+fzp(k)*ru(k-1,iEdge))
             w(k,cell2) = w(k,cell2) - (zb(k,2,iEdge)+sign(1.0_RKIND,flux)*coef_3rd_order*zb3(k,2,iEdge)) &
@@ -4637,6 +4436,7 @@ module atm_time_integration
       end do
 
 
+
    end subroutine atm_recover_derived_variables
 
 
@@ -4645,7 +4445,7 @@ module atm_time_integration
    subroutine atm_subtract_fast_tend( tend, grid )
 
 !  Subtract the fast tendencies from the total tendencies to obtain the slow tendencies
-
+! *** OBSOLETE     JT
 
       implicit none
 
@@ -4683,9 +4483,98 @@ module atm_time_integration
 
 ! ---------------------------------------------------------------------------------
 
+   subroutine atm_save_dyn_tend( tend, grid )
+
+!  Save a copy of the dynamical tendencies
+!  (*** The subscript `fast' is no longer appropriate - tidy up later...)
+
+
+      implicit none
+
+      type (tend_type) :: tend
+      type (mesh_type) :: grid
+
+      real (kind=RKIND), dimension(:,:), pointer :: tend_u, tend_rho, &
+                                                    tend_theta, tend_w, &
+                                                    fast_tend_u, fast_tend_rho, &
+                                                    fast_tend_theta, fast_tend_w
+      integer :: nCellsSolve, nEdgesSolve
+
+
+      tend_u      => tend % u % array
+      tend_theta  => tend % theta_m % array
+      tend_w      => tend % w % array
+      tend_rho    => tend % rho_zz % array
+
+      fast_tend_u      => tend % u_fast % array
+      fast_tend_theta  => tend % theta_m_fast % array
+      fast_tend_w      => tend % w_fast % array
+      fast_tend_rho    => tend % rho_zz_fast % array
+
+      nCellsSolve = grid % nCellsSolve
+      nEdgesSolve = grid % nEdgesSolve
+
+
+      fast_tend_u(:,1:nEdgesSolve)     = tend_u(:,1:nEdgesSolve)
+      fast_tend_theta(:,1:nCellsSolve) = tend_theta(:,1:nCellsSolve)
+      fast_tend_w(:,1:nCellsSolve)     = tend_w(:,1:nCellsSolve)
+      fast_tend_rho(:,1:nCellsSolve)   = tend_rho(:,1:nCellsSolve)
+
+
+   end subroutine atm_save_dyn_tend
+
+! ---------------------------------------------------------------------------------
+
+   subroutine atm_combine_dyn_tend( tend, grid )
+
+!  Combine the dynamical tendencies from the old and new time steps
+!  with respective weights 1 - alpha and alpha
+
+
+      implicit none
+
+      type (tend_type) :: tend
+      type (mesh_type) :: grid
+
+      real (kind=RKIND), dimension(:,:), pointer :: tend_u, tend_rho, &
+                                                    tend_theta, tend_w, &
+                                                    fast_tend_u, fast_tend_rho, &
+                                                    fast_tend_theta, fast_tend_w
+      integer :: nCellsSolve, nEdgesSolve
+      real (kind=RKIND) :: a, b
+
+
+      tend_u      => tend % u % array
+      tend_theta  => tend % theta_m % array
+      tend_w      => tend % w % array
+      tend_rho    => tend % rho_zz % array
+
+      fast_tend_u      => tend % u_fast % array
+      fast_tend_theta  => tend % theta_m_fast % array
+      fast_tend_w      => tend % w_fast % array
+      fast_tend_rho    => tend % rho_zz_fast % array
+
+      nCellsSolve = grid % nCellsSolve
+      nEdgesSolve = grid % nEdgesSolve
+
+      a = config_alpha_si
+      b = 1.0_RKIND - a
+
+
+      tend_u(:,1:nEdgesSolve)     = a*tend_u(:,1:nEdgesSolve)     + b*fast_tend_u(:,1:nEdgesSolve)
+      tend_theta(:,1:nCellsSolve) = a*tend_theta(:,1:nCellsSolve) + b*fast_tend_theta(:,1:nCellsSolve)
+      tend_w(:,1:nCellsSolve)     = a*tend_w(:,1:nCellsSolve)     + b*fast_tend_w(:,1:nCellsSolve)
+      tend_rho(:,1:nCellsSolve)   = a*tend_rho(:,1:nCellsSolve)   + b*fast_tend_rho(:,1:nCellsSolve)
+
+
+   end subroutine atm_combine_dyn_tend
+
+! ---------------------------------------------------------------------------------
+
    subroutine atm_add_si_half_inc( diag, grid )
 
 !  Add half of the semi-implicit increments to the current coupled variables
+! *** OBSOLETE    JT
 
       implicit none
 
@@ -4723,9 +4612,55 @@ module atm_time_integration
 
 ! ---------------------------------------------------------------------------------
 
+   subroutine atm_add_si_inc( diag, grid )
+
+!  Add the semi-implicit increments to the current coupled variables
+
+      implicit none
+
+      type (diag_type) :: diag
+      type (mesh_type) :: grid
+
+      real (kind=RKIND), dimension(:,:), pointer :: ru, rho_p, &
+                                                    rtheta_p, rw, &
+                                                    ru_p, rho_pp, &
+                                                    rtheta_pp, rw_p 
+      integer :: nCellsSolve, nEdgesSolve
+
+
+      ru        => diag % ru % array
+      rtheta_p  => diag % rtheta_p % array
+      rw        => diag % rw % array
+      rho_p     => diag % rho_p % array
+
+      ru_p      => diag % ru_p % array
+      rtheta_pp => diag % rtheta_pp % array
+      rw_p      => diag % rw_p % array
+      rho_pp    => diag % rho_pp % array
+
+      nCellsSolve = grid % nCellsSolve
+      nEdgesSolve = grid % nEdgesSolve
+
+
+      ru(:,1:nEdgesSolve)       = ru(:,1:nEdgesSolve)       + ru_p(:,1:nEdgesSolve)
+      rtheta_p(:,1:nCellsSolve) = rtheta_p(:,1:nCellsSolve) + rtheta_pp(:,1:nCellsSolve)
+      rw(:,1:nCellsSolve)       = rw(:,1:nCellsSolve)       + rw_p(:,1:nCellsSolve)
+      rho_p(:,1:nCellsSolve)    = rho_p(:,1:nCellsSolve)    + rho_pp(:,1:nCellsSolve)
+
+! ***
+      write(0,*) '*** Need to acumulate mass fluxes for tracer advection in atm_add_si_inc'
+
+
+   end subroutine atm_add_si_inc
+
+! ---------------------------------------------------------------------------------
+
+
    subroutine atm_build_helmholtz_coeff( block, dt )
 
 !  Construct the coefficients for the helmholtz problem on the finest grid.
+!  This version uses the full thermodynamic fields rather than the
+!  reference profiles.
 !
 
       implicit none
@@ -4739,7 +4674,7 @@ module atm_time_integration
 
       real (kind=RKIND), dimension(block % mesh % nVertLevels+1) :: zz_ave
       real (kind=RKIND), dimension(:), pointer :: rdzu, rdzw, fzm, fzp
-      real (kind=RKIND), dimension(:,:), pointer :: helm_zz, rho_base, theta_base, pressure_base
+      real (kind=RKIND), dimension(:,:), pointer :: helm_zz, rho_zz, theta_m, pressure_base, pressure_p
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m, helm_d2p, helm_d2m
 
@@ -4750,9 +4685,10 @@ module atm_time_integration
       type (mesh_type), pointer  :: fine_grid, coarse_grid
       logical :: debug = .false.
 
-      rho_base         => block % diag % rho_base % array
-      theta_base       => block % diag % theta_base % array
+      rho_zz           => block % state % time_levs(2) % state % rho_zz % array
+      theta_m          => block % state % time_levs(2) % state % theta_m % array
       pressure_base    => block % diag % pressure_base % array
+      pressure_p       => block % diag % pressure_p % array
 
       helm_c           => block % mgs_vars % helm_c % array
       helm_np          => block % mgs_vars % helm_np % array
@@ -4786,8 +4722,6 @@ module atm_time_integration
 
 
 !     Calculate coefficients needed for the Helmholtz operator
-!     Since these depend only on the constant reference state they could
-!     be calculated just once at the start of the run
 
       do iCell = 1, nCellsSolve
 
@@ -4796,10 +4730,10 @@ module atm_time_integration
          helm_d2m(1,iCell) = 0.0_RKIND
          do k = 2, nVertLevels
             zz_ave(k) = fzm(k)*helm_zz(k,iCell) + fzp(k)*helm_zz(k-1,iCell)
-            helm_d2p(k-1,iCell) = zz_ave(k)*fzm(k)*(theta_base(k,iCell) - theta_base(k-1,iCell))*rdzw(k-1) &
-                                / theta_base(k-1,iCell)
-            helm_d2m(k  ,iCell) = zz_ave(k)*fzp(k)*(theta_base(k,iCell) - theta_base(k-1,iCell))*rdzw(k  ) &
-                                / theta_base(k  ,iCell)
+            helm_d2p(k-1,iCell) = zz_ave(k)*fzm(k)*(theta_m(k,iCell) - theta_m(k-1,iCell))*rdzw(k-1) &
+                                / theta_m(k-1,iCell)
+            helm_d2m(k  ,iCell) = zz_ave(k)*fzp(k)*(theta_m(k,iCell) - theta_m(k-1,iCell))*rdzw(k  ) &
+                                / theta_m(k  ,iCell)
          enddo
          helm_d2p(nVertLevels,iCell) = 0.0_RKIND
 
@@ -4825,7 +4759,7 @@ module atm_time_integration
 
          ! Next compute coefficient of undifferentiated term
          do k = 1, nVertLevels
-           helm_c(k,iCell) = rgamma*rho_base(k,iCell)/pressure_base(k,iCell)
+           helm_c(k,iCell) = rgamma*rho_zz(k,iCell)/(pressure_base(k,iCell) + pressure_p(k,iCell))
          enddo
 
          ! Finally construct D1 operator (Top and bottom level values are not needed, but
@@ -4843,10 +4777,10 @@ module atm_time_integration
 
 
          if (debug) then
-            write(0,*) 'build_helm_coeff      rho_base            pressure_base   '
+            write(0,*) 'build_helm_coeff      rho_zz              pressure   '
             do k = 1, nVertLevels
-               write(0,*) block % diag % rho_base % array(k,100),  &
-                          block % diag % pressure_base % array(k,100)
+               write(0,*) rho_zz(k,100),  &
+                          (block % diag % pressure_base % array(k,100)+block % diag % pressure_p % array(k,100))
             enddo
             write(0,*) 'build_helm_coeff      c            zz   '
             do k = 1, nVertLevels
@@ -4975,15 +4909,15 @@ module atm_time_integration
 
 ! ---------------------------------------------------------------------------------
 
-   subroutine atm_build_helmholtz_rhs( tend, diag, mgs_vars, grid, dt )
+   subroutine atm_build_helmholtz_rhs( tend, s, diag, mgs_vars, grid, dt )
 
-!  Given the fast tendencies at the end of the RK step, construct the
-!  RHS of the Helmholtz problem
+!  Given the residuals (stored in tend) construct the RHS of the Helmholtz problem
 
 
       implicit none
 
       type (tend_type) :: tend
+      type (state_type) :: s
       type (diag_type) :: diag
       type (mesh_type), intent(in) :: grid
       type (mgs_vars_type), intent(in) :: mgs_vars
@@ -4998,15 +4932,15 @@ module atm_time_integration
       real (kind=RKIND), dimension(:), pointer :: fzm, fzp, areaCell, dvEdge
       real (kind=RKIND), dimension(:,:), pointer :: zz
 
-      real (kind=RKIND), dimension(:,:), pointer :: theta_base
+      real (kind=RKIND), dimension(:,:), pointer :: theta_m
       real (kind=RKIND), dimension(:,:), pointer :: helm_np, helm_n0, helm_nm, &
                                                     helm_d2p, helm_d2m
-      real (kind=RKIND), dimension(:,:), pointer :: fast_tend_u, fast_tend_rho, &
-                                                    fast_tend_theta, fast_tend_w, &
+      real (kind=RKIND), dimension(:,:), pointer :: tend_u, tend_rho, &
+                                                    tend_theta, tend_w, &
                                                     rhs
 
 
-      theta_base       => diag % theta_base % array
+      theta_m          => s % theta_m % array
       rhs              => diag % rhs % array
 
       helm_np          => mgs_vars % helm_np % array
@@ -5015,10 +4949,10 @@ module atm_time_integration
       helm_d2p         => mgs_vars % helm_d2p % array
       helm_d2m         => mgs_vars % helm_d2m % array
 
-      fast_tend_u      => tend % u_fast % array
-      fast_tend_theta  => tend % theta_m_fast % array
-      fast_tend_w      => tend % w_fast % array
-      fast_tend_rho    => tend % rho_zz_fast % array
+      tend_u      => tend % u % array
+      tend_theta  => tend % theta_m % array
+      tend_w      => tend % w % array
+      tend_rho    => tend % rho_zz % array
 
       fzm         => grid % fzm % array
       fzp         => grid % fzp % array
@@ -5042,12 +4976,6 @@ module atm_time_integration
 
 !     Compute the RHS of the Helmholtz problem
 
-      ! First multiply fast tendencies by dt
-      fast_tend_u(:,1:nEdges)          = dt*fast_tend_u(:,1:nEdges)
-      fast_tend_theta(:,1:nCellsSolve) = dt*fast_tend_theta(:,1:nCellsSolve)
-      fast_tend_w(:,1:nCellsSolve)     = dt*fast_tend_w(:,1:nCellsSolve)
-      fast_tend_rho(:,1:nCellsSolve)   = dt*fast_tend_rho(:,1:nCellsSolve)
-
 
       ! First the contribution from the horizontal divergence of RHS of u equation
       ! (We'll divide by cell area later)
@@ -5056,7 +4984,7 @@ module atm_time_integration
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
          do k=1,nVertLevels
-            flux = fast_tend_u(k,iEdge)*dvEdge(iEdge)
+            flux = tend_u(k,iEdge)*dvEdge(iEdge)
             rhs(k,cell1) = rhs(k,cell1) + flux
             rhs(k,cell2) = rhs(k,cell2) - flux
          end do
@@ -5067,40 +4995,40 @@ module atm_time_integration
 
          ! Modify RHS of theta equation - the modified expression is needed in a couple of places
          do k = 1, nVertLevels
-            fast_tend_theta(k,iCell) = fast_tend_theta(k,iCell)/theta_base(k,iCell)
+            tend_theta(k,iCell) = tend_theta(k,iCell)/theta_m(k,iCell)
          enddo
 
         ! Compute RHS of equation coupling w and pressure increments
-        ! Save the result in fast_tend_w  It will be used later in back-substitution
+        ! Save the result in tend_w  It will be used later in back-substitution
 
          ! First compute contribution from RHS of theta and rho equations,
          ! vertically average, and add to RHS of w equation
          rwtr(1) = 0.0_RKIND
          do k = 2, nvertLevels
-            rwtr(k) = fast_tend_w(k,iCell) + adtg*(                                               &
-                                fzm(k)*( fast_tend_theta(k  ,iCell) - fast_tend_rho(k  ,iCell) )  &
-                              + fzp(k)*( fast_tend_theta(k-1,iCell) - fast_tend_rho(k-1,iCell) ) )
+            rwtr(k) = tend_w(k,iCell) + adtg*(                                               &
+                                fzm(k)*( tend_theta(k  ,iCell) - tend_rho(k  ,iCell) )  &
+                              + fzp(k)*( tend_theta(k-1,iCell) - tend_rho(k-1,iCell) ) )
          enddo
 
 
          ! Now solve tridiagonal system (effectively dividing by (1 + adt^2 * N^2) but
          ! undoing some vertical averaging at the same time)
-         call trisolveb( fast_tend_w(2:nVertLevels,icell), &
+         call trisolveb( tend_w(2:nVertLevels,icell),      &
                              helm_nm(2:nVertLevels,iCell), &
                              helm_n0(2:nVertLevels,iCell), &
                              helm_np(2:nVertLevels,iCell), &
                              rwtr(2:nVertLevels),          &
                              nVertLevels-1 )
-         fast_tend_w(1,iCell) = 0.0_RKIND
-         fast_tend_w(nVertLevels+1,iCell) = 0.0_RKIND
+         tend_w(1,iCell) = 0.0_RKIND
+         tend_w(nVertLevels+1,iCell) = 0.0_RKIND
 
 
          ! Combine contributions to RHS of Helmholtz
          do k = 1, nVertLevels
-            rhs(k,iCell) = fast_tend_theta(k,iCell)                             &
-                              - adt*(rhs(k,iCell)/areaCell(iCell)               &
-                                   + helm_d2p(k,iCell)*fast_tend_w(k+1,iCell)   &
-                                   + helm_d2m(k,iCell)*fast_tend_w(k  ,iCell) )
+            rhs(k,iCell) = tend_theta(k,iCell)                             &
+                              - adt*(rhs(k,iCell)/areaCell(iCell)          &
+                                   + helm_d2p(k,iCell)*tend_w(k+1,iCell)   &
+                                   + helm_d2m(k,iCell)*tend_w(k  ,iCell) )
          enddo
 
       enddo
@@ -5110,7 +5038,7 @@ module atm_time_integration
 
 ! ---------------------------------------------------------------------------------
 
-   subroutine atm_si_backsub( tend, diag, mgs_vars, grid, dt )
+   subroutine atm_si_backsub( tend, s, diag, mgs_vars, grid, dt )
 
 !  Having solved the Helmholtz problem, back-substitute to find
 !  increments of all coupled variables. The results are saved in the variables
@@ -5120,6 +5048,7 @@ module atm_time_integration
       implicit none
 
       type (tend_type) :: tend
+      type (state_type) :: s
       type (diag_type) :: diag
       type (mgs_vars_type) :: mgs_vars
       type (mesh_type), intent(in) :: grid
@@ -5138,36 +5067,35 @@ module atm_time_integration
       real (kind=RKIND), dimension(:,:), pointer :: zz
       real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
  
-      real (kind=RKIND), dimension(:,:), pointer :: theta_base, rtheta_base,       &
-                                                    pressure_base,                 &
+      real (kind=RKIND), dimension(:,:), pointer :: theta_m,                       &
                                                     ru_p, rw_p, rtheta_pp, rho_pp, &
                                                     pressure_inc
-      real (kind=RKIND), dimension(:,:), pointer :: helm_np, helm_n0, helm_nm, &
+      real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
                                                     helm_d1p, helm_d1m
-      real (kind=RKIND), dimension(:,:), pointer :: fast_tend_u, fast_tend_rho, &
-                                                    fast_tend_w 
+      real (kind=RKIND), dimension(:,:), pointer :: tend_u, tend_rho, &
+                                                    tend_w 
       logical, parameter :: debug = .false.
       !logical, parameter :: debug = .true.
 
 
-      theta_base       => diag % theta_base % array
-      rtheta_base      => diag % rtheta_base % array
-      pressure_base    => diag % pressure_base % array
+      theta_m       => s % theta_m % array
+
       ru_p             => diag % ru_p % array
       rw_p             => diag % rw_p % array
       rtheta_pp        => diag % rtheta_pp % array
       rho_pp           => diag % rho_pp % array
       pressure_inc     => diag % pressure_inc % array
 
+      helm_c           => mgs_vars % helm_c % array
       helm_np          => mgs_vars % helm_np % array
       helm_n0          => mgs_vars % helm_n0 % array
       helm_nm          => mgs_vars % helm_nm % array
       helm_d1p         => mgs_vars % helm_d1p % array
       helm_d1m         => mgs_vars % helm_d1m % array
 
-      fast_tend_u      => tend % u_fast % array
-      fast_tend_w      => tend % w_fast % array
-      fast_tend_rho    => tend % rho_zz_fast % array
+      tend_u      => tend % u % array
+      tend_w      => tend % w % array
+      tend_rho    => tend % rho_zz % array
 
       fzm         => grid % fzm % array
       fzp         => grid % fzp % array
@@ -5201,8 +5129,7 @@ module atm_time_integration
 
          ! First recover coupled theta increment
          do k = 1, nVertLevels
-            rtheta_pp(k,iCell) = rgamma*pressure_inc(k,iCell)*rtheta_base(k,iCell)    &
-                                                             /pressure_base(k,iCell)
+            rtheta_pp(k,iCell) = pressure_inc(k,iCell)*theta_m(k,iCell)*helm_c(k,iCell)
          enddo
 
          ! Compute D1(pressure_inc)
@@ -5220,11 +5147,11 @@ module atm_time_integration
                       nVertLevels-1 )
 
          ! Complete the calculation of W increment
-         ! (recall fast_tend_w was modified in atm_build_helmholtz_rhs)
+         ! (recall tend_w was modified in atm_build_helmholtz_rhs)
          ! and include dzeta/dz factor to begin conversion to an Omega increment
          rw_p(1,iCell) = 0.0_RKIND
          do k = 2, nVertLevels
-           rw_p(k,iCell) = (fast_tend_w(k,iCell) - adt*rw_p(k,iCell))            &
+           rw_p(k,iCell) = (tend_w(k,iCell) - adt*rw_p(k,iCell))            &
                           *(fzm(k)*zz(k  ,iCell) + fzp(k)*zz(k-1,iCell))
          enddo
          rw_p(nVertLevels+1,iCell) = 0.0_RKIND
@@ -5238,7 +5165,7 @@ module atm_time_integration
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
          do k=1,nVertLevels
-            ru_p(k,iEdge) = fast_tend_u(k,iEdge)                                &
+            ru_p(k,iEdge) = tend_u(k,iEdge)                                          &
                           - adt*( pressure_inc(k,cell2) - pressure_inc(k,cell1) )    &
                                    / (.5*(zz(k,cell2)+zz(k,cell1))*dcEdge(iEdge))
             flux = ru_p(k,iEdge)*dvEdge(iEdge)
@@ -5254,7 +5181,7 @@ module atm_time_integration
       do iCell = 1, nCellsSolve
          r = 1.0 / areaCell(iCell)
          do k = 1,nVertLevels
-            rho_pp(k,iCell) = fast_tend_rho(k,iCell)                           &
+            rho_pp(k,iCell) = tend_rho(k,iCell)                                &
                             - adt*(rho_pp(k,iCell)*r                           &
                                  + rdzw(k)*(rw_p(k+1,iCell) - rw_p(k,iCell)))
          end do
@@ -5265,15 +5192,6 @@ module atm_time_integration
       do iEdge = 1, nEdges
          cell1 = CellsOnEdge(1,iEdge)
          cell2 = CellsOnEdge(2,iEdge)
-         ! Level 1
-         flux =  (cf1*ru_p(1,iEdge)+cf2*ru_p(2,iEdge)+cf3*ru_p(3,iEdge))  
-         rw_p(1,cell2) = rw_p(1,cell2) + (cf1*zz(1,cell2)+cf2*zz(2,cell2)+cf3*zz(3,cell2))                           &
-                                        *(zb(1,2,iEdge) + sign(1.0_RKIND,flux)*config_coef_3rd_order*zb3(1,2,iEdge)) &
-                                        *flux 
-         rw_p(1,cell1) = rw_p(1,cell1) - (cf1*zz(1,cell1)+cf2*zz(2,cell1)+cf3*zz(3,cell1))                           &
-                                        *(zb(1,1,iEdge) + sign(1.0_RKIND,flux)*config_coef_3rd_order*zb3(1,1,iEdge)) &
-                                        *flux
-         ! Other levels
          do k = 2, nVertLevels
             flux =  (fzm(k)*ru_p(k,iEdge)+fzp(k)*ru_p(k-1,iEdge))  
             rw_p(k,cell2) = rw_p(k,cell2) + (fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2))                                   &
@@ -5287,6 +5205,76 @@ module atm_time_integration
 
 
    end subroutine atm_si_backsub
+! ---------------------------------------------------------------------------------
+
+   subroutine atm_diagnostics( s, diag, grid )
+
+!  Compute some diagnostic fields
+
+      implicit none
+
+      type (state_type) :: s
+      type (diag_type) :: diag
+      type (mesh_type), intent(in) :: grid
+
+      integer :: iCell, k
+      integer :: nVertLevels, nCellsSolve, index_qv
+
+      real (kind=RKIND) :: aa, bb, pabove, pbelow, p850
+      real (kind=RKIND), dimension(:), pointer :: rdzw
+      real (kind=RKIND), dimension(:), pointer :: surface_pressure, t850
+      real (kind=RKIND), dimension(:,:), pointer :: rb, rr, ppb, pp, theta_m, exner
+      real (kind=RKIND), dimension(:,:,:), pointer :: scalars
+
+
+      rdzw               => grid % rdzw % array
+
+      surface_pressure  => diag % surface_pressure % array
+      t850              => diag % temperature_850hPa % array
+
+      rb                => diag % rho_base % array
+      rr                => diag % rho_p % array
+      ppb               => diag % pressure_base % array
+      pp                => diag % pressure_p % array
+      exner             => diag % exner % array
+
+      theta_m           => s % theta_m % array
+      scalars           => s % scalars % array
+
+      nVertLevels = grid % nVertLevels
+      nCellsSolve = grid % nCellsSolve
+      index_qv = s % index_qv
+
+
+
+      do iCell = 1 ,nCellsSolve
+
+        ! Calculation of surface pressure:
+        surface_pressure(iCell) = (0.5/rdzw(1))*gravity                                 &
+                        * (1.25*(rr(1,iCell) + rb(1,iCell)) * (1. + scalars(index_qv,1,iCell))  &
+                        -  0.25*(rr(2,iCell) + rb(2,iCell)) * (1. + scalars(index_qv,2,iCell)))
+        surface_pressure(iCell) = surface_pressure(iCell) + pp(1,iCell) + ppb(1,iCell)
+
+        ! Search for 850hpa level
+        p850 = 85000.0_RKIND
+        k = 1
+        pbelow = ppb(1,iCell) + pp(1,iCell)
+        pabove = ppb(2,iCell) + pp(2,iCell)
+        do while (pabove > p850)
+          k = k + 1
+          pbelow = pabove
+          pabove = ppb(k+1,iCell) + pp(k+1,iCell)
+        end do
+        ! Linearly interpolate T
+        aa = (pbelow - p850)/(pbelow - pabove)
+        bb = 1.0_RKIND - aa
+        t850(iCell) = aa*exner(k+1,iCell)*theta_m(k+1,iCell)/(1. + (rv/rgas)*scalars(index_qv,k+1,iCell)) &
+                    + bb*exner(k  ,iCell)*theta_m(k  ,iCell)/(1. + (rv/rgas)*scalars(index_qv,k  ,iCell))
+      end do
+
+
+
+   end subroutine atm_diagnostics
 
 ! ---------------------------------------------------------------------------------
 

@@ -40,6 +40,7 @@
         <nml_record name="nhyd_model">
                 <nml_option name="config_time_integration"           type="character"     default_value="SRK3"/>
                 <nml_option name="config_alpha_si"                   type="real"          default_value="0.5"/>
+                <nml_option name="config_niter_si"                   type="integer"       default_value="2"/>
                 <nml_option name="config_dt"                         type="real"          default_value="600.0"/>
                 <nml_option name="config_calendar_type"              type="character"     default_value="gregorian"/>
                 <nml_option name="config_start_time"                 type="character"     default_value="0000-01-01_00:00:00"/>

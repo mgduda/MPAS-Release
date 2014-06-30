@@ -1,5 +1,5 @@
 &nhyd_model
-   config_init_case = 1
+   config_init_case = 2
    config_theta_adv_order = 3
    config_num_mgslevels = 1
 /
