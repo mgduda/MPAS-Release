@@ -32,11 +32,7 @@
 <!-- **************************************************************************************** -->
 <!-- ************************************** Namelists *************************************** -->
 <!-- **************************************************************************************** -->
-<!-- STEVE_edit: added config_num_mgslevels below******************************************** -->
-<!-- STEVE_edit: added config_mg_input_name below******************************************** -->
 
-        <!-- JOHN_edit: Added switches config_alpha_si, config_mg_solve_depth, config_mg_solve_npass -->
-        <!-- *** check: do we need both config_mg_solve_depth and config_num_mgslevels ??? *** -->
         <nml_record name="nhyd_model">
                 <nml_option name="config_time_integration"           type="character"     default_value="SRK3"/>
                 <nml_option name="config_alpha_si"                   type="real"          default_value="0.5"/>
@@ -328,7 +324,7 @@
                 <var name="rho_pp"                  type="real"     dimensions="nVertLevels nCells Time"/>
                 <var name="rho_p_save"              type="real"     dimensions="nVertLevels nCells Time"/>
 
-                <!-- John_edit: Two additional variables needed for semi-implicit solver -->
+                <!-- Two additional variables needed for semi-implicit solver -->
                 <var name="pressure_inc"            type="real"     dimensions="nVertLevels nCells Time"/>
                 <var name="rhs"                     type="real"     dimensions="nVertLevels nCells Time"/>
 
@@ -369,16 +365,15 @@
 
         <var_struct name="tend" time_levs="1">
 
-                <!-- JOHN_edit: Included fast tendency fields needed for semi-implicit solver -->
                 <!-- tendencies for prognostic variables -->
                 <var name="tend_u"             name_in_code="u"             type="real"     dimensions="nVertLevels nEdges Time"     streams="o"/>
                 <var name="tend_w"             name_in_code="w"             type="real"     dimensions="nVertLevelsP1 nCells Time"   streams="o"/>
                 <var name="tend_rho"           name_in_code="rho_zz"        type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
                 <var name="tend_theta"         name_in_code="theta_m"       type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
-                <var name="tend_u_fast"        name_in_code="u_fast"        type="real"     dimensions="nVertLevels nEdges Time"     streams="o"/>
-                <var name="tend_w_fast"        name_in_code="w_fast"        type="real"     dimensions="nVertLevelsP1 nCells Time"   streams="o"/>
-                <var name="tend_rho_fast"      name_in_code="rho_zz_fast"   type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
-                <var name="tend_theta_fast"    name_in_code="theta_m_fast"  type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
+                <var name="tend_u_save"        name_in_code="u_save"        type="real"     dimensions="nVertLevels nEdges Time"     streams="o"/>
+                <var name="tend_w_save"        name_in_code="w_save"        type="real"     dimensions="nVertLevelsP1 nCells Time"   streams="o"/>
+                <var name="tend_rho_save"      name_in_code="rho_zz_save"   type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
+                <var name="tend_theta_save"    name_in_code="theta_m_save"  type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
                 <var name="rt_diabatic_tend"                                type="real"     dimensions="nVertLevels nCells Time"     streams="r"/>
                 <var name="euler_tend_u"       name_in_code="u_euler"       type="real"     dimensions="nVertLevels nEdges Time"/>
                 <var name="euler_tend_w"       name_in_code="w_euler"       type="real"     dimensions="nVertLevelsP1 nCells Time"/>
@@ -1034,8 +1029,6 @@
         </var_struct>
 
         <!-- multi-grid mesh variables used in solution of Helmholtz problem -->
-        <!-- JOHN: Sorted out vertical dimensions of arrays -->
-        <!-- JOHN_edit -->
         <var_struct name="mgs_vars" time_levs="1">
 		<var name="helm_inc"                    type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
                 <var name="helm_rhs"                	type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
