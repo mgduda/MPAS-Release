@@ -3673,34 +3673,72 @@ module atm_time_integration
 
          if (config_scalar_advection) then
 
+            if (debug) write(0,*) ' scalar advection '
 
-!***
-      write(0,*) '*** need to sort out scalar advection'
+            ! There are four options for combining RK3 time stepping of scalars with the
+            ! semi-implicit scheme for dynamics
+            ! (1) RK3 step for scalars only at the end of the last dynamics iteration
+            ! (2) RK3 step for scalars only at the end of the first and last dynamics iterations
+            ! (3) RK3 step for scalars at the end of every dynamics iteration
+            ! (4) Forward Euler scalar step at the end of the first dynamics iteration and
+            !     RK3 at the end of the last dynamics iteration.
+            ! In all options, the mono version of scalar advection is used only on the
+            ! last RK stage of the last dynamics iteration
 
+            if ( config_si_scalar_advection_opt == 4 .and. iter == 1) then
 
-         if (debug) write(0,*) ' scalar advection '
-         block => domain % blocklist
-         do while (associated(block))
-            !
-            ! Note: The advance_scalars_mono routine can be used without limiting, and thus, encompasses 
-            !       the functionality of the advance_scalars routine; however, it is noticeably slower, 
-            !       so we use the advance_scalars routine for the first two RK substeps.
-            !
-            if (rk_step < 3 .or. (.not. config_monotonic .and. .not. config_positive_definite)) then
-               call atm_advance_scalars( block % tend, &
-                                     block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
-                                     block % diag, &
-                                     block % mesh, rk_timestep(rk_step) )
-            else
-               block % domain = domain 
-               call atm_advance_scalars_mono( block % tend, &
-                                              block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
-                                              block % diag, block % mesh, &
-                                              rk_timestep(rk_step))
+               ! Forward Euler
+               block => domain % blocklist
+               do while (associated(block))
+                  call atm_advance_scalars( block % tend, &
+                                        block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
+                                        block % diag, &
+                                        block % mesh, dt )
+                  block => block % next
+               end do
+
+            else if ( (config_si_scalar_advection_opt == 2 .and. iter == 1) .or.    &
+                      (config_si_scalar_advection_opt == 3) .or.                    &
+                      (iter == config_niter_si) ) then
+               ! RK3
+               ! After the first iteration we need to reset time level 2 scalars before advecting
+               if (iter > 1) then
+                  block => domain % blocklist
+                  do while (associated(block))
+                     call atm_reset_scalars(block % state % time_levs(1) % state, &
+                                            block % state % time_levs(2) % state )
+                  end do
+               end if
+               do rk_step = 1, 3
+                  block => domain % blocklist
+                  do while (associated(block))
+                     !
+                     ! Note: The advance_scalars_mono routine can be used without limiting, and thus, encompasses 
+                     !       the functionality of the advance_scalars routine; however, it is noticeably slower, 
+                     !       so we use the advance_scalars routine except on the last stage at the last iteration.
+                     !
+                     if (rk_step < 3 .or. iter < config_niter_si .or. &
+                         (.not. config_monotonic .and. .not. config_positive_definite)) then
+                        call atm_advance_scalars( block % tend, &
+                                                  block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
+                                                  block % diag, &
+                                                  block % mesh, rk_timestep(rk_step) )
+                     else
+                        block % domain = domain 
+                        call atm_advance_scalars_mono( block % tend, &
+                                                       block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
+                                                       block % diag, block % mesh, &
+                                                       rk_timestep(rk_step))
+                     end if
+                     block => block % next
+                  end do
+                  ! Exchange scalars ready for next RK stage
+                  if (rk_step < 3) then
+                     call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % scalars)
+                  end if
+               end do
             end if
-            block => block % next
-         end do
-         if (debug) write(0,*) ' finished scalar advection '
+            if (debug) write(0,*) ' finished scalar advection '
 
          else
  
@@ -3714,11 +3752,6 @@ module atm_time_integration
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
 
-
-         ! Exchange scalars
-         if (iter < config_niter_si) then
-            call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % scalars)
-         end if
 
       end do ! iteration loop
       if (debug) write(0,*) ' SI iterations completed '
@@ -3975,6 +4008,24 @@ module atm_time_integration
    end subroutine atm_si_advance_rk_step
 
 ! ---------------------------------------------------------------------------------
+
+   subroutine atm_reset_scalars( s_old, s_new )
+
+!  Reset time level 2 scalars to time level 1 values before advection
+!  (after the first semi-implicit iteration)
+
+      implicit none
+
+      type (state_type) :: s_new, s_old
+
+
+      s_new % scalars % array = s_old % scalars % array
+
+
+   end subroutine atm_reset_scalars
+
+!----------------------------------------------------------------------------------
+
 
    subroutine atm_compute_residuals( diag, tend, grid, dt )
 
