@@ -3516,7 +3516,7 @@ module atm_time_integration
       block => domain % blocklist
       do while (associated(block))
          call atm_compute_dyn_tend( block % tend, block % state % time_levs(2) % state, block % diag, block % mesh, 1, dt )
-         call atm_save_dyn_tend(block % tend, block % mesh)
+         call atm_save_dyn_tend(block % tend, block % diag, block % mesh)
          block => block % next
       end do
       if (debug) write(0,*) ' finished compute_dyn_tend '
@@ -4194,20 +4194,24 @@ module atm_time_integration
 
 ! ---------------------------------------------------------------------------------
 
-   subroutine atm_save_dyn_tend( tend, grid )
+   subroutine atm_save_dyn_tend( tend, diag, grid )
 
 !  Save a copy of the dynamical tendencies
+!  Also save the initial estimate of the time averaged fluxes
+!  ruAvg and wwAvg; these will be incremented in atm_add_si_inc
 
       implicit none
 
       type (tend_type) :: tend
+      type (diag_type) :: diag
       type (mesh_type) :: grid
 
       real (kind=RKIND), dimension(:,:), pointer :: tend_u, tend_rho, &
                                                     tend_theta, tend_w, &
                                                     save_tend_u, save_tend_rho, &
-                                                    save_tend_theta, save_tend_w
-      integer :: nCellsSolve, nEdgesSolve
+                                                    save_tend_theta, save_tend_w, &
+                                                    ru, rw, ruAvg, wwAvg
+      integer :: nCellsSolve, nEdgesSolve, nCells, nEdges
 
 
       tend_u      => tend % u % array
@@ -4220,14 +4224,25 @@ module atm_time_integration
       save_tend_w      => tend % w_save % array
       save_tend_rho    => tend % rho_zz_save % array
 
+      ru    => diag % ru % array
+      rw    => diag % rw % array
+      ruAvg => diag % ruAvg % array
+      wwAvg => diag % wwAvg % array
+
+
       nCellsSolve = grid % nCellsSolve
       nEdgesSolve = grid % nEdgesSolve
+      nCells      = grid % nCells
+      nEdges      = grid % nEdges
 
 
       save_tend_u(:,1:nEdgesSolve)     = tend_u(:,1:nEdgesSolve)
       save_tend_theta(:,1:nCellsSolve) = tend_theta(:,1:nCellsSolve)
       save_tend_w(:,1:nCellsSolve)     = tend_w(:,1:nCellsSolve)
       save_tend_rho(:,1:nCellsSolve)   = tend_rho(:,1:nCellsSolve)
+
+      ruAvg(:,1:nEdges) = ru(:,1:nEdges)
+      wwAvg(:,1:nCells) = rw(:,1:nCells)
 
 
    end subroutine atm_save_dyn_tend
@@ -4292,8 +4307,9 @@ module atm_time_integration
       real (kind=RKIND), dimension(:,:), pointer :: ru, rho_p, &
                                                     rtheta_p, rw, &
                                                     ru_p, rho_pp, &
-                                                    rtheta_pp, rw_p 
-      integer :: nCellsSolve, nEdgesSolve
+                                                    rtheta_pp, rw_p, &
+                                                    ruAvg, wwAvg
+      integer :: nCellsSolve, nEdgesSolve, nCells, nEdges
 
 
       ru        => diag % ru % array
@@ -4306,8 +4322,14 @@ module atm_time_integration
       rw_p      => diag % rw_p % array
       rho_pp    => diag % rho_pp % array
 
+      ruAvg => diag % ruAvg % array
+      wwAvg => diag % wwAvg % array
+
+
       nCellsSolve = grid % nCellsSolve
       nEdgesSolve = grid % nEdgesSolve
+      nCells      = grid % nCells
+      nEdges      = grid % nEdges
 
 
       ru(:,1:nEdgesSolve)       = ru(:,1:nEdgesSolve)       + ru_p(:,1:nEdgesSolve)
@@ -4315,8 +4337,11 @@ module atm_time_integration
       rw(:,1:nCellsSolve)       = rw(:,1:nCellsSolve)       + rw_p(:,1:nCellsSolve)
       rho_p(:,1:nCellsSolve)    = rho_p(:,1:nCellsSolve)    + rho_pp(:,1:nCellsSolve)
 
-! ***
-      write(0,*) '*** Need to acumulate mass fluxes for tracer advection in atm_add_si_inc'
+
+      ! Increment time averaged fluxes for scalar advection
+      ruAvg(:,1:nEdges) = ruAvg(:,1:nEdges) + ru_p(:,1:nEdges)
+      wwAvg(:,1:nCells) = wwAvg(:,1:nCells) + rw_p(:,1:nCells)
+
 
 
    end subroutine atm_add_si_inc
