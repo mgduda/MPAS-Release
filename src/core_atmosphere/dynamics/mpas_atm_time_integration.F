@@ -609,7 +609,8 @@ module atm_time_integration
       type (diag_type) :: diag
       type (mesh_type) :: grid
 
-      integer :: iCell, iEdge, k, cell1, cell2, coef_3rd_order
+      integer :: iCell, iEdge, k, cell1, cell2
+      real (kind=RKIND) coef_3rd_order
       integer :: nCellsSolve, nCells, nVertLevels, nEdges
       integer, dimension(:,:), pointer :: cellsOnEdge
       real (kind=RKIND), dimension(:), pointer :: fzm, fzp, dvEdge, areaCell
@@ -3323,7 +3324,8 @@ module atm_time_integration
       type (diag_type), intent(inout) :: diag
       type (mesh_type), intent(inout) :: grid
 
-      integer :: k,iCell,iEdge,iCell1,iCell2, cell1, cell2, coef_3rd_order
+      integer :: k,iCell,iEdge,iCell1,iCell2, cell1, cell2
+      real (kind=RKIND) :: coef_3rd_order
       integer :: nCells, nEdges, nVertLevels
       real (kind=RKIND) :: p0, rcv, flux
       integer, dimension(:,:), pointer :: cellsOnEdge
@@ -3906,7 +3908,7 @@ module atm_time_integration
 
       integer :: iCell, iEdge, k, cell1, cell2
       integer :: nVertLevels, nEdges, nCellsSolve, nEdgesSolve
-      integer :: coef_3rd_order
+      real (kind=RKIND) :: coef_3rd_order
       real (kind=RKIND), dimension(:,:), pointer :: rtheta_p_save, rho_p_save, ru_save, rw_save, &
                                                     rtheta_p,      rho_p,      ru,      rw,      &
                                                     tend_theta,    tend_rho,   tend_u,  tend_w,  &
@@ -4026,7 +4028,6 @@ module atm_time_integration
 
 !----------------------------------------------------------------------------------
 
-
    subroutine atm_compute_residuals( diag, tend, grid, dt )
 
       ! Compute the residual in each governing equation:
@@ -4042,7 +4043,6 @@ module atm_time_integration
 
       integer :: iCell, iEdge, k, cell1, cell2
       integer :: nVertLevels, nEdges, nCellsSolve, nEdgesSolve
-      integer :: coef_3rd_order
       real (kind=RKIND), dimension(:,:), pointer :: rtheta_p_save, rho_p_save, ru_save, rw_save, &
                                                     rtheta_p,      rho_p,      ru,      rw,      &
                                                     tend_theta,    tend_rho,   tend_u,  tend_w,  &
@@ -4082,10 +4082,6 @@ module atm_time_integration
       nEdgesSolve = grid % nEdgesSolve
       nEdges      = grid % nEdges
       nVertLevels = grid % nVertLevels
-
-      coef_3rd_order = config_coef_3rd_order
-      if(config_theta_adv_order /=3) coef_3rd_order = 0
-
 
 ! -----
 
