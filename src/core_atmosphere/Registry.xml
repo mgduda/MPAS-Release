@@ -389,6 +389,15 @@
                         <var name="tend_qs"    name_in_code="qs"        array_group="moist"       streams="o"/>
                         <var name="tend_qg"    name_in_code="qg"        array_group="moist"       streams="o"/>
                 </var_array>
+                <!-- scalar tendencies - for semi-implicit option we need to save a copy of the scalar physics tendencies -->
+                <var_array name="scalars_save" type="real" dimensions="nVertLevels nCells Time">
+                        <var name="tend_qv"    name_in_code="sqv"        array_group="save_moist"       streams="o"/>
+                        <var name="tend_qc"    name_in_code="sqc"        array_group="save_moist"       streams="o"/>
+                        <var name="tend_qr"    name_in_code="sqr"        array_group="save_moist"       streams="o"/>
+                        <var name="tend_qi"    name_in_code="sqi"        array_group="save_moist"       streams="o"/>
+                        <var name="tend_qs"    name_in_code="sqs"        array_group="save_moist"       streams="o"/>
+                        <var name="tend_qg"    name_in_code="sqg"        array_group="save_moist"       streams="o"/>
+                </var_array>
         </var_struct>
 
 

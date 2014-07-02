@@ -6,8 +6,7 @@
    config_num_mgslevels = 3
    config_mg_solve_npass = 1
    config_time_integration = 'SI'
-   config_theta_vadv_order = 2
-   config_scalar_advection = F
+   config_scalar_advection = T
 /
    config_stop_time  = '0000-01-16_00:00:00'
 
@@ -16,7 +15,7 @@
    config_mg_input_name       = 'MG_nr5_grid.nc'
    config_output_name         = 'nr5.output.nc'
    config_restart_name        = 'nr5.restart.nc'
-   config_restart_interval    = '1_00:00:00'
+   config_restart_interval    = '6_00:00:00'
    config_output_interval     = '1_00:00:00'
    config_frames_per_outfile  = 1
 /

@@ -3454,6 +3454,7 @@ module atm_time_integration
       integer :: iScalar
 
       real (kind=RKIND), dimension(3) :: rk_timestep
+      logical :: spt_modified
 !      logical, parameter :: debug = .false.
       logical, parameter :: debug = .true.
 
@@ -3530,7 +3531,7 @@ module atm_time_integration
 
       do iter = 1, config_niter_si  ! Iterative solution loop
 
-         if(debug) write(0,*) ' Solver iteration ', iter
+         if (debug) write(0,*) ' Solver iteration ', iter
 
 
          ! Compute dynamical tendencies using latest estimate of new time level values
@@ -3587,8 +3588,19 @@ module atm_time_integration
                          iter - config_niter_si + 3 )                 ! Trick to get printed diagnostics on last call!
             block => block % next
          end do
+         spt_modified = .false.
          if (debug) write(0,*) '    finished add physics tendencies '
 #endif
+
+
+         ! Save scalar physics tendencies - we will need these repeatedly in the scalar advection
+         if (debug) write(0,*) '    save_scalar_phys_tend '
+         block => domain % blocklist
+         do while (associated(block))
+            call atm_save_scalar_phys_tend( block % tend, block % mesh )
+            block => block % next
+         end do
+         if (debug) write(0,*) '    finished save_scalar_phys_tend '
 
 
          ! Compute residuals
@@ -3690,6 +3702,7 @@ module atm_time_integration
             if ( config_si_scalar_advection_opt == 4 .and. iter == 1) then
 
                ! Forward Euler
+               if (debug) write(0,*) '    forward euler scalar advection '
                block => domain % blocklist
                do while (associated(block))
                   call atm_advance_scalars( block % tend, &
@@ -3698,20 +3711,40 @@ module atm_time_integration
                                         block % mesh, dt )
                   block => block % next
                end do
+               spt_modified = .true.
 
             else if ( (config_si_scalar_advection_opt == 2 .and. iter == 1) .or.    &
                       (config_si_scalar_advection_opt == 3) .or.                    &
                       (iter == config_niter_si) ) then
+
                ! RK3
+
                ! After the first iteration we need to reset time level 2 scalars before advecting
-               if (iter > 1) then
+               if (iter > 1 .and. config_si_scalar_advection_opt .ne. 1) then
+                  if (debug) write(0,*) '    reset time level 2 scalars '
                   block => domain % blocklist
                   do while (associated(block))
                      call atm_reset_scalars(block % state % time_levs(1) % state, &
                                             block % state % time_levs(2) % state )
                   end do
                end if
+
                do rk_step = 1, 3
+
+                  if (debug) write(0,*) '    RK3 scalar advection stage ',rk_step
+
+                  ! Restore scalar physics tendencies if they have been previously modified by
+                  ! by an advection call
+                  if (spt_modified) then
+                     if (debug) write(0,*) '    restore_scalar_phys_tend '
+                     block => domain % blocklist
+                     do while (associated(block))
+                        call atm_restore_scalar_phys_tend( block % tend, block % mesh )
+                        block => block % next
+                     end do
+                     if (debug) write(0,*) '    finished restore_scalar_phys_tend '
+                  endif
+
                   block => domain % blocklist
                   do while (associated(block))
                      !
@@ -3721,12 +3754,14 @@ module atm_time_integration
                      !
                      if (rk_step < 3 .or. iter < config_niter_si .or. &
                          (.not. config_monotonic .and. .not. config_positive_definite)) then
+                        if (debug) write(0,*) '       advance_scalars'
                         call atm_advance_scalars( block % tend, &
                                                   block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
                                                   block % diag, &
                                                   block % mesh, rk_timestep(rk_step) )
                      else
-                        block % domain = domain 
+                        block % domain = domain
+                        if (debug) write(0,*) '       advance_scalars_mono'
                         call atm_advance_scalars_mono( block % tend, &
                                                        block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
                                                        block % diag, block % mesh, &
@@ -3734,11 +3769,13 @@ module atm_time_integration
                      end if
                      block => block % next
                   end do
+                  spt_modified = .true.
                   ! Exchange scalars ready for next RK stage
                   if (rk_step < 3) then
                      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % scalars)
                   end if
-               end do
+
+               end do     ! End of RK loop
             end if
             if (debug) write(0,*) ' finished scalar advection '
 
@@ -3848,8 +3885,8 @@ module atm_time_integration
          write(0,*) 'global min, max u ',global_scalar_min, global_scalar_max
 
          do iScalar = 1, block % state % time_levs(2) % state % num_scalars
-            scalar_min = 0.
-            scalar_max = 0.
+            scalar_min = 1.0e6
+            scalar_max = -1.0e6
             do iCell = 1, block % mesh % nCellsSolve
             do k = 1, block % mesh % nVertLevels
                scalar_min = min(scalar_min, block % state % time_levs(2) % state % scalars % array(iScalar,k,iCell))
@@ -3890,127 +3927,6 @@ module atm_time_integration
 
 ! -------------------------------------------------------------------------------
 
-   subroutine atm_si_advance_rk_step( diag, tend, grid, dtrk )
-
-      ! This subroutine carries out one stage of the RK explicit part of the time step
-      ! Tendencies are tendencies of coupled variables, so we update the coupled variables
-      ! in the diag array.
-
-      ! The mass flux is saved in ruAvg and wwAvg for later tracer transport
-! *** OBSOLETE   BUT A MODIFIED VERSION MIGHT BE NEEDED FOR SCALARS...    JT
-
-      implicit none
-
-      type (diag_type) :: diag
-      type (tend_type) :: tend
-      type (mesh_type), intent(in) :: grid
-      real (kind=RKIND), intent(in) :: dtrk
-
-      integer :: iCell, iEdge, k, cell1, cell2
-      integer :: nVertLevels, nEdges, nCellsSolve, nEdgesSolve
-      real (kind=RKIND) :: coef_3rd_order
-      real (kind=RKIND), dimension(:,:), pointer :: rtheta_p_save, rho_p_save, ru_save, rw_save, &
-                                                    rtheta_p,      rho_p,      ru,      rw,      &
-                                                    tend_theta,    tend_rho,   tend_u,  tend_w,  &
-                                                    zz
-      integer, dimension(:,:), pointer :: cellsOnEdge
-      real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
-      real (kind=RKIND), dimension(:), pointer :: fzm, fzp
-      real (kind=RKIND) :: flux
-
-      logical, parameter :: debug = .true.
-!--
-
-      fzm           => grid % fzm % array
-      fzp           => grid % fzp % array
-      zz            => grid % zz % array
-      zb            => grid % zb % array
-      zb3           => grid % zb3 % array
-
-      rtheta_p_save => diag % rtheta_p_save % array
-      rho_p_save    => diag % rho_p_save % array
-      ru_save       => diag % ru_save % array
-      rw_save       => diag % rw_save % array
-
-      rtheta_p      => diag % rtheta_p % array
-      rho_p         => diag % rho_p % array
-      ru            => diag % ru % array
-      rw            => diag % rw % array
-
-      tend_theta  => tend % theta_m % array
-      tend_rho    => tend % rho_zz % array
-      tend_u      => tend % u % array
-      tend_w      => tend % w % array
-
-      cellsOnEdge => grid % cellsOnEdge % array
-
-
-      nCellsSolve = grid % nCellsSolve
-      nEdgesSolve = grid % nEdgesSolve
-      nEdges      = grid % nEdges
-      nVertLevels = grid % nVertLevels
-
-      coef_3rd_order = config_coef_3rd_order
-      if(config_theta_adv_order /=3) coef_3rd_order = 0
-
-
-
-      ! we solve for omega instead of w (see Klemp et al MWR 2007),
-      ! so here we change the w tendency to an omega tendency
-
-      do iCell = 1, nCellsSolve
-      do k = 2, nVertLevels
-         tend_w(k,iCell) = ( fzm(k)*zz(k  ,iCell) + fzp(k)*zz(k-1,iCell) ) &
-                                      * tend_w(k,iCell)
-      end do
-      end do
-
-      ! here we need to compute the omega tendency in a manner consistent with our diagnosis of omega.
-      ! this requires us to use the same flux divergence as is used in the theta eqn - see Klemp et al MWR 2003.
-
-      do iEdge = 1, nEdges
-
-         cell1 = cellsOnEdge(1,iEdge)
-         cell2 = cellsOnEdge(2,iEdge)
-
-         do k = 2, nVertLevels
-            flux = fzm(k) * tend_u(k,iEdge) + fzp(k) * tend_u(k-1,iEdge)
-            tend_w(k,cell2) = tend_w(k,cell2)   &
-                     + (zb(k,2,iEdge) + coef_3rd_order*sign(1.0_RKIND,tend_u(k,iEdge))*zb3(k,2,iEdge))*flux   &
-                     * (fzm(k)*zz(k,cell2) + fzp(k)*zz(k-1,cell2)) 
-            tend_w(k,cell1) = tend_w(k,cell1)   &
-                     - (zb(k,1,iEdge) + coef_3rd_order*sign(1.0_RKIND,tend_u(k,iEdge))*zb3(k,1,iEdge))*flux   &
-                     * (fzm(k)*zz(k,cell1) + fzp(k)*zz(k-1,cell1)) 
-         end do
-
-      end do
-
-! -----
-
-      !  ruAvg and wwAvg will store the mass fluxes for the subsequent scalar transport.
-      !  *** Think about mass-tracer consistency  - need to include SI contributions ***
-
-      diag % ruAvg % array = ru
-      diag % wwAvg % array = rw
-
-! -----
-
-     ! Add tendencies*rkdt to old fields to get new
-
-      if (debug) write(0,*) ' Doing one stage of RK '
-
-      rtheta_p(:,1:nCellsSolve) = rtheta_p_save(:,1:nCellsSolve) + dtrk*tend_theta(:,1:nCellsSolve)
-      rho_p(:,1:nCellsSolve)    = rho_p_save(:,1:nCellsSolve)    + dtrk*tend_rho(:,1:nCellsSolve)
-      ru(:,1:nEdgesSolve)       = ru_save(:,1:nEdgesSolve)       + dtrk*tend_u(:,1:nEdgesSolve)
-      rw(:,1:nCellsSolve)       = rw_save(:,1:nCellsSolve)       + dtrk*tend_w(:,1:nCellsSolve)
-
-
-
-
-   end subroutine atm_si_advance_rk_step
-
-! ---------------------------------------------------------------------------------
-
    subroutine atm_reset_scalars( s_old, s_new )
 
 !  Reset time level 2 scalars to time level 1 values before advection
@@ -4025,6 +3941,48 @@ module atm_time_integration
 
 
    end subroutine atm_reset_scalars
+
+!----------------------------------------------------------------------------------
+
+   subroutine atm_save_scalar_phys_tend( tend, grid )
+
+! Save the physics tendencies of scalars for re-use by the RK3 advection scheme.
+
+      implicit none
+
+      type (tend_type) :: tend
+      type (mesh_type) :: grid
+
+      integer :: nCellsSolve
+
+
+      nCellsSolve = grid % nCellsSolve
+      tend % scalars_save % array(:,:,1:nCellsSolve) = tend % scalars % array(:,:,1:nCellsSolve)
+
+
+   end subroutine atm_save_scalar_phys_tend
+
+!----------------------------------------------------------------------------------
+
+   subroutine atm_restore_scalar_phys_tend( tend, grid )
+
+! Restore the physics tendencies of scalars for re-use by the RK3 advection scheme.
+! (As an alternative we could call physics_addtend, but this would involve additional
+! flops and memory access.)
+
+      implicit none
+
+      type (tend_type) :: tend
+      type (mesh_type) :: grid
+
+      integer :: nCellsSolve
+
+
+      nCellsSolve = grid % nCellsSolve
+      tend % scalars % array(:,:,1:nCellsSolve) = tend % scalars_save % array(:,:,1:nCellsSolve)
+
+
+   end subroutine atm_restore_scalar_phys_tend
 
 !----------------------------------------------------------------------------------
 
@@ -4238,7 +4196,6 @@ module atm_time_integration
 
    end subroutine atm_recover_derived_variables
 
-
 ! ---------------------------------------------------------------------------------
 
    subroutine atm_save_dyn_tend( tend, diag, grid )
@@ -4357,6 +4314,7 @@ module atm_time_integration
                                                     rtheta_pp, rw_p, &
                                                     ruAvg, wwAvg
       integer :: nCellsSolve, nEdgesSolve, nCells, nEdges
+      real (kind=RKIND) :: bb
 
 
       ru        => diag % ru % array
@@ -4378,6 +4336,8 @@ module atm_time_integration
       nCells      = grid % nCells
       nEdges      = grid % nEdges
 
+      bb = 1.0_RKIND - config_alpha_si
+
 
       ru(:,1:nEdgesSolve)       = ru(:,1:nEdgesSolve)       + ru_p(:,1:nEdgesSolve)
       rtheta_p(:,1:nCellsSolve) = rtheta_p(:,1:nCellsSolve) + rtheta_pp(:,1:nCellsSolve)
@@ -4386,8 +4346,8 @@ module atm_time_integration
 
 
       ! Increment time averaged fluxes for scalar advection
-      ruAvg(:,1:nEdges) = ruAvg(:,1:nEdges) + ru_p(:,1:nEdges)
-      wwAvg(:,1:nCells) = wwAvg(:,1:nCells) + rw_p(:,1:nCells)
+      ruAvg(:,1:nEdges) = ruAvg(:,1:nEdges) + bb*ru_p(:,1:nEdges)
+      wwAvg(:,1:nCells) = wwAvg(:,1:nCells) + bb*rw_p(:,1:nCells)
 
 
 

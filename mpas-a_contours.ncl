@@ -20,14 +20,14 @@ begin
   ; Whether to do color-filled plot (filled=True) or
   ;   to plot contours of height field (filled=False)
   ;
-;  filled   = True
-  filled   = False
+  filled   = True
+;  filled   = False
 
   ;
   ; The (lat,lon) the plot is to be centered over
   ;
   cenLat   = 0.0
-  cenLon   = 0.0
+  cenLon   = 180.0
 
   ;
   ; Projection to use for plot
@@ -110,9 +110,12 @@ begin
   if (plotfield .eq. "h") then
 ;     fld = f->xice(t,:)
 ;     fld = f->sst(t,:)
-     fld = f->surface_pressure(t,:)
+;     fld = f->surface_pressure(t,:)
+;     fld = f->temperature_850hPa(t,:)
 ;     fld = f->pressure_base(t,:,25) + f->pressure_p(t,:,25)
 ;     fld = f->theta(t,:,25)
+;     fld = f->qv(t,:,10)
+     fld = f->qc(t,:,10)
   end if
   if (plotfield .eq. "ke") then
      fld = f->ke(t,:,0)

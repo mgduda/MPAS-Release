@@ -646,7 +646,7 @@ module init_atm_cases
       real (kind=RKIND), dimension(:,:,:), pointer :: deriv_two
       
 !.. initialization of moisture:
-      integer:: index_qv
+      integer:: index_qv, index_qc
       real (kind=RKIND),parameter :: rh_max = 0.40 ! Maximum relative humidity
 !      real (kind=RKIND),parameter :: rh_max = 0.70 ! Maximum relative humidity
       real (kind=RKIND),dimension(grid % nVertLevels, grid % nCells) :: qsat, relhum
@@ -693,8 +693,8 @@ module init_atm_cases
       real (kind=RKIND) :: dlat, hx_1d
       real (kind=RKIND) :: z_edge, z_edge3, d2fdx2_cell1, d2fdx2_cell2
 
-!      logical, parameter :: moisture = .true.
-      logical, parameter :: moisture = .false.
+      logical, parameter :: moisture = .true.
+!      logical, parameter :: moisture = .false.
 
       !
       ! Scale all distances and areas from a unit sphere to one with radius sphere_radius
@@ -772,6 +772,7 @@ module init_atm_cases
       call atm_initialize_deformation_weights(grid) 
 
       index_qv = state % index_qv
+      index_qc = state % index_qc
 
       xnutr = 0.
       zd = 12000.
@@ -1107,6 +1108,9 @@ module init_atm_cases
                qsat(k,i) = (287.04/461.6)*es/(ptemp-es)
                if(relhum(k,i) .eq. 0.0) qsat(k,i) = 0.0
                scalars(index_qv,k,i) = relhum(k,i)*qsat(k,i)
+               ! Scalar with constant mixing ratio to test mass-tracer consistency
+               scalars(index_qc,k,i) = 0.000001_RKIND
+
             end if
 
             tt(k) = temperature_1d(k)*(1.+1.61*scalars(index_qv,k,i))
