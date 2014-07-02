@@ -4314,7 +4314,6 @@ module atm_time_integration
                                                     rtheta_pp, rw_p, &
                                                     ruAvg, wwAvg
       integer :: nCellsSolve, nEdgesSolve, nCells, nEdges
-      real (kind=RKIND) :: bb
 
 
       ru        => diag % ru % array
@@ -4336,8 +4335,6 @@ module atm_time_integration
       nCells      = grid % nCells
       nEdges      = grid % nEdges
 
-      bb = 1.0_RKIND - config_alpha_si
-
 
       ru(:,1:nEdgesSolve)       = ru(:,1:nEdgesSolve)       + ru_p(:,1:nEdgesSolve)
       rtheta_p(:,1:nCellsSolve) = rtheta_p(:,1:nCellsSolve) + rtheta_pp(:,1:nCellsSolve)
@@ -4346,8 +4343,8 @@ module atm_time_integration
 
 
       ! Increment time averaged fluxes for scalar advection
-      ruAvg(:,1:nEdges) = ruAvg(:,1:nEdges) + bb*ru_p(:,1:nEdges)
-      wwAvg(:,1:nCells) = wwAvg(:,1:nCells) + bb*rw_p(:,1:nCells)
+      ruAvg(:,1:nEdges) = ruAvg(:,1:nEdges) + config_alpha_si*ru_p(:,1:nEdges)
+      wwAvg(:,1:nCells) = wwAvg(:,1:nCells) + config_alpha_si*rw_p(:,1:nCells)
 
 
 
@@ -4854,11 +4851,11 @@ module atm_time_integration
       enddo
 
 
-      ! Now compute V increment, and accumulate horizontal mass flux increments
       rho_pp = 0.0_RKIND
       do  iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
+         ! Compute V increments and accumulate their divergence
          do k=1,nVertLevels
             ru_p(k,iEdge) = tend_u(k,iEdge)                                          &
                           - adt*( pressure_inc(k,cell2) - pressure_inc(k,cell1) )    &
@@ -4867,12 +4864,25 @@ module atm_time_integration
             rho_pp(k,cell1) = rho_pp(k,cell1) + flux
             rho_pp(k,cell2) = rho_pp(k,cell2) - flux
          end do
+         ! Now include contributions from V increments to finish computing Omega increment
+         do k = 2, nVertLevels
+            flux =  (fzm(k)*ru_p(k,iEdge)+fzp(k)*ru_p(k-1,iEdge))  
+            rw_p(k,cell2) = rw_p(k,cell2) + (fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2))                                   &
+                                           *(zb(k,2,iEdge) + sign(1.0_RKIND,flux)*config_coef_3rd_order*zb3(k,2,iEdge)) &
+                                           *flux 
+            rw_p(k,cell1) = rw_p(k,cell1) - (fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1))                                   &
+                                           *(zb(k,1,iEdge) + sign(1.0_RKIND,flux)*config_coef_3rd_order*zb3(k,1,iEdge)) &
+                                           *flux
+         end do
       enddo
 
 
       ! Finish computing horizontal mass-flux-increment divergence,
       ! add vertical mass-flux-increment divergence and RHS of rho equation
       ! to complete rho increment
+      ! NOTE: the calculation of the rho increment is not quite consistent with the
+      ! approximations made in the Helmholtz problem, but this way of doing it ensures
+      ! mass-tracer consistency
       do iCell = 1, nCellsSolve
          r = 1.0 / areaCell(iCell)
          do k = 1,nVertLevels
@@ -4883,20 +4893,6 @@ module atm_time_integration
       end do
 
 
-      ! Now include contributions from V increments to finish computing Omega increment
-      do iEdge = 1, nEdges
-         cell1 = CellsOnEdge(1,iEdge)
-         cell2 = CellsOnEdge(2,iEdge)
-         do k = 2, nVertLevels
-            flux =  (fzm(k)*ru_p(k,iEdge)+fzp(k)*ru_p(k-1,iEdge))  
-            rw_p(k,cell2) = rw_p(k,cell2) + (fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2))                                   &
-                                           *(zb(k,2,iEdge) + sign(1.0_RKIND,flux)*config_coef_3rd_order*zb3(k,2,iEdge)) &
-                                           *flux 
-            rw_p(k,cell1) = rw_p(k,cell1) - (fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1))                                   &
-                                           *(zb(k,1,iEdge) + sign(1.0_RKIND,flux)*config_coef_3rd_order*zb3(k,1,iEdge)) &
-                                           *flux
-         end do
-      end do
 
 
    end subroutine atm_si_backsub

@@ -6,7 +6,7 @@
    config_num_mgslevels = 3
    config_mg_solve_npass = 1
    config_time_integration = 'SI'
-   config_scalar_advection = T
+   config_scalar_advection = F
 /
    config_stop_time  = '0000-01-16_00:00:00'
 
