@@ -5384,8 +5384,9 @@ END SUBROUTINE trisolveb
 
       implicit none
 !STEVE_NOTES: these dont need to be parameters do they?
-      integer, parameter :: niterc = 10     ! Number of relaxation iterations on coarsest grid
-      integer, parameter :: niter = 2       ! Number of relaxation iterations on other grids
+      integer, parameter :: niterc = 4      ! Number of relaxation iterations on coarsest grid
+      integer, parameter :: niterpre = 1    ! Number of relaxation iterations on other grids, descending
+      integer, parameter :: niterpost = 2   ! Number of relaxation iterations on other grids, ascending
 
       type (domain_type), intent(inout) :: domain
       real(kind=RKIND), intent(in) :: dt
@@ -5545,7 +5546,7 @@ END SUBROUTINE trisolveb
 
 
                ! Relax on the current (fine) grid
-               do iter = 1, niter
+               do iter = 1, niterpre
                   fine_block             => head_block
                   do while (associated(fine_block))
                      fine_grid           => fine_block % mesh
@@ -5667,7 +5668,7 @@ END SUBROUTINE trisolveb
 
 
                ! Relax on the current (fine) grid
-               do iter = 1, niter
+               do iter = 1, niterpost
                   fine_block         => head_block
                   do while (associated(fine_block))
                      fine_grid          => fine_block % mesh
