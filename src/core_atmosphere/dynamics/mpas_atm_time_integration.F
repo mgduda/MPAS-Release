@@ -2028,7 +2028,7 @@ module atm_time_integration
 
       prandtl_inv = 1.0_RKIND/prandtl
 
-      write(0,*) ' rk_step in compute_dyn_tend ',rk_step
+      if (debug) write(0,*) ' rk_step in compute_dyn_tend ',rk_step
 
 
       delsq_horiz_mixing = .false.
@@ -3452,11 +3452,12 @@ module atm_time_integration
 
       integer :: rk_step, iter
       integer :: iScalar
+      integer :: npass_sw
 
       real (kind=RKIND), dimension(3) :: rk_timestep
       logical :: spt_modified
-!      logical, parameter :: debug = .false.
-      logical, parameter :: debug = .true.
+      logical, parameter :: debug = .false.
+!      logical, parameter :: debug = .true.
 
       real (kind=RKIND) :: scalar_min, scalar_max
       real (kind=RKIND) :: global_scalar_min, global_scalar_max
@@ -3611,6 +3612,8 @@ module atm_time_integration
             block => block % next
          end do
          if (debug) write(0,*) '    finished compute_residuals '
+         ! write out tends here
+         if (config_dump_min_max) call atm_compute_global_max_min( domain )
 
 
 !        Exchange the residual in the u equation (tend_u) as we need to take its div
@@ -3631,7 +3634,8 @@ module atm_time_integration
 
          ! Solve Helmholtz problem
          if (debug) write(0,*) '    mg_solve '
-         call atm_mg_solve( domain, dt )
+	   if (iter.eq.config_niter_si) npass_sw=2
+           call atm_mg_solve( domain, dt , npass_sw)
          if (debug) write(0,*) '    finished mg_solve '
 
 
@@ -4148,6 +4152,7 @@ module atm_time_integration
          w(nVertLevels+1,iCell) = 0.
 
          do k = 1, nVertLevels
+!STEVE: this is where it crashes:exner= (exprssion)**rcv - exprssion becomes negative - at higher levels
             theta_m(k,iCell) = (rtheta_p(k,iCell) + rtheta_base(k,iCell))/rho_zz(k,iCell)
             exner(k,iCell) = (zz(k,iCell)*(rgas/p0)*(rtheta_p(k,iCell)+rtheta_base(k,iCell)))**rcv
             ! pressure_p is perturbation pressure
@@ -5376,7 +5381,7 @@ END SUBROUTINE trisolveb
 
 ! ================================================================
 
-   subroutine atm_mg_solve( domain, dt )
+   subroutine atm_mg_solve( domain, dt , npass_sw)
 
       ! Multigrid solver for Helmholtz problem
       ! H( pressure_inc ) = rhs
@@ -5387,6 +5392,8 @@ END SUBROUTINE trisolveb
       integer, parameter :: niterc = 4      ! Number of relaxation iterations on coarsest grid
       integer, parameter :: niterpre = 1    ! Number of relaxation iterations on other grids, descending
       integer, parameter :: niterpost = 2   ! Number of relaxation iterations on other grids, ascending
+
+      integer, intent(in) :: npass_sw
 
       type (domain_type), intent(inout) :: domain
       real(kind=RKIND), intent(in) :: dt
@@ -5406,8 +5413,14 @@ END SUBROUTINE trisolveb
 
 
 ! -----------
+      ! Control the number of sweeps npass_sw=2 on final C-N sweep
+      if (npass_sw==2) then
+        mg_solve_npass = config_mg_solve_npass_final
+      else
+	mg_solve_npass = config_mg_solve_npass
+      end if
 
-      mg_solve_npass = config_mg_solve_npass
+      !mg_solve_npass = config_mg_solve_npass
       mg_solve_depth = config_num_mgslevels
 
 
@@ -5708,6 +5721,147 @@ END SUBROUTINE trisolveb
 ! ----------------------------------------------------------------
 
    end subroutine atm_mg_solve
+
+
+!----------------------------------------------------------------------------------
+
+   subroutine atm_compute_global_max_min( domain )
+
+      ! Compute the min and max of tends
+
+
+      implicit none
+
+      type (domain_type), intent(inout) :: domain
+
+      type(block_type), pointer :: block
+      integer :: iCell, iEdge, k
+      real (kind=RKIND) :: scalar_min, scalar_max, scalar_mean
+      real (kind=RKIND) :: global_scalar_min, global_scalar_max, global_scalar_mean
+
+      real (kind=RKIND) :: gs_theta_min, gs_rho_zz_min, gs_u_min, gs_w_min
+      real (kind=RKIND) :: gs_theta_max, gs_rho_zz_max, gs_u_max, gs_w_max
+
+
+!--
+
+ !     fzm           => grid % fzm % array
+ !     fzp           => grid % fzp % array
+ !     zz            => grid % zz % array
+ !     zb            => grid % zb % array
+ !     zb3           => grid % zb3 % array
+
+ !     rtheta_p_save => diag % rtheta_p_save % array
+ !     rho_p_save    => diag % rho_p_save % array
+ !     ru_save       => diag % ru_save % array
+ !     rw_save       => diag % rw_save % array
+
+ !     rtheta_p      => diag % rtheta_p % array
+ !     rho_p         => diag % rho_p % array
+ !     ru            => diag % ru % array
+ !     rw            => diag % rw % array
+
+ !     tend_theta  => tend % theta_m % array
+ !     tend_rho    => tend % rho_zz % array
+ !     tend_u      => tend % u % array
+ !     tend_w      => tend % w % array
+
+ !     cellsOnEdge => grid % cellsOnEdge % array
+
+
+     ! nCellsSolve = grid % nCellsSolve
+     ! nEdgesSolve = grid % nEdgesSolve
+     ! nEdges      = grid % nEdges
+     ! nVertLevels = grid % nVertLevels
+
+! -----
+
+     ! Compute residuals
+
+   !  tend_theta(:,1:nCellsSolve) = dt*tend_theta(:,1:nCellsSolve) + rtheta_p_save(:,1:nCellsSolve) &
+   !                                                               - rtheta_p(:,1:nCellsSolve)
+   !  tend_rho(:,1:nCellsSolve)   = dt*tend_rho(:,1:nCellsSolve)   + rho_p_save(:,1:nCellsSolve)    &
+   !                                                               - rho_p(:,1:nCellsSolve)
+   !  tend_u(:,1:nEdgesSolve)     = dt*tend_u(:,1:nEdgesSolve)     + ru_save(:,1:nEdgesSolve)       &
+   !                                                               - ru(:,1:nEdgesSolve)
+   !  tend_w(:,1:nCellsSolve)     = dt*tend_w(:,1:nCellsSolve)     + rw_save(:,1:nCellsSolve)       &
+   !                                                               - rw(:,1:nCellsSolve)
+
+
+!!!!!!!!!! something like this:
+  !    writeing to the out file -- 6
+  !    write(6,*)
+      block => domain % blocklist
+      do while (associated(block))
+         scalar_min = 0.
+         scalar_max = 0.
+         do iCell = 1, block % mesh % nCellsSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % tend % w % array(k,iCell))
+            scalar_max = max(scalar_max, block % tend % w % array(k,iCell))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+
+         gs_w_min = global_scalar_min
+         gs_w_max = global_scalar_max
+!         write(6,*) 'global min, max tend_w ',global_scalar_min, global_scalar_max
+
+         scalar_min = 0.
+         scalar_max = 0.
+	 scalar_mean = 0.
+         do iEdge = 1, block % mesh % nEdgesSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % tend % u % array(k,iEdge))
+            scalar_max = max(scalar_max, block % tend % u % array(k,iEdge))
+	    scalar_mean = scalar_mean +  block % tend % u % array(k,iEdge)
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+	 call mpas_dmpar_max_real(domain%dminfo, scalar_mean, global_scalar_mean)
+          gs_u_min = global_scalar_min
+          gs_u_max = global_scalar_max
+!         write(6,*) 'global min, max tend_u ',global_scalar_min, global_scalar_max
+
+         scalar_min = 0.
+         scalar_max = 0.
+         do iCell = 1, block % mesh % nCellsSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % tend % rho_zz % array(k,iCell))
+            scalar_max = max(scalar_max, block % tend % rho_zz % array(k,iCell))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+          gs_rho_zz_min = global_scalar_min
+          gs_rho_zz_max = global_scalar_max
+!         write(6,*) 'global min, max tend_rho_zz ',global_scalar_min, global_scalar_max
+
+         scalar_min = 0.
+         scalar_max = 0.
+         do iCell = 1, block % mesh % nCellsSolve
+         do k = 1, block % mesh % nVertLevels
+            scalar_min = min(scalar_min, block % tend % theta_m % array(k,iCell))
+            scalar_max = max(scalar_max, block % tend % theta_m % array(k,iCell))
+         end do
+         end do
+         call mpas_dmpar_min_real(domain%dminfo, scalar_min, global_scalar_min)
+         call mpas_dmpar_max_real(domain%dminfo, scalar_max, global_scalar_max)
+          gs_theta_min = global_scalar_min
+          gs_theta_max = global_scalar_max
+!         write(6,*) 'global min, max tend_theta_m ',global_scalar_min, global_scalar_max
+
+          write(6,*) gs_theta_min, gs_rho_zz_min, gs_u_min, gs_w_min,gs_theta_max, gs_rho_zz_max, gs_u_max, gs_w_max, global_scalar_mean
+
+
+         block => block % next
+      end do
+
+
+   end subroutine atm_compute_global_max_min
+
 
 ! ================================================================
 
