@@ -1,14 +1,15 @@
 &nhyd_model
 config_dt = 1800.0
 config_start_time   = '2010-10-23_00:00:00'
-config_run_duration = '1_00:00:00'
+config_run_duration = '12_00:00:00'
 config_niter_si = 3
 config_num_mgslevels = 5
 config_mg_solve_npass = 1
 config_mg_solve_npass_final = 1
-config_time_integration = 'SI'
+config_time_integration = 'SRK3'
 config_scalar_advection = T
 config_time_comms = T
+config_mg_solver = 'FMG'
 /
 config_stop_time  = '0000-01-16_00:00:00'
 

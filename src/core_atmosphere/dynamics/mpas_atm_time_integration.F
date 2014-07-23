@@ -3661,9 +3661,17 @@ module atm_time_integration
          ! Solve Helmholtz problem
          if (debug) write(0,*) '    mg_solve '
 	   if (iter.eq.config_niter_si) npass_sw=2
-	   call mpas_timer_start("mg solver")
-           call atm_mg_solve( domain, dt , npass_sw)
-	   call mpas_timer_stop("mg solver")
+       if (trim(config_mg_solver) == 'VCMG') then
+	     call mpas_timer_start("mg solver")
+         call atm_mg_solve_vcycle( domain, dt , npass_sw)
+	     call mpas_timer_stop("mg solver")
+       elseif (trim(config_mg_solver) == 'FMG') then
+	     call mpas_timer_start("mg solver")
+         call atm_mg_solve( domain, dt , npass_sw)
+         call mpas_timer_stop("mg solver")
+       endif
+
+
          if (debug) write(0,*) '    finished mg_solve '
 
 
@@ -5776,6 +5784,364 @@ END SUBROUTINE trisolveb
 
    end subroutine atm_mg_solve
 
+! ================================================================
+
+   subroutine atm_mg_solve_vcycle( domain, dt , npass_sw)
+
+      ! Multigrid solver for Helmholtz problem
+      ! H( pressure_inc ) = rhs
+
+
+      implicit none
+!STEVE_NOTES: these dont need to be parameters do they?
+      integer, parameter :: niterc = 4      ! Number of relaxation iterations on coarsest grid
+      integer, parameter :: niterpre = 1    ! Number of relaxation iterations on other grids, descending
+      integer, parameter :: niterpost = 2   ! Number of relaxation iterations on other grids, ascending
+
+      integer, intent(in) :: npass_sw
+
+      type (domain_type), intent(inout) :: domain
+      real(kind=RKIND), intent(in) :: dt
+      type(block_type), pointer :: head_block, fine_block, coarse_block
+      type(mesh_type), pointer :: fine_grid, coarse_grid
+
+      integer :: mg_solve_npass, mg_solve_depth, mgsLevel, ipass, iter, i_vcycle_depth
+      real(kind=RKIND), dimension(:,:), pointer :: pressure_inc, rhs,  &
+                                                   fine_helm_rhs,   fine_helm_inc,   &
+                                                   coarse_helm_rhs, coarse_helm_inc, &
+                                                   coarse_restrictWeights, temporary
+      type(mgs_vars_type), pointer 	:: fine_mgs_vars
+      integer, dimension(:,:), pointer 	:: coarse_restrictStencil
+
+      logical, parameter :: debug = .false.
+!      logical, parameter :: debug = .true.
+
+
+! -----------
+      ! Control the number of sweeps npass_sw=2 on final C-N sweep
+      if (npass_sw==2) then
+        mg_solve_npass = config_mg_solve_npass_final
+      else
+	mg_solve_npass = config_mg_solve_npass
+      end if
+
+      !mg_solve_npass = config_mg_solve_npass
+      mg_solve_depth = config_num_mgslevels
+
+
+      head_block => domain % blocklist
+
+
+      if(debug) write(0,*) ' Initialize solution to zero '
+      ! Initialize solution to zero
+      fine_block   => head_block
+      pressure_inc => fine_block % diag % pressure_inc % array
+      do while (associated(fine_block))
+	 pressure_inc => fine_block % diag % pressure_inc % array
+         pressure_inc(:,1:fine_block % mesh % nCells) = 0.0_RKIND
+         fine_block   => fine_block % next
+      end do
+
+
+      if(debug) write(0,*) ' Make a number of passes of the multigrid solver '
+      ! Make a number of passes of the multigrid solver
+      ! (For second and subsequent passes we start by computing the residual after the
+      ! previous pass then compute a correction to the solution.)
+      do ipass = 1, mg_solve_npass
+
+
+         if(debug) write(0,*) ' Start of multigrid solver pass ',ipass
+         fine_block      => head_block
+         do while (associated(fine_block))
+            fine_grid       => fine_block % mesh
+            fine_mgs_vars   => fine_block % mgs_vars
+            fine_helm_rhs   => fine_block % mgs_vars % helm_rhs % array
+            fine_helm_inc   => fine_Block % mgs_vars % helm_inc % array
+            pressure_inc    => fine_block % diag % pressure_inc % array
+            rhs             => fine_block % diag % rhs % array
+            ! Initialize rhs as residual using latest estimate
+            if (ipass == 1) then
+               ! No need to do the calculation; just copy data
+               fine_helm_rhs(:,1:fine_block % mesh % nCellsSolve) &
+                       = rhs(:,1:fine_block % mesh % nCellsSolve)
+            else
+               ! Calculate the residual
+               call atm_mg_residual( pressure_inc, rhs, fine_helm_rhs, &
+                                     fine_grid, fine_mgs_vars, dt )
+            endif
+            ! And initialize finest grid correction to zero
+            fine_helm_inc(:,1:fine_block % mesh % nCells) = 0.0_RKIND
+            fine_block      => fine_block % next
+         enddo
+
+
+!	 if(debug) write(0,*) ' Restrict right hand side to each grid in the hierarchy '
+!         ! Restrict right hand side to each grid in the hierarchy
+!         do mgsLevel = 2, mg_solve_depth
+!            fine_block                => head_block
+!            coarse_block              => head_block % coarser
+!            ! Exchange rhs field ready for restriction
+!            if (config_time_comms) call mpas_timer_start("comms_time")
+!            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_rhs, (/ 1 /))
+!            if (config_time_comms) call mpas_timer_stop("comms_time")
+!            do while (associated(fine_block))
+!               fine_grid              => fine_block % mesh
+!               fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
+!               coarse_grid            => coarse_block % mesh
+!               coarse_helm_rhs        => coarse_block % mgs_vars % helm_rhs % array
+!               coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
+!               coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
+!               call atm_mg_restrict( fine_helm_rhs,          coarse_helm_rhs, &
+!                                     fine_grid,              coarse_grid,     &
+!                                     coarse_restrictStencil, coarse_restrictWeights )
+!               fine_block             => fine_block % next
+!               coarse_block           => coarse_block % next
+!            enddo
+!            head_block => head_block % coarser
+!         enddo
+
+
+!	 if(debug) write(0,*) ' FMG initial relax on coarsest grid ', niterc, ' times '
+!         ! Initialize correction to zero on coarsest grid and
+!         ! iterate (close) to convergence on coarsest grid
+!         ! It is logical to refer to this as the `fine' grid here because
+!         ! it is the finest grid on which we have a solution at this pass, and this
+!         ! will be consistent with the handling of V-cycles below
+!         fine_block      => head_block
+!         do while (associated(fine_block))
+!            fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
+!            fine_helm_inc(:,1:fine_block % mesh % nCells) = 0.0_RKIND
+!            fine_block         => fine_block % next
+!         enddo
+!         do iter = 1, niterc
+!            fine_block      => head_block
+!            do while (associated(fine_block))
+!               fine_grid          => fine_block % mesh
+!               fine_mgs_vars      => fine_block % mgs_vars
+!               fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
+!               fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
+!               call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
+!                                  fine_mgs_vars, dt )
+!               fine_block         => fine_block % next
+!            enddo
+!            ! Exchange inc field
+!            if (config_time_comms) call mpas_timer_start("comms_time")
+!            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
+!            if (config_time_comms) call mpas_timer_stop("comms_time")
+!         enddo
+
+
+         ! Sequence of growing V-cycles
+         if(debug) write(0,*) ' Execute V-cycle '
+!         if(debug) write(0,*) ' Sequence of growing V-cycles '
+!         do i_vcycle_depth = 1, mg_solve_depth-1
+!
+!
+!	    if(debug) write(0,*) ' Prolong solution '
+!            ! Prolong solution from current grid to finer one
+!            coarse_block           => head_block
+!            fine_block             => head_block % finer
+!            do while (associated(coarse_block))
+!               coarse_grid            => coarse_block % mesh
+!               coarse_helm_inc        => coarse_block % mgs_vars % helm_inc % array
+!               coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
+!               coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
+!               fine_grid              => fine_block % mesh
+!               fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
+!               call atm_mg_prolong( fine_helm_inc,          coarse_helm_inc, &
+!                                    fine_grid,              coarse_grid,   &
+!                                    coarse_restrictStencil, coarse_restrictWeights )
+!               coarse_block           => coarse_block % next
+!               fine_block             => fine_block % next
+!            enddo
+!            head_block => head_block % finer
+!            ! Exchange inc field
+!            if (config_time_comms) call mpas_timer_start("comms_time")
+!            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
+!            if (config_time_comms) call mpas_timer_stop("comms_time")
+
+!	    if(debug) write(0,*) ' Execute one V-cycle '
+!            ! Execute one V-cycle starting from the new current grid
+!
+!
+            if(debug) write(0,*) ' Decending part of V-cycle '
+            ! Descending part of V-cycle
+!            do mgsLevel = mg_solve_depth - i_vcycle_depth, mg_solve_depth-1
+            do mgsLevel = 2, mg_solve_depth
+
+
+               ! Relax on the current (fine) grid
+               do iter = 1, niterpre
+                  fine_block             => head_block
+                  do while (associated(fine_block))
+                     fine_grid           => fine_block % mesh
+                     fine_mgs_vars       => fine_block % mgs_vars
+                     fine_helm_rhs       => fine_block % mgs_vars % helm_rhs % array
+                     fine_helm_inc       => fine_block % mgs_vars % helm_inc % array
+                     call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
+                                        fine_mgs_vars, dt )
+                     fine_block          => fine_block % next
+                  enddo
+                 ! Exchange inc field
+                 if (config_time_comms) call mpas_timer_start("comms_time")
+                 call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
+                 if (config_time_comms) call mpas_timer_stop("comms_time")
+               enddo
+
+
+               ! Calculate residual on current grid
+               fine_block             => head_block
+               do while (associated(fine_block))
+                  fine_grid              => fine_block % mesh
+                  fine_mgs_vars          => fine_block % mgs_vars
+                  fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
+                  fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
+                  temporary              => fine_block % mgs_vars % temporary % array
+                  call atm_mg_residual( fine_helm_inc, fine_helm_rhs, temporary, &
+                                        fine_grid,     fine_mgs_vars, dt )
+                  fine_block             => fine_block % next
+               enddo
+               ! Exchange residual field prior to restriction
+               if (config_time_comms) call mpas_timer_start("comms_time")
+               call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
+               if (config_time_comms) call mpas_timer_stop("comms_time")
+
+
+               ! Restrict residual to coarser grid
+               fine_block             => head_block
+               coarse_block           => head_block % coarser
+               do while (associated(fine_block))
+                  fine_grid              => fine_block % mesh
+                  temporary              => fine_block % mgs_vars % temporary % array
+                  coarse_grid            => coarse_block % mesh
+                  coarse_helm_rhs        => coarse_block % mgs_vars % helm_rhs % array
+                  coarse_helm_inc        => coarse_block % mgs_vars % helm_inc % array
+                  coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
+                  coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
+                  call atm_mg_restrict( temporary,     coarse_helm_rhs, &
+                                        fine_grid,     coarse_grid,             &
+                                        coarse_restrictStencil, coarse_restrictWeights )
+                  ! Initialize correction to zero on coarse grid
+                  coarse_helm_inc = 0.0_RKIND
+                  fine_block             => fine_block % next
+                  coarse_block           => coarse_block % next
+               enddo
+
+
+               ! Get pointer ready for next iteration
+               head_block => head_block % coarser
+
+            enddo
+
+
+            if(debug) write(0,*) ' Initialize corrc to 0 on coarsest grid and iterate niterc times '
+            ! Initialize correction to zero on coarsest grid and
+            ! iterate (close) to convergence on coarsest grid
+            do iter = 1, niterc
+               fine_block      => head_block
+               do while (associated(fine_block))
+                  fine_grid          => fine_block % mesh
+                  fine_mgs_vars      => fine_block % mgs_vars
+                  fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
+                  fine_helm_inc      => fine_Block % mgs_vars % helm_inc % array
+                  call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
+                                     fine_mgs_vars, dt )
+                  fine_block         => fine_block % next
+               enddo
+               ! Exchange inc field
+               if (config_time_comms) call mpas_timer_start("comms_time")
+               call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
+               if (config_time_comms) call mpas_timer_stop("comms_time")
+            enddo
+
+
+	    if(debug) write(0,*) ' Ascending part of V-cycle '
+            ! Ascending part of V-cycle
+!            do mgsLevel = mg_solve_depth-1, mg_solve_depth - i_vcycle_depth, -1
+            do mgsLevel = mg_solve_depth,2,-1
+
+               ! Get pointer ready for this iteration
+               head_block => head_block % finer
+
+
+               ! Prolong correction to finer grid
+               fine_block             => head_block
+               coarse_block           => head_block % coarser
+               do while (associated(fine_block))
+                  fine_grid              => fine_block % mesh
+                  temporary              => fine_block % mgs_vars % temporary % array
+                  coarse_grid            => coarse_block % mesh
+                  coarse_helm_inc        => coarse_block % mgs_vars % helm_inc % array
+                  coarse_restrictStencil => coarse_block % mgs_vars % restrictStencil % array
+                  coarse_restrictWeights => coarse_block % mgs_vars % restrictWeights % array
+                  call atm_mg_prolong( temporary,              coarse_helm_inc,  &
+                                       fine_grid,              coarse_grid,      &
+                                       coarse_restrictStencil, coarse_restrictWeights )
+                  fine_block             => fine_block % next
+                  coarse_block           => coarse_block % next
+               enddo
+               ! Exchange increment field after prolong
+               if (config_time_comms) call mpas_timer_start("comms_time")
+               call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
+               if (config_time_comms) call mpas_timer_stop("comms_time")
+
+               ! Add correction to update fine grid solution
+               fine_block             => head_block
+               coarse_block           => head_block % coarser
+               do while (associated(fine_block))
+                  fine_grid              => fine_block % mesh
+                  fine_helm_inc          => fine_block % mgs_vars % helm_inc % array
+                  temporary              => fine_block % mgs_vars % temporary % array
+                  fine_helm_inc(:,1:fine_grid % nCells)             &
+                            = fine_helm_inc(:,1:fine_grid % nCells) &
+                            + temporary(:,1:fine_grid % nCells)
+                  fine_block             => fine_block % next
+               enddo
+
+
+               ! Relax on the current (fine) grid
+               do iter = 1, niterpost
+                  fine_block         => head_block
+                  do while (associated(fine_block))
+                     fine_grid          => fine_block % mesh
+                     fine_mgs_vars      => fine_block % mgs_vars
+                     fine_helm_rhs      => fine_block % mgs_vars % helm_rhs % array
+                     fine_helm_inc      => fine_block % mgs_vars % helm_inc % array
+                     call atm_mg_relax( fine_helm_inc, fine_helm_rhs, fine_grid, &
+                                        fine_mgs_vars, dt )
+                     fine_block      => fine_block % next
+                  enddo
+                 ! Exchange inc field
+                 if (config_time_comms) call mpas_timer_start("comms_time")
+                 call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
+                 if (config_time_comms) call mpas_timer_stop("comms_time")
+               enddo
+
+
+            enddo
+
+
+!         enddo
+
+
+ 	 if(debug) write(0,*) ' Add correction to pressure_inc '
+         ! Add correction to pressure_inc
+         fine_block    => head_block
+         do while (associated(fine_block))
+            pressure_inc  => fine_block % diag % pressure_inc % array
+            fine_helm_inc => fine_block % mgs_vars % helm_inc % array
+            pressure_inc(:,1:fine_block % mesh % nCells) = pressure_inc(:,1:fine_block % mesh % nCells) &
+                                                         + fine_helm_inc(:,1:fine_block % mesh % nCells)
+            fine_block    => fine_block % next
+         end do
+
+
+      enddo
+
+
+! ----------------------------------------------------------------
+
+   end subroutine atm_mg_solve_vcycle
 
 !----------------------------------------------------------------------------------
 
