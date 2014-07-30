@@ -390,7 +390,12 @@ print*,'code is in: ./src/framework/mpas_io_output.F'
 !         blocklist => blocklist % coarser
 !       end do
 
-      call MPAS_createStream(output_obj % io_stream, trim(output_obj % filename), MPAS_IO_PNETCDF, MPAS_IO_WRITE, 1, nferr)
+
+       if (config_runOnZen) then! use Netcdf when running on zen
+       call MPAS_createStream(output_obj % io_stream, trim(output_obj % filename), MPAS_IO_NETCDF, MPAS_IO_WRITE, 1, nferr)
+       else
+       call MPAS_createStream(output_obj % io_stream, trim(output_obj % filename), MPAS_IO_PNETCDF, MPAS_IO_WRITE, 1, nferr)
+       end if
 !STEVE_edit: this could be included in the above call?
 !STEVE_edit: this passes the mgsLevel into the stream reading:
       output_obj % io_stream % mgslevel = domain % blocklist % mgsLevel

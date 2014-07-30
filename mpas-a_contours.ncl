@@ -110,8 +110,8 @@ begin
   if (plotfield .eq. "h") then
 ;     fld = f->xice(t,:)
 ;     fld = f->sst(t,:)
-;     fld = f->surface_pressure(t,:)
-     fld = f->temperature_850hPa(t,:)
+     fld = f->surface_pressure(t,:)
+;     fld = f->temperature_850hPa(t,:)
 ;     fld = f->pressure_base(t,:,25) + f->pressure_p(t,:,25)
 ;     fld = f->theta(t,:,25)
 ;     fld = f->qv(t,:,10)

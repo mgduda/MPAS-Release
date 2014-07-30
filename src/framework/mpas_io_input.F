@@ -244,7 +244,12 @@ module mpas_io_input
         end if
         input_obj % stream = STREAM_INPUT
       end if
+
+      if (config_runOnZen) then! use Netcdf when running on zen
+      inputHandle = MPAS_io_open(trim(input_obj % filename), MPAS_IO_READ, MPAS_IO_NETCDF, ierr)
+      else
       inputHandle = MPAS_io_open(trim(input_obj % filename), MPAS_IO_READ, MPAS_IO_PNETCDF, ierr)
+      end if
       if (ierr /= MPAS_IO_NOERR) then
         write(stderrUnit,*) ' '
         if (input_obj % stream == STREAM_RESTART) then
@@ -659,8 +664,12 @@ module mpas_io_input
       do while (associated(blocklist % coarser))
         blocklist => blocklist % coarser
       end do
- 
-      call MPAS_createStream(input_obj % io_stream, trim(input_obj % filename), MPAS_IO_PNETCDF, MPAS_IO_READ, 1, nferr)
+
+       if (config_runOnZen) then! use Netcdf when running on zen
+       call MPAS_createStream(input_obj % io_stream, trim(input_obj % filename), MPAS_IO_NETCDF, MPAS_IO_READ, 1, nferr)
+       else
+       call MPAS_createStream(input_obj % io_stream, trim(input_obj % filename), MPAS_IO_PNETCDF, MPAS_IO_READ, 1, nferr)
+       end if
 !STEVE_edit: this could be included in the above call?
 !STEVE_edit: this passes the mgsLevel into the stream reading
       

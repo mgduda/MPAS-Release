@@ -78,6 +78,7 @@
                 <nml_option name="config_mg_solver"                  type="character"     default_value="FMG"/>
 		<nml_option name="config_dump_min_max"               type="logical"       default_value="false"/>
                 <nml_option name="config_time_comms"                 type="logical"       default_value="false"/>
+                <nml_option name="config_runOnZen"                   type="logical"       default_value="false"/>
         </nml_record>
 
         <nml_record name="damping">
