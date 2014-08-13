@@ -79,6 +79,9 @@
 		<nml_option name="config_dump_min_max"               type="logical"       default_value="false"/>
                 <nml_option name="config_time_comms"                 type="logical"       default_value="false"/>
                 <nml_option name="config_runOnZen"                   type="logical"       default_value="false"/>
+                <nml_option name="config_niterc"       		     type="integer"       default_value="4"/>
+                <nml_option name="config_niterpre"       	     type="integer"       default_value="1"/>
+                <nml_option name="config_niterpost"      	     type="integer"       default_value="2"/>
         </nml_record>
 
         <nml_record name="damping">

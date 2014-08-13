@@ -5437,9 +5437,13 @@ END SUBROUTINE trisolveb
 
       implicit none
 !STEVE_NOTES: these dont need to be parameters do they?
-      integer, parameter :: niterc = 4      ! Number of relaxation iterations on coarsest grid
-      integer, parameter :: niterpre = 1    ! Number of relaxation iterations on other grids, descending
-      integer, parameter :: niterpost = 2   ! Number of relaxation iterations on other grids, ascending
+!      integer, parameter :: niterc = 4      ! Number of relaxation iterations on coarsest grid
+!      integer, parameter :: niterpre = 1    ! Number of relaxation iterations on other grids, descending
+!      integer, parameter :: niterpost = 2   ! Number of relaxation iterations on other grids, ascending
+      integer :: niterc      ! Number of relaxation iterations on coarsest grid
+      integer :: niterpre    ! Number of relaxation iterations on other grids, descending
+      integer :: niterpost   ! Number of relaxation iterations on other grids, ascending
+
 
       integer, intent(in) :: npass_sw
 
@@ -5459,6 +5463,10 @@ END SUBROUTINE trisolveb
       logical, parameter :: debug = .false.
 !      logical, parameter :: debug = .true.
 
+! added to include it as a namelist option
+      niterc = config_niterc
+      niterpre = config_niterpre
+      niterpost = config_niterpost
 
 ! -----------
       ! Control the number of sweeps npass_sw=2 on final C-N sweep
@@ -5794,9 +5802,13 @@ END SUBROUTINE trisolveb
 
       implicit none
 !STEVE_NOTES: these dont need to be parameters do they?
-      integer, parameter :: niterc = 4      ! Number of relaxation iterations on coarsest grid
-      integer, parameter :: niterpre = 1    ! Number of relaxation iterations on other grids, descending
-      integer, parameter :: niterpost = 2   ! Number of relaxation iterations on other grids, ascending
+!      integer, parameter :: niterc = 4      ! Number of relaxation iterations on coarsest grid
+!      integer, parameter :: niterpre = 1    ! Number of relaxation iterations on other grids, descending
+!      integer, parameter :: niterpost = 2   ! Number of relaxation iterations on other grids, ascending
+
+      integer :: niterc      ! Number of relaxation iterations on coarsest grid
+      integer :: niterpre    ! Number of relaxation iterations on other grids, descending
+      integer :: niterpost   ! Number of relaxation iterations on other grids, ascending
 
       integer, intent(in) :: npass_sw
 
@@ -5815,6 +5827,11 @@ END SUBROUTINE trisolveb
 
       logical, parameter :: debug = .false.
 !      logical, parameter :: debug = .true.
+
+! added to include it as a namelist option
+      niterc = config_niterc
+      niterpre = config_niterpre
+      niterpost = config_niterpost
 
 
 ! -----------
