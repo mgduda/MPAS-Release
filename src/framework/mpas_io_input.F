@@ -201,7 +201,7 @@ module mpas_io_input
       integer :: nGrids
       character(len=StrKIND) :: dumChar
       character(len=StrKIND) :: mgslevelChar
-
+      
       nHalos = config_num_halos
 
 !STEVE_edit: make a char to use when reading the .nc file
@@ -264,16 +264,18 @@ module mpas_io_input
       end if
 
 !STEVE_edit: include some error catching to check the number of available grids
-      if (mgslevel.eq.2) then! only catches the error if more than 1-layer - info storred in the multigrid *.nc file
-        call MPAS_io_inq_dim(inputHandle, 'nGrids', nGrids, ierr)
-        if (nGrids < config_num_mgslevels) then
-          write(stderrUnit,*) 'config_num_mgslevels = ',config_num_mgslevels
-          write(stderrUnit,*) 'should not exceed the total number of grids available = ',nGrids
-          write(stderrUnit,*) ' '
-          call mpas_dmpar_abort(domain % dminfo)
-        endif
-	print*,'nGrids', nGrids, mgslevel
-      end if
+! STEVE: code removed as the number of grids is now storred as an attribute
+!      if (mgslevel.eq.2) then! only catches the error if more than 1-layer - info storred in the multigrid *.nc file
+!        call MPAS_io_inq_dim(inputHandle, 'nGrids', nGrids, ierr)
+!
+!        if (nGrids < config_num_mgslevels) then
+!          write(stderrUnit,*) 'config_num_mgslevels = ',config_num_mgslevels
+!          write(stderrUnit,*) 'should not exceed the total number of grids available = ',nGrids
+!          write(stderrUnit,*) ' '
+!          call mpas_dmpar_abort(domain % dminfo)
+!        endif
+!        write(stderrUnit,*) 'nGrids', nGrids, mgslevel
+!      end if
 
 
       !
@@ -377,7 +379,7 @@ module mpas_io_input
 
      call mpas_io_input_init(input_obj, domain % blocklist, domain % dminfo)
 
-     if (mgslevel==1) then
+      if (mgslevel==1) then
 !STEVE_edit: just working on mgslevel = 1
 !a local blocklist so that the input pointer is left unchanged
 
@@ -423,8 +425,19 @@ module mpas_io_input
 #else
         domain % history = "cesm_run"
 #endif
-      end if
 
+      elseif (mgslevel==2) then
+	! STEVE_edit: Checking that the number of grids available is greater than the number of grids required 
+        nGrids=1! there is one grid unless defined in the grid file
+        call MPAS_readStreamAtt(input_obj % io_stream, 'nGrids', nGrids , ierr)
+        if (nGrids < config_num_mgslevels) then
+          write(stderrUnit,*) 'config_num_mgslevels = ',config_num_mgslevels
+          write(stderrUnit,*) 'should not exceed the total number of grids available = ',nGrids
+          write(stderrUnit,*) ' '
+          call mpas_dmpar_abort(domain % dminfo)
+        endif
+        write(stderrUnit,*)'nGrids', nGrids, mgslevel
+      end if
 
 !STEVE_edit: No longer pointing at next because I want to populate all blocks so I start at the top level
       !block_ptr => domain % blocklist % next
@@ -462,7 +475,6 @@ module mpas_io_input
         !
         input_obj % time = MPAS_seekStream(input_obj % io_stream, restartTimeStamp, MPAS_STREAM_EXACT_TIME, timeStamp, ierr)
         if (ierr == MPAS_IO_ERR) then
-          write(stderrUnit,*) 'Error: restart file '//trim(filename)//' did not contain time '//trim(restartTimeStamp)
           call mpas_dmpar_abort(domain % dminfo)
         end if
 
