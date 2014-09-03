@@ -7,23 +7,20 @@ config_num_mgslevels = 3
 config_mg_solve_npass = 1
 config_mg_solve_npass_final = 1
 config_time_integration = 'SI'
-config_scalar_advection = F
+config_scalar_advection = T
 config_time_comms = T
-config_mg_solver = 'VCMG'
+config_mg_solver = 'FMG'
 config_runOnZen = F
-config_niterc = 4
-config_niterpre = 1
-config_niterpost = 2
 /
 config_stop_time  = '0000-01-16_00:00:00'
 
 &io
-config_input_name          = 'init.x1.10242.nc'
-config_mg_input_name       = 'mg.grid.x1.10242.nc'
-config_output_name         = 'output.x1.10242.nc'
-config_restart_name        = 'restart.x1.10242.nc'
-config_restart_interval    = '12_00:00:00'
-config_output_interval     = '12_00:00:00'
+config_input_name          = 'nr5_init.nc'
+config_mg_input_name       = 'MG_nr5_grid.nc'
+config_output_name         = 'nr5.output.nc'
+config_restart_name        = 'nr5.restart.nc'
+config_restart_interval    = '1_00:00:00'
+config_output_interval     = '1_00:00:00'
 config_frames_per_outfile  = 1
 /
 

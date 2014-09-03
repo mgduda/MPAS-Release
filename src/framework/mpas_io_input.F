@@ -264,7 +264,7 @@ module mpas_io_input
       end if
 
 !STEVE_edit: include some error catching to check the number of available grids
-! STEVE: code removed as the number of grids is now storred as an attribute
+! STEVE: code re-instated because there apears to be an issue with the new grid type/this bit of code
 !      if (mgslevel.eq.2) then! only catches the error if more than 1-layer - info storred in the multigrid *.nc file
 !        call MPAS_io_inq_dim(inputHandle, 'nGrids', nGrids, ierr)
 !
@@ -426,17 +426,18 @@ module mpas_io_input
         domain % history = "cesm_run"
 #endif
 
-      elseif (mgslevel==2) then
-	! STEVE_edit: Checking that the number of grids available is greater than the number of grids required 
-        nGrids=1! there is one grid unless defined in the grid file
-        call MPAS_readStreamAtt(input_obj % io_stream, 'nGrids', nGrids , ierr)
-        if (nGrids < config_num_mgslevels) then
-          write(stderrUnit,*) 'config_num_mgslevels = ',config_num_mgslevels
-          write(stderrUnit,*) 'should not exceed the total number of grids available = ',nGrids
-          write(stderrUnit,*) ' '
-          call mpas_dmpar_abort(domain % dminfo)
-        endif
-        write(stderrUnit,*)'nGrids', nGrids, mgslevel
+! STEVE: code edited out - maybe reuse when I have cheacked the grid file
+!      elseif (mgslevel==2) then
+!	! STEVE_edit: Checking that the number of grids available is greater than the number of grids required 
+!        nGrids=1! there is one grid unless defined in the grid file
+!        call MPAS_readStreamAtt(input_obj % io_stream, 'nGrids', nGrids , ierr)
+!        if (nGrids < config_num_mgslevels) then
+!          write(stderrUnit,*) 'config_num_mgslevels = ',config_num_mgslevels
+!          write(stderrUnit,*) 'should not exceed the total number of grids available = ',nGrids
+!          write(stderrUnit,*) ' '
+!          call mpas_dmpar_abort(domain % dminfo)
+!        endif
+!        write(stderrUnit,*)'nGrids', nGrids, mgslevel
       end if
 
 !STEVE_edit: No longer pointing at next because I want to populate all blocks so I start at the top level
