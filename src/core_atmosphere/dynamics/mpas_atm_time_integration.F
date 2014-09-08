@@ -3718,15 +3718,6 @@ module atm_time_integration
 	call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % u, (/3/))
 	if (config_time_comms) call mpas_timer_stop("comms_time")
 
-         if(debug) write(0,*) '    compute_solve_diagnostics '
-         block => domain % blocklist
-         do while (associated(block))
-            call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
-            block => block % next
-         end do
-         if(debug) write(0,*) '    finished compute_solve_diagnostics '
-
-
 
          ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
          ! PD or monotonicity constraints applied only on the final Runge-Kutta substep.
@@ -3765,6 +3756,16 @@ module atm_time_integration
 
                ! RK3
 
+               ! The density field in block % state % time_levs(2) is now valid for time level n+1
+               ! In order to correctly apply the RK3 time stepping to scalars we need this field to
+               ! contain the density at the appropriate intermediate time levels. To do this we borrow
+               ! block % diag % divergence array to hold the time average mass flux divergence.
+               block => domain % blocklist
+               do while (associated(block))
+                  call atm_mass_flux_divergence( block % diag, block % mesh )
+                  block => block % next
+               end do
+
                ! After the first iteration we need to reset time level 2 scalars before advecting
                if (iter > 1 .and. config_si_scalar_advection_opt .ne. 1) then
                   if (debug) write(0,*) '    reset time level 2 scalars '
@@ -3793,11 +3794,15 @@ module atm_time_integration
 
                   block => domain % blocklist
                   do while (associated(block))
-                     !
+
+                     ! Set the time_levs(2) density field to the appropriate intermediate value
+                     call atm_intermediate_density( block % state % time_levs(1) % state, block % state % time_levs(2) % state, &
+                                                    block % diag, rk_timestep(rk_step) )
+
                      ! Note: The advance_scalars_mono routine can be used without limiting, and thus, encompasses 
                      !       the functionality of the advance_scalars routine; however, it is noticeably slower, 
                      !       so we use the advance_scalars routine except on the last stage at the last iteration.
-                     !
+
                      if (rk_step < 3 .or. iter < config_niter_si .or. &
                          (.not. config_monotonic .and. .not. config_positive_definite)) then
                         if (debug) write(0,*) '       advance_scalars'
@@ -3824,6 +3829,12 @@ module atm_time_integration
                   end if
 
                end do     ! End of RK loop
+
+              if (config_time_comms) call mpas_timer_start("comms_time")
+              call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % rho_zz)
+              if (config_time_comms) call mpas_timer_stop("comms_time")
+
+
             end if
             if (debug) write(0,*) ' finished scalar advection '
 
@@ -3832,6 +3843,15 @@ module atm_time_integration
             write(0,*) ' no scalar advection '
 
          end if
+
+
+         if(debug) write(0,*) '    compute_solve_diagnostics '
+         block => domain % blocklist
+         do while (associated(block))
+            call atm_compute_solve_diagnostics( dt, block % state % time_levs(2) % state, block % diag, block % mesh )
+            block => block % next
+         end do
+         if(debug) write(0,*) '    finished compute_solve_diagnostics '
 
 
          ! Exchange w, pv_edge, and rho_edge
@@ -4344,6 +4364,98 @@ module atm_time_integration
 
 
    end subroutine atm_combine_dyn_tend
+
+! ---------------------------------------------------------------------------------
+
+   subroutine atm_mass_flux_divergence( diag, grid )
+
+!  Used for SI time integration scheme.
+
+!  Compute the time averaged mass flux divergence for later use in
+!  computing intermediate density values for RK3 scalar advection.
+!  Borrow the diag % divergence array, since this is not being used
+!  during the scalar advection. 
+
+      implicit none
+
+      type (diag_type) :: diag
+      type (mesh_type), intent(in) :: grid
+
+      real (kind=RKIND), dimension(:,:), pointer :: ruAvg, wwAvg, divergence
+      real (kind=RKIND), dimension(:), pointer :: dvEdge, areaCell, rdzw
+      real (kind=RKIND) :: r, flux
+
+      integer, dimension(:,:), pointer :: cellsOnEdge
+      integer :: nCellsSolve, nCells, nEdges, nVertLevels, &
+                 k, cell1, cell2, iCell, iEdge
+
+
+      ruAvg      => diag % ruAvg % array
+      wwAvg      => diag % wwAvg % array
+      divergence => diag % divergence % array
+
+      cellsOnEdge => grid % cellsOnEdge % array
+      dvEdge      => grid % dvEdge % array
+      areaCell    => grid % areaCell % array
+      rdzw        => grid % rdzw % array
+
+      nCellsSolve = grid % nCellsSolve
+      nCells      = grid % nCells
+      nEdges      = grid % nEdges
+      nVertLevels = grid % nVertLevels
+
+
+      ! Initialize to zero
+      divergence(:,:) = 0.0_RKIND
+
+      ! Accumulate horizontal mass-flux
+      do iEdge=1,nEdges
+         cell1 = cellsOnEdge(1,iEdge)
+         cell2 = cellsOnEdge(2,iEdge)
+         do k=1,nVertLevels
+            flux = ruAvg(k,iEdge)*dvEdge(iEdge)
+            divergence(k,cell1) = divergence(k,cell1) + flux
+            divergence(k,cell2) = divergence(k,cell2) - flux
+         end do
+      end do
+
+      ! Compute horiontal mass-flux divergence, add vertical mass flux divergence to complete calculation
+      do iCell = 1,nCellsSolve
+         r = 1.0 / areaCell(iCell)
+         do k = 1,nVertLevels
+            divergence(k,iCell) = divergence(k,iCell) * r               &
+                                + rdzw(k)*(wwAvg(k+1,iCell)-wwAvg(k,iCell))
+         end do
+      end do
+
+
+   end subroutine atm_mass_flux_divergence
+
+! ---------------------------------------------------------------------------------
+
+   subroutine atm_intermediate_density( s_old, s_new, diag, dtrk )
+
+!  Used by SI time integration.
+
+!  Compute intermediate values of density needed by RK3 scalar advection
+
+      implicit none
+
+      type (state_type) :: s_old, s_new
+      type (diag_type) :: diag
+
+      real (kind=RKIND), dimension(:,:), pointer :: divergence, rho_zz_old, rho_zz_new
+      real (kind=RKIND), intent(in) :: dtrk
+
+      divergence => diag % divergence % array
+      rho_zz_old => s_old % rho_zz % array
+      rho_zz_new => s_new % rho_zz % array
+
+
+      rho_zz_new(:,:) = rho_zz_old(:,:) - dtrk*divergence(:,:)
+
+
+   end subroutine atm_intermediate_density
 
 ! ---------------------------------------------------------------------------------
 
@@ -4949,6 +5061,7 @@ module atm_time_integration
 
 
    end subroutine atm_si_backsub
+
 ! ---------------------------------------------------------------------------------
 
    subroutine atm_diagnostics( s, diag, grid )
@@ -6160,7 +6273,7 @@ END SUBROUTINE trisolveb
 
    end subroutine atm_mg_solve_vcycle
 
-!----------------------------------------------------------------------------------
+! ================================================================
 
    subroutine atm_compute_global_max_min( domain )
 
