@@ -5198,26 +5198,17 @@ END SUBROUTINE trisolveb
       integer :: iCell, iStencilCell, k, ix, nCellsSolve
       real(kind=RKIND) :: aweight
 
-
       fine_cellArea   => fine_grid % areaCell % array
       coarse_cellArea => coarse_grid % areaCell % array
       nCellsSolve = coarse_grid % nCellsSolve
 
-
       do iCell = 1, nCellsSolve
-
-         ix = 1
-         iStencilCell = restrictStencil(ix,iCell)
-         aweight = fine_cellArea(iStencilCell)*restrictWeights(ix,iCell)
-         coarse_field(:,iCell) = fine_field(:,iStencilCell)*aweight
-
-         ix = 2
-         iStencilCell = restrictStencil(ix,iCell)
-         do while ((iStencilCell) > 0 .AND. (ix <= fine_grid % maxEdges))
+         ! this is required so that I can use the fine grid nEdgesOnCell
+         iStencilCell = restrictStencil(1,iCell)
+         do ix=1,fine_grid % nEdgesOnCell % array(iStencilCell)+1
+            iStencilCell = restrictStencil(ix,iCell)
             aweight = fine_cellArea(iStencilCell)*restrictWeights(ix,iCell)
             coarse_field(:,iCell) = coarse_field(:,iCell) + fine_field(:,iStencilCell)*aweight
-            ix = ix + 1
-            iStencilCell = restrictStencil(ix,iCell)
          enddo
          coarse_field(:,iCell) = coarse_field(:,iCell)/coarse_cellArea(iCell)
       enddo
@@ -5245,29 +5236,18 @@ END SUBROUTINE trisolveb
       integer :: iCell, iStencilCell, k, ix, nCells
       real(kind=RKIND) :: weight
 
-
       nCells = coarse_grid % nCells
-
 
       ! Initialize fine grid field to zero
       fine_field = 0.0_RKIND
-
       do iCell = 1, nCells
-
-         ix = 1
-         iStencilCell = restrictStencil(ix,iCell)
-         weight = restrictWeights(ix,iCell)
-         fine_field(:,iStencilCell) = fine_field(:,iStencilCell) + coarse_field(:,iCell)*weight
-
-         ix = 2
-         iStencilCell = restrictStencil(ix,iCell)
-         do while ((iStencilCell) > 0 .AND. (ix <= fine_grid % maxEdges))
+	 ! this is required so that I can use the fine grid nEdgesOnCell
+	 iStencilCell = restrictStencil(1,iCell)
+	 do ix=1,fine_grid % nEdgesOnCell % array(iStencilCell)+1
+	    iStencilCell = restrictStencil(ix,iCell)
             weight = restrictWeights(ix,iCell)
             fine_field(:,iStencilCell) = fine_field(:,iStencilCell) + coarse_field(:,iCell)*weight
-            ix = ix + 1
-            iStencilCell = restrictStencil(ix,iCell)
          enddo
-
       enddo
 
    end subroutine atm_mg_prolong

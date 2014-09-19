@@ -11,6 +11,7 @@
                 <dim name="maxEdges"/>
                 <dim name="maxEdges2"/>
                 <dim name="nVertices"/>
+		<dim name="maxEdgesP1"/>
                 <dim name="TWO"                definition="2"/>
                 <dim name="THREE"              definition="3"/>
                 <dim name="vertexDegree"/>
@@ -1051,8 +1052,8 @@
 		<var name="helm_inc"                    type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
                 <var name="helm_rhs"                	type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
                 <var name="temporary"                	type="real"     dimensions="nVertLevels nCells Time"        streams=""/>
-		<var name="restrictStencil"             type="integer"  dimensions="maxEdges nCells"                streams="iro"/>
-		<var name="restrictWeights"             type="real"     dimensions="maxEdges nCells"                streams="iro"/>
+		<var name="restrictStencil"             type="integer"  dimensions="maxEdgesP1 nCells"              streams="iro"/>
+		<var name="restrictWeights"             type="real"     dimensions="maxEdgesP1 nCells"              streams="iro"/>
                 <var name="helm_c"                      type="real"     dimensions="nVertLevels nCells Time"        streams="o"/>
                 <var name="helm_np"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
                 <var name="helm_n0"                     type="real"     dimensions="nVertLevelsP1 nCells Time"      streams="o"/>
