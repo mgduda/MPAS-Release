@@ -1577,6 +1577,8 @@ module mpas_io
    subroutine MPAS_io_put_var_generic(handle, fieldname, intVal, intArray1d, intArray2d, intArray3d, intArray4d, &
                                                         realVal, realArray1d, realArray2d, realArray3d, realArray4d, realArray5d, &
                                                         charVal, ierr)
+      !STEVE Temp included to access config_OutputOff
+      use mpas_configure
 
       implicit none
 
@@ -1661,6 +1663,7 @@ module mpas_io
          return
       end if
 
+     if (config_OutputOn) then !STEVE prevent output
       if (present(realVal)) then
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, realVal)
@@ -1714,6 +1717,7 @@ module mpas_io
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
       end if
+     end if
 
    end subroutine MPAS_io_put_var_generic
 

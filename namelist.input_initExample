@@ -9,10 +9,10 @@
 /
 
 &io
-   config_input_name         = 'MG_nr5_grid.nc'
-   config_output_name        = 'nr5_init.nc'
+   config_input_name         = 'mg.grid.x1.10242.nc'
+   config_output_name        = 'init.x1.10242.nc'
 /
 
 &decomposition
-   config_block_decomp_file_prefix = 'nr5.graph.info.part.'
+   config_block_decomp_file_prefix = 'x1.10242.graph.info.part.'
 /
