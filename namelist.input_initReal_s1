@@ -8,7 +8,7 @@ config_nsoillevels = 4
 /
 
 &data_sources
-config_geog_data_path = '/Users/ss421/Code/wrf/geog_complete'
+config_geog_data_path = '/Users/ss421/Code/Git/Bitbucket/RealData/GEOG/geog_complete/'
 /
 
 &preproc_stages
