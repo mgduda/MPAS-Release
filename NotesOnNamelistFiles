@@ -1,0 +1,29 @@
+Updated the namelist example filenames:
+ 
+1. Idealised case:
+ 
+Changed the name from Example to Ideal2 to indicate that its a namelist for Idelised test case 2
+
+1.1 init:
+namelist.input_initExample -> namelist.input_initIdeal2
+1.2 run: for each solver option
+namelist.input_runExample -> namelist.input_runSRK3Ideal2
+namelist.input_runSIExample -> namelist.input_runSIIdeal2
+ 
+2. Real case:
+ 
+Includeing namelist files for a real run:
+         
+2.1 init: there are three stages but only 1 and 3 are mandatory - namelist files are provided for stage 1 and stage 3
+namelist.input_initReal_s1 - this requires access to data downloaded from wrf - currently in: /Users/ss421/Code/Git/Bitbucket/RealData/GEOG
+namelist.input_initReal_s3 - This requires the CFSR:2010-10-23_00 file - Orography I think: copy in folder and /Users/ss421/Code/Git/Bitbucket/RealData/Orography
+
+>>> s1: input = grid.nc, output = static.nc
+>>> s3: input = static.nc, output = init.nc
+ 
+2.2 run: for each solver option
+namelist.input_runSIReal 
+namelist.input_runSRK3Real
+
+I think that these files are based on the setup from those downloaded from the MPAS website
+
