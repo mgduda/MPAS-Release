@@ -2,7 +2,6 @@
    config_dt = 450.0
    config_start_time   = '2010-10-23_00:00:00'
    config_run_duration = '0_00:30:00'
-   config_num_mgslevels = 2
 /
    config_stop_time  = '0000-01-16_00:00:00'
 
