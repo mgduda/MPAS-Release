@@ -2195,6 +2195,7 @@ module atm_time_integration
 
                tend_u(k,iEdge) =  - cqu(k,iEdge)*((pp(k,cell2)-pp(k,cell1))/dcEdge(iEdge)   &
                                        - dpzx(k) ) / (.5*(zz(k,cell2)+zz(k,cell1)))
+
             end do
 
          end if
@@ -3685,6 +3686,29 @@ module atm_time_integration
          end do
          if (debug) write(0,*) '    finished si_backsub '
 
+!JT
+! On antepenultimate iteration perturb solution in order to examine correction
+! at last iteration
+!if (iter == config_niter_si - 4) then
+!  write(0,*) '    *** perturbing solution ***'
+!  domain % blocklist % diag % rtheta_pp % array(1,2799) = 1.0_RKIND
+!  domain % blocklist % diag % rho_pp % array(1,2799) = 0.1_RKIND
+!  domain % blocklist % diag % rw_p % array(2,2799) = 0.01_RKIND
+!  domain % blocklist % diag % ru_p % array(1,16069) = 1.0_RKIND
+!endif
+! On last 3 iterations examine corrections
+!if (iter > config_niter_si - 5) then
+!  write(0,*) '    rtheta_pp = ',domain % blocklist % diag % rtheta_pp % array(1:4,2799)
+!  write(0,*) '    rho_pp    = ',domain % blocklist % diag % rho_pp % array(1:4,2799)
+!  write(0,*) '    rw_p      = ',domain % blocklist % diag % rw_p % array(1:4,2799)
+!  write(0,*) '    ru_p      = ',domain % blocklist % diag % ru_p % array(1:4,16070)
+!  write(0,*) '    ru_p      = ',domain % blocklist % diag % ru_p % array(1:4,16071)
+!  write(0,*) '    ru_p      = ',domain % blocklist % diag % ru_p % array(1:4,  235)
+!  write(0,*) '    ru_p      = ',domain % blocklist % diag % ru_p % array(1:4,16069)
+!  write(0,*) '    ru_p      = ',domain % blocklist % diag % ru_p % array(1:4,16072)
+!  write(0,*) '    ru_p      = ',domain % blocklist % diag % ru_p % array(1:4, 5267)
+!endif
+
 
          ! Add increment
          if (debug) write(0,*) '    add_si_inc '
@@ -3707,7 +3731,10 @@ module atm_time_integration
          if (debug) write(0,*) '    recover_derived_variables '
          block => domain % blocklist
          do while (associated(block))
-            call atm_recover_derived_variables( block % state % time_levs(2) % state, block % diag, block % mesh )
+            ! JT
+            call atm_recover_derived_variables( block % state % time_levs(2) % state, &
+                                                block % diag, block % tend, &
+                                                block % mesh, dt, iter==config_niter_si )
             block => block % next
          end do
          if (debug) write(0,*) '    finished recover_derived_variables '
@@ -4074,11 +4101,15 @@ module atm_time_integration
       real (kind=RKIND), dimension(:,:), pointer :: rtheta_p_save, rho_p_save, ru_save, rw_save, &
                                                     rtheta_p,      rho_p,      ru,      rw,      &
                                                     tend_theta,    tend_rho,   tend_u,  tend_w,  &
-                                                    zz
+                                                    zz, dss
       integer, dimension(:,:), pointer :: cellsOnEdge
       real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3
       real (kind=RKIND), dimension(:), pointer :: fzm, fzp
       real (kind=RKIND) :: flux
+
+! JT for diagnostics/debugging
+!      integer :: ithetax, kthetax, irhox, krhox, iux, kux, iwx, kwx
+!      real :: thetax, rhox, ux, wx
 
 !--
 
@@ -4087,6 +4118,8 @@ module atm_time_integration
       zz            => grid % zz % array
       zb            => grid % zb % array
       zb3           => grid % zb3 % array
+      dss           => grid % dss % array
+
 
       rtheta_p_save => diag % rtheta_p_save % array
       rho_p_save    => diag % rho_p_save % array
@@ -4115,21 +4148,67 @@ module atm_time_integration
 
      ! Compute residuals
 
-     tend_theta(:,1:nCellsSolve) = dt*tend_theta(:,1:nCellsSolve) + rtheta_p_save(:,1:nCellsSolve) &
-                                                                  - rtheta_p(:,1:nCellsSolve)
-     tend_rho(:,1:nCellsSolve)   = dt*tend_rho(:,1:nCellsSolve)   + rho_p_save(:,1:nCellsSolve)    &
-                                                                  - rho_p(:,1:nCellsSolve)
-     tend_u(:,1:nEdgesSolve)     = dt*tend_u(:,1:nEdgesSolve)     + ru_save(:,1:nEdgesSolve)       &
-                                                                  - ru(:,1:nEdgesSolve)
-     tend_w(:,1:nCellsSolve)     = dt*tend_w(:,1:nCellsSolve)     + rw_save(:,1:nCellsSolve)       &
-                                                                  - rw(:,1:nCellsSolve)
+     tend_theta(:,1:nCellsSolve)         = dt*tend_theta(:,1:nCellsSolve) + rtheta_p_save(:,1:nCellsSolve) &
+                                                                          - rtheta_p(:,1:nCellsSolve)
+     tend_rho(:,1:nCellsSolve)           = dt*tend_rho(:,1:nCellsSolve)   + rho_p_save(:,1:nCellsSolve)    &
+                                                                          - rho_p(:,1:nCellsSolve)
+     tend_u(:,1:nEdgesSolve)             = dt*tend_u(:,1:nEdgesSolve)     + ru_save(:,1:nEdgesSolve)       &
+                                                                          - ru(:,1:nEdgesSolve)
+     tend_w(2:nVertLevels,1:nCellsSolve) = dt*tend_w(2:nVertLevels,1:nCellsSolve)     &
+                                         + rw_save(2:nVertLevels,1:nCellsSolve)       &
+                             - (1.0_RKIND + dt*dss(2:nVertLevels,1:nCellsSolve))*rw(2:nVertLevels,1:nCellsSolve)
+
+
+!     thetax = 0.0_RKIND
+!     rhox = 0.0_RKIND
+!     ux = 0.0_RKIND
+!     wx = 0.0_RKIND
+!     do iCell = 1, nCellsSolve
+!       do k = 1, nVertLevels
+!         if (abs(tend_theta(k,iCell)) .gt. thetax) then
+!           ithetax = iCell
+!           kthetax = k
+!           thetax = abs(tend_theta(k,iCell))
+!         endif
+!         if (abs(tend_rho(k,iCell)) .gt. rhox) then
+!           irhox = iCell
+!           krhox = k
+!           rhox = abs(tend_rho(k,iCell))
+!         endif
+!         if (abs(tend_w(k,iCell)) .gt. wx) then
+!           iwx = iCell
+!           kwx = k
+!           wx = abs(tend_w(k,iCell))
+!         endif
+!       enddo
+!     enddo
+!     do iEdge = 1, nEdgesSolve
+!       do k = 1, nVertLevels
+!         if (abs(tend_u(k,iEdge)) .gt. ux) then
+!           iux = iEdge
+!           kux = k
+!           ux = abs(tend_u(k,iEdge))
+!         endif
+!       enddo
+!     enddo
+
+
+!     write(0,*) ' Max residual theta   = ',maxval(abs(tend_theta(:,1:nCellsSolve)))
+!     write(0,*) ' Max residual rho     = ',maxval(abs(tend_rho(:,1:nCellsSolve)))
+!     write(0,*) ' Max residual u       = ',maxval(abs(tend_u(:,1:nEdgesSolve)))
+!     write(0,*) ' Max residual w       = ',maxval(abs(tend_w(:,1:nCellsSolve)))
+
+!     write(0,*) ' Max residual theta   = ',thetax,'   at ',kthetax,ithetax
+!     write(0,*) ' Max residual rho     = ',rhox  ,'   at ',krhox  ,irhox
+!     write(0,*) ' Max residual u       = ',ux    ,'   at ',kux    ,iux
+!     write(0,*) ' Max residual w       = ',wx    ,'   at ',kwx    ,iwx
 
 
    end subroutine atm_compute_residuals
 
 ! ---------------------------------------------------------------------------------
 
-   subroutine atm_recover_derived_variables( s, diag, grid )
+   subroutine atm_recover_derived_variables( s, diag, tend, grid, dt, last )
 
       ! Used by SI time integration scheme.
       ! Recover derived quantities exner, pressure_p,
@@ -4142,12 +4221,15 @@ module atm_time_integration
 
       type (state_type) :: s
       type (diag_type) :: diag
+      type (tend_type) :: tend
       type (mesh_type), intent(in) :: grid
+      real (kind=RKIND), intent(in) :: dt
+      logical, intent(in) :: last
 
       real (kind=RKIND), dimension(:,:), pointer :: w, rw, rtheta_p, rho_p, &
                                                     rho_zz, rho_base, u, ru, &
                                                     exner, exner_base, rtheta_base, pressure_p,  &
-                                                    zz, theta_m
+                                                    zz, theta_m, rt_diabatic_tend
       real (kind=RKIND), dimension(:), pointer :: fzm, fzp, dvEdge, areaCell
       real (kind=RKIND), dimension(:,:,:), pointer :: zb, zb3 
       integer, dimension(:,:), pointer :: cellsOnEdge
@@ -4163,6 +4245,7 @@ module atm_time_integration
       rtheta_p => diag % rtheta_p % array
       rtheta_base => diag % rtheta_base % array
       theta_m => s % theta_m % array
+      rt_diabatic_tend => tend % rt_diabatic_tend % array
 
       rho_zz => s % rho_zz % array
       rho_p => diag % rho_p % array
@@ -4208,6 +4291,14 @@ module atm_time_integration
          do k = 1, nVertLevels
             rho_zz(k,iCell) = rho_p(k,iCell) + rho_base(k,iCell)
          end do
+
+         ! JT
+         ! On the last Newton iteration remove the heating contribution from microphysics
+         if (last) then
+            do k = 1, nVertLevels
+               rtheta_p(k,iCell) = rtheta_p(k,iCell) - dt * rho_zz(k,iCell) * rt_diabatic_tend(k,iCell)
+            end do
+         endif
 
          w(1,iCell) = 0.
          do k = 2, nVertLevels
@@ -4532,7 +4623,8 @@ module atm_time_integration
       real (kind=RKIND), dimension(:), pointer :: rdzu, rdzw, fzm, fzp
       real (kind=RKIND), dimension(:,:), pointer :: helm_zz, rho_zz, theta_m, pressure_base, pressure_p
       real (kind=RKIND), dimension(:,:), pointer :: helm_c, helm_np, helm_n0, helm_nm, &
-                                                    helm_d1p, helm_d1m, helm_d2p, helm_d2m
+                                                    helm_d1p, helm_d1m, helm_d2p, helm_d2m, &
+                                                    dss
 
       real (kind=RKIND), dimension(:,:), pointer :: fine_field, coarse_field
       real (kind=RKIND), dimension(:,:), pointer :: coarse_restrictWeights 
@@ -4560,6 +4652,8 @@ module atm_time_integration
       rdzw        => block % mesh % rdzw % array
       fzm         => block % mesh % fzm % array
       fzp         => block % mesh % fzp % array
+      dss         => block % mesh % dss % array
+
 
       nVertLevels = block % mesh % nVertLevels
       nCellsSolve = block % mesh % nCellsSolve
@@ -4603,7 +4697,8 @@ module atm_time_integration
          helm_nm(nVertLevels+1,iCell) = 0.0_RKIND
          do k = 2, nVertLevels
             helm_np(k,iCell) = a2dt2g* fzm(k)*helm_d2p(k  ,iCell)
-            helm_n0(k,iCell) = a2dt2g*(fzm(k)*helm_d2m(k  ,iCell) + fzp(k)*helm_d2p(k-1,iCell)) + 1.0_RKIND
+            helm_n0(k,iCell) = a2dt2g*(fzm(k)*helm_d2m(k  ,iCell) + fzp(k)*helm_d2p(k-1,iCell)) &
+                             + 1.0_RKIND + dss(k,iCell)*dt
             helm_nm(k,iCell) = a2dt2g* fzp(k)*helm_d2m(k-1,iCell)
          enddo
 
@@ -5979,6 +6074,8 @@ END SUBROUTINE trisolveb
                call atm_mg_residual( pressure_inc, rhs, fine_helm_rhs, &
                                      fine_grid, fine_mgs_vars, dt )
             endif
+            ! JT
+            write(0,*) ' Max MG residual = ',maxval(abs(fine_helm_rhs(:,1:fine_block % mesh % nCellsSolve)))
             ! And initialize finest grid correction to zero
             fine_helm_inc(:,1:fine_block % mesh % nCells) = 0.0_RKIND
             fine_block      => fine_block % next
