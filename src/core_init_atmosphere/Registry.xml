@@ -42,7 +42,6 @@
                 <nml_option name="config_coef_3rd_order"        type="real"          default_value="0.25"/>
                 <nml_option name="config_num_halos"             type="integer"       default_value="2"/>
                 <nml_option name="config_num_mgslevels"         type="integer"       default_value="1"/>
-		<nml_option name="config_runOnZen"              type="logical"       default_value="false"/>
                 <nml_option name="config_OutputOn"              type="logical"       default_value="true"/>
         </nml_record>
 

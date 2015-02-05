@@ -9,7 +9,6 @@ config_mg_solve_npass_final = 1
 config_time_integration = 'SI'
 config_scalar_advection = T
 config_mg_solver = 'VCMG'
-config_runOnZen = F
 /
 config_stop_time  = '0000-01-16_00:00:00'
 
