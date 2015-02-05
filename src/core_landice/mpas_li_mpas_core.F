@@ -325,7 +325,7 @@ module mpas_core
             ! MJH: See old code for adjustments made here to deal with some obscure, specific use-cases
             if(output_frame == 1) then
                call mpas_output_state_finalize(output_obj, domain % dminfo)
-               call mpas_output_state_init(output_obj, domain, "OUTPUT", 1, trim(timeStamp))
+               call mpas_output_state_init(output_obj, domain, "OUTPUT", trim(timeStamp))
             end if
             call write_output_frame(output_obj, output_frame, domain)
             call mpas_timer_stop("write output")
@@ -340,7 +340,7 @@ module mpas_core
             call mpas_reset_clock_alarm(clock, restartAlarmID, ierr=err_tmp)
 
             ! Write one restart time per file
-            call mpas_output_state_init(restart_obj, domain, "RESTART", 1, trim(timeStamp))
+            call mpas_output_state_init(restart_obj, domain, "RESTART", trim(timeStamp))
             call mpas_output_state_for_domain(restart_obj, domain, 1)
             call mpas_output_state_finalize(restart_obj, domain % dminfo)
             call mpas_timer_stop("write restart")

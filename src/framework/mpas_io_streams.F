@@ -1385,7 +1385,7 @@ contains
         mgslevelChar=''
       elseif(stream % mgslevel.eq.-999) then!This is the case where the mgs-level has not been set
         mgslevelChar=''
-        write(*,*) 'stream % mgslevel = -999, *_mgsLevel is not implemented'
+!        write(*,*) 'stream % mgslevel = -999, *_mgsLevel is not implemented'
       else
         write(mgslevelChar,*) stream % mgslevel
 	mgslevelChar =  '_'//trim(adjustl(mgslevelChar))

@@ -53,9 +53,9 @@ module mpas_subdriver
       output_frame = 1
 !STEVE_Edit: added additional integer to the call that deffines the mgsLevel
       if(config_frames_per_outfile > 0) then
-         call mpas_output_state_init(output_obj, domain, "OUTPUT", 1, trim(timeStamp))
+         call mpas_output_state_init(output_obj, domain, "OUTPUT", trim(timeStamp))
       else
-         call mpas_output_state_init(output_obj, domain, "OUTPUT", 1)         
+         call mpas_output_state_init(output_obj, domain, "OUTPUT")         
       end if
 
 

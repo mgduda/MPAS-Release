@@ -335,7 +335,7 @@ module mpas_core
             ! output_frame will always be > 1 here unless it was reset after the maximum number of frames per outfile was reached
             if(output_frame == 1) then
                call mpas_output_state_finalize(output_obj, domain % dminfo)
-               call mpas_output_state_init(output_obj, domain, "OUTPUT", 1, trim(timeStamp))
+               call mpas_output_state_init(output_obj, domain, "OUTPUT", trim(timeStamp))
             end if
             call atm_write_output_frame(output_obj, output_frame, domain)
          end if
@@ -361,7 +361,7 @@ module mpas_core
             end do
 
             ! Write one restart time per file
-            call mpas_output_state_init(restart_obj, domain, "RESTART", 1, trim(timeStamp))
+            call mpas_output_state_init(restart_obj, domain, "RESTART", trim(timeStamp))
             call mpas_output_state_for_domain(restart_obj, domain, 1)
             call mpas_output_state_finalize(restart_obj, domain % dminfo)
          end if

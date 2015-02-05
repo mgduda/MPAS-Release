@@ -57,7 +57,7 @@
  sfc_update_obj % time = 1
  sfc_update_obj % filename = trim(config_sfc_update_name)
 
- call mpas_output_state_init(sfc_update_obj, domain, "SFC", 1)
+ call mpas_output_state_init(sfc_update_obj, domain, "SFC")
 
 !loop over all times:
  curr_time = mpas_get_clock_time(fg_clock, MPAS_NOW) 
