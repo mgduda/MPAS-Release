@@ -1663,7 +1663,6 @@ module mpas_io
          return
       end if
 
-     if (config_OutputOn) then !STEVE prevent output
       if (present(realVal)) then
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, realVal)
@@ -1717,7 +1716,6 @@ module mpas_io
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
       end if
-     end if
 
    end subroutine MPAS_io_put_var_generic
 
