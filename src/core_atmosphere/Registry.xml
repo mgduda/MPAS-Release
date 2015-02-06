@@ -75,7 +75,6 @@
                 <nml_option name="config_num_halos"                  type="integer"       default_value="2"/>
                 <nml_option name="config_num_mgslevels"              type="integer"       default_value="1"/>
                 <nml_option name="config_mg_solve_npass"             type="integer"       default_value="1"/>
-                <nml_option name="config_mg_solve_npass_final"       type="integer"       default_value="1"/>
                 <nml_option name="config_mg_solver"                  type="character"     default_value="FMG"/>
 		<nml_option name="config_dump_min_max"               type="logical"       default_value="false"/>
                 <nml_option name="config_time_comms"                 type="logical"       default_value="false"/>

@@ -3477,7 +3477,6 @@ module atm_time_integration
 
       integer :: rk_step, iter
       integer :: iScalar
-      integer :: npass_sw
 
       real (kind=RKIND), dimension(3) :: rk_timestep
       logical :: spt_modified
@@ -3661,16 +3660,15 @@ module atm_time_integration
 
          ! Solve Helmholtz problem
          if (debug) write(0,*) '    mg_solve '
-	   if (iter.eq.config_niter_si) npass_sw=2
-       if (trim(config_mg_solver) == 'VCMG') then
-	     call mpas_timer_start("mg_solver")
-         call atm_mg_solve_vcycle( domain, dt , npass_sw)
-	     call mpas_timer_stop("mg_solver")
-       elseif (trim(config_mg_solver) == 'FMG') then
-	     call mpas_timer_start("mg solver")
-         call atm_mg_solve( domain, dt , npass_sw)
-         call mpas_timer_stop("mg solver")
-       endif
+         if (trim(config_mg_solver) == 'VCMG') then
+	       call mpas_timer_start("mg_solver")
+           call atm_mg_solve_vcycle( domain, dt)
+	       call mpas_timer_stop("mg_solver")
+         elseif (trim(config_mg_solver) == 'FMG') then
+	       call mpas_timer_start("mg solver")
+           call atm_mg_solve( domain, dt)
+           call mpas_timer_stop("mg solver")
+         endif
 
 
          if (debug) write(0,*) '    finished mg_solve '
@@ -5617,7 +5615,7 @@ END SUBROUTINE trisolveb
 
 ! ================================================================
 
-   subroutine atm_mg_solve( domain, dt , npass_sw)
+   subroutine atm_mg_solve( domain, dt)
 
       ! Multigrid solver for Helmholtz problem
       ! H( pressure_inc ) = rhs
@@ -5631,9 +5629,6 @@ END SUBROUTINE trisolveb
       integer :: niterc      ! Number of relaxation iterations on coarsest grid
       integer :: niterpre    ! Number of relaxation iterations on other grids, descending
       integer :: niterpost   ! Number of relaxation iterations on other grids, ascending
-
-
-      integer, intent(in) :: npass_sw
 
       type (domain_type), intent(inout) :: domain
       real(kind=RKIND), intent(in) :: dt
@@ -5657,14 +5652,8 @@ END SUBROUTINE trisolveb
       niterpost = config_niterpost
 
 ! -----------
-      ! Control the number of sweeps npass_sw=2 on final C-N sweep
-      if (npass_sw==2) then
-        mg_solve_npass = config_mg_solve_npass_final
-      else
-	mg_solve_npass = config_mg_solve_npass
-      end if
 
-      !mg_solve_npass = config_mg_solve_npass
+      mg_solve_npass = config_mg_solve_npass
       mg_solve_depth = config_num_mgslevels
 
 
@@ -5982,7 +5971,7 @@ END SUBROUTINE trisolveb
 
 ! ================================================================
 
-   subroutine atm_mg_solve_vcycle( domain, dt , npass_sw)
+   subroutine atm_mg_solve_vcycle( domain, dt)
 
       ! Multigrid solver for Helmholtz problem
       ! H( pressure_inc ) = rhs
@@ -5997,8 +5986,6 @@ END SUBROUTINE trisolveb
       integer :: niterc      ! Number of relaxation iterations on coarsest grid
       integer :: niterpre    ! Number of relaxation iterations on other grids, descending
       integer :: niterpost   ! Number of relaxation iterations on other grids, ascending
-
-      integer, intent(in) :: npass_sw
 
       type (domain_type), intent(inout) :: domain
       real(kind=RKIND), intent(in) :: dt
@@ -6023,14 +6010,7 @@ END SUBROUTINE trisolveb
 
 
 ! -----------
-      ! Control the number of sweeps npass_sw=2 on final C-N sweep
-      if (npass_sw==2) then
-        mg_solve_npass = config_mg_solve_npass_final
-      else
-	mg_solve_npass = config_mg_solve_npass
-      end if
-
-      !mg_solve_npass = config_mg_solve_npass
+      mg_solve_npass = config_mg_solve_npass
       mg_solve_depth = config_num_mgslevels
 
 
