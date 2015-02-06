@@ -129,23 +129,16 @@ module atm_time_integration
       if(debug) write(0,*) ' copy step in rk solver '
 
 ! theta_m
-      if (config_time_comms) call mpas_timer_start("comms_time")
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % theta_m)
-      if (config_time_comms) call mpas_timer_stop("comms_time")
 
 ! scalars
-      if (config_time_comms) call mpas_timer_start("comms_time")
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % scalars)
-      if (config_time_comms) call mpas_timer_stop("comms_time")
+      
 ! pressure_p
-      if (config_time_comms) call mpas_timer_start("comms_time")
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p)
-      if (config_time_comms) call mpas_timer_stop("comms_time")
 
 ! rtheta_p
-      if (config_time_comms) call mpas_timer_start("comms_time")
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
-      if (config_time_comms) call mpas_timer_stop("comms_time")
 
       block => domain % blocklist
       do while (associated(block))
@@ -201,9 +194,7 @@ module atm_time_integration
          !***********************************
 
 ! tend_u
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % tend % u, (/ 1 /))
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
          block => domain % blocklist
             do while (associated(block))
@@ -231,14 +222,11 @@ module atm_time_integration
   
 ! rtheta_pp
 ! This is the only communications needed during the acoustic steps because we solve for u on all edges of owned cells
-            if (config_time_comms) call mpas_timer_start("comms_time")
             call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_pp, (/ 1 /))
-            if (config_time_comms) call mpas_timer_stop("comms_time")
  
          end do  ! end of acoustic steps loop
 
          !CR: SMALLER STENCIL?: call mpas_dmpar_exch_halo_field(block % diag % rw_p, (/ 1 /))
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw_p)
 
          !CR: SMALLER STENCIL?: call mpas_dmpar_exch_halo_field(block % diag % ru_p, (/ 2 /))
@@ -248,7 +236,6 @@ module atm_time_integration
 
          ! the second layer of halo cells must be exchanged before calling atm_recover_large_step_variables
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_pp, (/ 2 /))
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
          block => domain % blocklist
          do while (associated(block))
@@ -260,9 +247,7 @@ module atm_time_integration
 
 ! u
          !CR: SMALLER STENCIL?: call mpas_dmpar_exch_halo_field(block % state % time_levs(2) % state % u, (/ 3 /))
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % u)
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
          ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
          ! PD or monotonicity constraints applied only on the final Runge-Kutta substep.
@@ -306,24 +291,16 @@ module atm_time_integration
          if(debug) write(0,*) ' diagnostics complete '
 
 ! w
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 ! pv_edge
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
 ! rho_edge
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
 ! scalars
          if (rk_step < 3) then
-            if (config_time_comms) call mpas_timer_start("comms_time")
             call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % scalars)
-            if (config_time_comms) call mpas_timer_stop("comms_time")
          end if
 
       end do ! rk_step loop
@@ -1559,9 +1536,7 @@ module atm_time_integration
       end do
 
       !  halo exchange
-      if (config_time_comms) call mpas_timer_start("comms_time")
       call mpas_dmpar_exch_halo_field(s_old % scalars)
-      if (config_time_comms) call mpas_timer_stop("comms_time")
       !
       ! Runge Kutta integration, so we compute fluxes from scalar_new values, update starts from scalar_old
       !
@@ -1770,9 +1745,7 @@ module atm_time_integration
          tempField % next => null()
 
          tempField % array => scale_arr
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(tempField, (/ 1 /))
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 !
 !  rescale the fluxes
 !
@@ -3496,12 +3469,10 @@ module atm_time_integration
 
 
 !     Exchange theta_m, scalars, pressure_p and rtheta_p
-      if (config_time_comms) call mpas_timer_start("comms_time")
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % theta_m)
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(1) % state % scalars)
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pressure_p)
       call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
-      if (config_time_comms) call mpas_timer_stop("comms_time")
 
       ! Copy time_levs(1) state variables into time_levs(2) and also save
       ! density weighted coupled variables
@@ -3639,9 +3610,7 @@ module atm_time_integration
          if (debug) write(0,*) '    finished compute_residuals '
 
 !        Exchange the residual in the u equation (tend_u) as we need to take its div
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % tend % u, (/ 1 /))
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
          ! Set up RHS of Helmholtz
          if (debug) write(0,*) '    build_helmholtz_rhs '
@@ -3716,12 +3685,10 @@ module atm_time_integration
 
 
          ! Exchange recently updated coupled variables: rho_p, rw, rtheta_p, ru
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_p)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rw)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rtheta_p)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % ru)
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
          if (debug) write(0,*) '    recover_derived_variables '
          block => domain % blocklist
@@ -3735,10 +3702,8 @@ module atm_time_integration
          if (debug) write(0,*) '    finished recover_derived_variables '
 
 !STEVE: the following calls produce the same output - we only need to updat hallo 3 edges of velocity - the rest is ok
-        if (config_time_comms) call mpas_timer_start("comms_time")
 	!call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % u)
 	call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % u, (/3/))
-	if (config_time_comms) call mpas_timer_stop("comms_time")
 
 
          ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
@@ -3845,16 +3810,12 @@ module atm_time_integration
                   spt_modified = .true.
                   ! Exchange scalars ready for next RK stage
                   if (rk_step < 3) then
-       		     if (config_time_comms) call mpas_timer_start("comms_time")
                      call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % scalars)
-    	             if (config_time_comms) call mpas_timer_stop("comms_time")
                   end if
 
                end do     ! End of RK loop
 
-              if (config_time_comms) call mpas_timer_start("comms_time")
               call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % rho_zz)
-              if (config_time_comms) call mpas_timer_stop("comms_time")
 
 
             end if
@@ -3877,11 +3838,9 @@ module atm_time_integration
 
 
          ! Exchange w, pv_edge, and rho_edge
-         if (config_time_comms) call mpas_timer_start("comms_time")
          call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % w)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % pv_edge)
          call mpas_dmpar_exch_halo_field(domain % blocklist % diag % rho_edge)
-         if (config_time_comms) call mpas_timer_stop("comms_time")
 
 
       end do ! iteration loop
@@ -4817,13 +4776,9 @@ module atm_time_integration
            ! Exchange field ready for restriction
            ! helm_zz needs a full halo exchange to avoid arithmetic errors in helmholtz
            if (k < 9)then
-             if (config_time_comms) call mpas_timer_start("comms_time")
              call mpas_dmpar_exch_halo_field(fine_field, (/ 1 /))
-             if (config_time_comms) call mpas_timer_stop("comms_time")
            else
-             if (config_time_comms) call mpas_timer_start("comms_time")
              call mpas_dmpar_exch_halo_field(fine_field)
-             if (config_time_comms) call mpas_timer_stop("comms_time")
            endif
 
            do while (associated(fine_block))
@@ -4850,9 +4805,7 @@ module atm_time_integration
 
       ! helm_zz also needs to be exchanged on the coarsest grid (others are only needed
       ! on owned cells).
-      if (config_time_comms) call mpas_timer_start("comms_time")
       call mpas_dmpar_exch_halo_field(headblock % mgs_vars % helm_zz)
-      if (config_time_comms) call mpas_timer_stop("comms_time")
 
    end subroutine atm_restrict_helmholtz_coeff
 
@@ -5706,9 +5659,7 @@ END SUBROUTINE trisolveb
             fine_block                => head_block
             coarse_block              => head_block % coarser
             ! Exchange rhs field ready for restriction
-            if (config_time_comms) call mpas_timer_start("comms_time")
             call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_rhs, (/ 1 /))
-            if (config_time_comms) call mpas_timer_stop("comms_time")
             do while (associated(fine_block))
                fine_grid              => fine_block % mesh
                fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
@@ -5750,9 +5701,7 @@ END SUBROUTINE trisolveb
                fine_block         => fine_block % next
             enddo
             ! Exchange inc field
-            if (config_time_comms) call mpas_timer_start("comms_time")
             call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-            if (config_time_comms) call mpas_timer_stop("comms_time")
          enddo
 
 
@@ -5780,9 +5729,7 @@ END SUBROUTINE trisolveb
             enddo
             head_block => head_block % finer
             ! Exchange inc field
-            if (config_time_comms) call mpas_timer_start("comms_time")
             call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-            if (config_time_comms) call mpas_timer_stop("comms_time")
 
 	    if(debug) write(0,*) ' Execute one V-cycle '
             ! Execute one V-cycle starting from the new current grid
@@ -5806,9 +5753,7 @@ END SUBROUTINE trisolveb
                      fine_block          => fine_block % next
                   enddo
                  ! Exchange inc field
-                 if (config_time_comms) call mpas_timer_start("comms_time")
                  call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-                 if (config_time_comms) call mpas_timer_stop("comms_time")
                enddo
 
 
@@ -5825,9 +5770,7 @@ END SUBROUTINE trisolveb
                   fine_block             => fine_block % next
                enddo
                ! Exchange residual field prior to restriction
-               if (config_time_comms) call mpas_timer_start("comms_time")
                call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
-               if (config_time_comms) call mpas_timer_stop("comms_time")
 
 
                ! Restrict residual to coarser grid
@@ -5872,9 +5815,7 @@ END SUBROUTINE trisolveb
                   fine_block         => fine_block % next
                enddo
                ! Exchange inc field
-               if (config_time_comms) call mpas_timer_start("comms_time")
                call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-               if (config_time_comms) call mpas_timer_stop("comms_time")
             enddo
 
 
@@ -5904,9 +5845,7 @@ END SUBROUTINE trisolveb
                   coarse_block           => coarse_block % next
                enddo
                ! Exchange increment field after prolong
-               if (config_time_comms) call mpas_timer_start("comms_time")
                call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
-               if (config_time_comms) call mpas_timer_stop("comms_time")
 
                ! Add correction to update fine grid solution
                fine_block             => head_block
@@ -5935,9 +5874,7 @@ END SUBROUTINE trisolveb
                      fine_block      => fine_block % next
                   enddo
                  ! Exchange inc field
-                 if (config_time_comms) call mpas_timer_start("comms_time")
                  call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-                 if (config_time_comms) call mpas_timer_stop("comms_time")
                enddo
 
 
@@ -6065,9 +6002,7 @@ END SUBROUTINE trisolveb
 !            fine_block                => head_block
 !            coarse_block              => head_block % coarser
 !            ! Exchange rhs field ready for restriction
-!            if (config_time_comms) call mpas_timer_start("comms_time")
 !            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_rhs, (/ 1 /))
-!            if (config_time_comms) call mpas_timer_stop("comms_time")
 !            do while (associated(fine_block))
 !               fine_grid              => fine_block % mesh
 !               fine_helm_rhs          => fine_block % mgs_vars % helm_rhs % array
@@ -6109,9 +6044,7 @@ END SUBROUTINE trisolveb
 !               fine_block         => fine_block % next
 !            enddo
 !            ! Exchange inc field
-!            if (config_time_comms) call mpas_timer_start("comms_time")
 !            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-!            if (config_time_comms) call mpas_timer_stop("comms_time")
 !         enddo
 
 
@@ -6140,9 +6073,7 @@ END SUBROUTINE trisolveb
 !            enddo
 !            head_block => head_block % finer
 !            ! Exchange inc field
-!            if (config_time_comms) call mpas_timer_start("comms_time")
 !            call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-!            if (config_time_comms) call mpas_timer_stop("comms_time")
 
 !	    if(debug) write(0,*) ' Execute one V-cycle '
 !            ! Execute one V-cycle starting from the new current grid
@@ -6167,9 +6098,7 @@ END SUBROUTINE trisolveb
                      fine_block          => fine_block % next
                   enddo
                  ! Exchange inc field
-                 if (config_time_comms) call mpas_timer_start("comms_time")
                  call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-                 if (config_time_comms) call mpas_timer_stop("comms_time")
                enddo
 
 
@@ -6186,9 +6115,7 @@ END SUBROUTINE trisolveb
                   fine_block             => fine_block % next
                enddo
                ! Exchange residual field prior to restriction
-               if (config_time_comms) call mpas_timer_start("comms_time")
                call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
-               if (config_time_comms) call mpas_timer_stop("comms_time")
 
 
                ! Restrict residual to coarser grid
@@ -6233,9 +6160,7 @@ END SUBROUTINE trisolveb
                   fine_block         => fine_block % next
                enddo
                ! Exchange inc field
-               if (config_time_comms) call mpas_timer_start("comms_time")
                call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-               if (config_time_comms) call mpas_timer_stop("comms_time")
             enddo
 
 
@@ -6265,9 +6190,7 @@ END SUBROUTINE trisolveb
                   coarse_block           => coarse_block % next
                enddo
                ! Exchange increment field after prolong
-               if (config_time_comms) call mpas_timer_start("comms_time")
                call mpas_dmpar_exch_halo_field(head_block % mgs_vars % temporary, (/ 1 /))
-               if (config_time_comms) call mpas_timer_stop("comms_time")
 
                ! Add correction to update fine grid solution
                fine_block             => head_block
@@ -6296,9 +6219,7 @@ END SUBROUTINE trisolveb
                      fine_block      => fine_block % next
                   enddo
                  ! Exchange inc field
-                 if (config_time_comms) call mpas_timer_start("comms_time")
                  call mpas_dmpar_exch_halo_field(head_block % mgs_vars % helm_inc, (/ 1 /))
-                 if (config_time_comms) call mpas_timer_stop("comms_time")
                enddo
 
 
