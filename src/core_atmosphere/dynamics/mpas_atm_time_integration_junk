@@ -3424,8 +3424,7 @@ module atm_time_integration
 
 
    subroutine atm_si(domain, dt, itimestep)
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
    ! Advance model state forward in time by the specified time step using 
    !   a semi-implicit scheme based on iterating towards a Crank-Nicolson scheme
    !
@@ -3436,7 +3435,6 @@ module atm_time_integration
    ! Output: domain - upon exit, time level 2 (e.g., time_levs(2)%state%h(:,:)) contains 
    !                  model state advanced forward in time by dt seconds,
    !                  and some diagnostics in diag 
-   !
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 
       !use mpas_timer
@@ -3857,17 +3855,17 @@ module atm_time_integration
       end do
 
 
-!!...  compute some diagnostics
-!      if (debug) write(0,*) ' compute some diagnostics '
-!      block => domain % blocklist
-!      do while (associated(block))
-!         call atm_diagnostics( block % state % time_levs(2) % state, &
-!                               block % diag,                         &
-!                               block % mesh )
-!         block => block % next
-!      end do
-!      if (debug) write(0,*) ' diagnostics completed '
-!
+!...  compute some diagnostics
+      if (debug) write(0,*) ' compute some diagnostics '
+      block => domain % blocklist
+      do while (associated(block))
+         call atm_diagnostics( block % state % time_levs(2) % state, &
+                               block % diag,                         &
+                               block % mesh )
+         block => block % next
+      end do
+      if (debug) write(0,*) ' diagnostics completed '
+
 !... call to parameterizations of cloud microphysics. calculation of the tendency of water vapor to horizontal and
 !... vertical advection needed for the Tiedtke parameterization of convection.
 
@@ -3971,12 +3969,8 @@ module atm_time_integration
 
    subroutine atm_reset_scalars( s_old, s_new )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! Reset time level 2 scalars to time level 1 values before advection
    ! (after the first semi-implicit iteration)
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -3990,11 +3984,7 @@ module atm_time_integration
 
    subroutine atm_save_scalar_phys_tend( tend, grid )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! Save the physics tendencies of scalars for re-use by the RK3 advection scheme.
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4014,13 +4004,9 @@ module atm_time_integration
 
    subroutine atm_restore_scalar_phys_tend( tend, grid )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! Restore the physics tendencies of scalars for re-use by the RK3 advection scheme.
    ! (As an alternative we could call physics_addtend, but this would involve additional
    ! flops and memory access.)
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4039,12 +4025,8 @@ module atm_time_integration
 
    subroutine atm_compute_residuals( diag, tend, grid, dt )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Compute the residual in each governing equation:
-   ! R_x = dt * tend_x  + x_old - x_new
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      ! Compute the residual in each governing equation:
+      ! R_x = dt * tend_x  + x_old - x_new
 
       implicit none
 
@@ -4163,15 +4145,12 @@ module atm_time_integration
 
    subroutine atm_recover_derived_variables( s, diag, tend, grid, dt, last )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Used by SI time integration scheme.
-   ! Recover derived quantities exner, pressure_p,
-   ! and state variables rho_zz, u, w, theta_m
-   ! This routine closely follows atm_recover_large_step_variables but does not
-   ! compute rho_p, rtheta_p, ru, rw  because we have just incremented those.
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      ! Used by SI time integration scheme.
+      ! Recover derived quantities exner, pressure_p,
+      ! and state variables rho_zz, u, w, theta_m
+      ! This routine closely follows atm_recover_large_step_variables but does not
+      ! compute rho_p, rtheta_p, ru, rw  because we have just incremented those.
+      ! 
 
       implicit none
 
@@ -4313,13 +4292,9 @@ module atm_time_integration
 
    subroutine atm_save_dyn_tend( tend, diag, grid )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    !  Save a copy of the dynamical tendencies
    !  Also save the initial estimate of the time averaged fluxes
    !  ruAvg and wwAvg; these will be incremented in atm_add_si_inc
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4372,12 +4347,8 @@ module atm_time_integration
 
    subroutine atm_combine_dyn_tend( tend, grid )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    !  Combine the dynamical tendencies from the old and new time steps
    !  with respective weights 1 - alpha and alpha
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4419,16 +4390,12 @@ module atm_time_integration
 
    subroutine atm_mass_flux_divergence( diag, grid )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    !  Used for SI time integration scheme.
-   !
+
    !  Compute the time averaged mass flux divergence for later use in
    !  computing intermediate density values for RK3 scalar advection.
    !  Borrow the diag % divergence array, since this is not being used
    !  during the scalar advection.
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4486,13 +4453,9 @@ module atm_time_integration
 
    subroutine atm_intermediate_density( s_old, s_new, diag, dtrk )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! Used by SI time integration.
-   !
+
    ! Compute intermediate values of density needed by RK3 scalar advection
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4516,11 +4479,7 @@ module atm_time_integration
 
    subroutine atm_add_si_inc( diag, grid )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    !  Add the semi-implicit increments to the current coupled variables
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4571,13 +4530,10 @@ module atm_time_integration
 
    subroutine atm_build_helmholtz_coeff( block, dt )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    !  Construct the coefficients for the helmholtz problem on the finest grid.
    !  This version uses the full thermodynamic fields rather than the
    !  reference profiles.
    !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4730,11 +4686,8 @@ module atm_time_integration
 
    subroutine atm_restrict_helmholtz_coeff( head_block_in )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    !  Restrict the coefficients for the helmholtz problem to all the coarser grids.
    !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -4827,11 +4780,8 @@ module atm_time_integration
 
    subroutine atm_build_helmholtz_rhs( tend, s, diag, mgs_vars, grid, dt )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! Given the residuals (stored in tend) construct the RHS of the Helmholtz problem
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
       implicit none
 
       type (tend_type) :: tend
@@ -4954,13 +4904,9 @@ module atm_time_integration
 
    subroutine atm_si_backsub( tend, s, diag, mgs_vars, grid, dt )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! Having solved the Helmholtz problem, back-substitute to find
    ! increments of all coupled variables. The results are saved in the variables
    ! ru_p, rw_p, rtheta_pp, rho_pp
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
       implicit none
@@ -5119,11 +5065,7 @@ module atm_time_integration
 
    subroutine atm_diagnostics( s, diag, grid )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! Compute some diagnostic fields
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       implicit none
 
@@ -5190,10 +5132,8 @@ module atm_time_integration
 
 ! ---------------------------------------------------------------------------------
 
-   subroutine trisolveb(x,a,b,c,r,n)
+SUBROUTINE trisolveb(x,a,b,c,r,n)
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
    ! To solve the bounded domain tridiagonal linear system
    ! Ax = r
    ! where A is an n x n matrix,
@@ -5202,33 +5142,33 @@ module atm_time_integration
    ! c is the value above the diagonal of A,
    ! and r is the known vector right hand side.
    ! a(1) and c(n) must be zero.
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      implicit none
+IMPLICIT NONE
 
-      integer, intent(in) :: n
-      real (KIND=RKIND), intent(in) :: a(n), b(n), c(n), r(n)
-      real (KIND=RKIND), intent(out) :: x(n)
-      integer :: j
-      real (KIND=RKIND) :: q(n), p
-
-      ! Forward elimination sweep
-      q(1) = -c(1)/b(1)
-      x(1) = r(1)/b(1)
-      do j = 2, n
-         p = 1.0_RKIND/(b(j)+a(j)*q(j-1))
-         q(j) = -c(j)*p
-         x(j) = (r(j)-a(j)*x(j-1))*p
-      enddo
-
-      ! Backward pass
-      do j = n-1, 1, -1
-         x(j) = x(j)+q(j)*x(j+1)
-      enddo
+INTEGER,INTENT(IN) :: n
+REAL (KIND=RKIND), INTENT(IN) :: a(n), b(n), c(n), r(n)
+REAL (KIND=RKIND), INTENT(OUT) :: x(n)
+INTEGER :: j
+REAL (KIND=RKIND) :: q(n), p
 
 
-   end subroutine trisolveb
+! Forward elimination sweep
+q(1) = -c(1)/b(1)
+x(1) = r(1)/b(1)
+DO j = 2, n
+  p = 1.0_RKIND/(b(j)+a(j)*q(j-1))
+  q(j) = -c(j)*p
+  x(j) = (r(j)-a(j)*x(j-1))*p
+ENDDO
+
+! Backward pass
+DO j = n-1, 1, -1
+  x(j) = x(j)+q(j)*x(j+1)
+ENDDO
+
+
+END SUBROUTINE trisolveb
+
 
 
 ! ===================================================================================================================
@@ -5240,11 +5180,8 @@ module atm_time_integration
    subroutine atm_mg_restrict( fine_field,      coarse_field, &
                                fine_grid,       coarse_grid,  &
                                restrictStencil, restrictWeights )
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Perform the restriction operation needed for a multigrid solver.
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      ! Perform the restriction operation needed for a multigrid solver.
 
       implicit none
 
@@ -5282,12 +5219,8 @@ module atm_time_integration
                               fine_grid,       coarse_grid,  &
                               restrictStencil, restrictWeights )
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Perform the prolongation operation needed for a multigrid solver.
-   ! Note that the results for only the owned fine cells can be trusted
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      ! Perform the prolongation operation needed for a multigrid solver.
+      ! Note that the results for only the owned fine cells can be trusted
 
       implicit none
 
@@ -5319,11 +5252,8 @@ module atm_time_integration
 ! ================================================================
 
    subroutine atm_mg_helmholtz( q, hq, grid, mgs_vars, dt )
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Apply the Helmholtz operator to a field q to obtain hq
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      ! Apply the Helmholtz operator to a field q to obtain hq
 
       implicit none
 
@@ -5430,13 +5360,10 @@ module atm_time_integration
 ! ================================================================
 
    subroutine atm_mg_residual( q, rhs, res, grid, mgs_vars, dt )
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Apply the Helmholtz operator to a field q and subtract
-   ! from the right hand side rhs to obtain the residual in the
-   ! Helmholtz equation res
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      ! Apply the Helmholtz operator to a field q and subtract
+      ! from the right hand side rhs to obtain the residual in the
+      ! Helmholtz equation res
 
       implicit none
 
@@ -5462,13 +5389,10 @@ module atm_time_integration
 ! ================================================================
 
    subroutine atm_mg_relax( q, rhs, grid, mgs_vars, dt )
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Given an estimate q of the solution of the Helmholtz equation,
-   ! Make one relaxation sweep: Jacobi in the horizontal with
-   ! Line solves in the vertical
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      ! Given an estimate q of the solution of the Helmholtz equation,
+      ! Make one relaxation sweep: Jacobi in the horizontal with
+      ! Line solves in the vertical
 
       implicit none
 
@@ -5596,12 +5520,9 @@ module atm_time_integration
 ! ================================================================
 
    subroutine atm_mg_solve_fmg( domain, dt)
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! Full-Multigrid solver for Helmholtz problem
-   ! H( pressure_inc ) = rhs
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      ! Multigrid solver for Helmholtz problem
+      ! H( pressure_inc ) = rhs
 
       implicit none
 
@@ -5916,12 +5837,9 @@ module atm_time_integration
 
    subroutine atm_mg_solve_vcmg( domain, dt)
 
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   !
-   ! V-cycle Multigrid solver for Helmholtz problem
-   ! H( pressure_inc ) = rhs
-   !
-   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      ! Multigrid solver for Helmholtz problem
+      ! H( pressure_inc ) = rhs
+
       implicit none
 
       integer :: niterc      ! Number of relaxation iterations on coarsest grid

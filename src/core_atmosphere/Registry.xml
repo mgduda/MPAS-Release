@@ -75,7 +75,7 @@
                 <nml_option name="config_num_halos"                  type="integer"       default_value="2"/>
                 <nml_option name="config_num_mgslevels"              type="integer"       default_value="1"/>
                 <nml_option name="config_mg_solve_npass"             type="integer"       default_value="1"/>
-                <nml_option name="config_mg_solver"                  type="character"     default_value="FMG"/>
+                <nml_option name="config_mg_solver"                  type="character"     default_value="VCMG"/>
                 <nml_option name="config_niterc"       		     type="integer"       default_value="4"/>
                 <nml_option name="config_niterpre"       	     type="integer"       default_value="1"/>
                 <nml_option name="config_niterpost"      	     type="integer"       default_value="2"/>
