@@ -1577,7 +1577,6 @@ module mpas_io
    subroutine MPAS_io_put_var_generic(handle, fieldname, intVal, intArray1d, intArray2d, intArray3d, intArray4d, &
                                                         realVal, realArray1d, realArray2d, realArray3d, realArray4d, realArray5d, &
                                                         charVal, ierr)
-      !STEVE Temp included to access config_OutputOff
       use mpas_configure
 
       implicit none

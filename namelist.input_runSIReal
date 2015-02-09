@@ -32,7 +32,6 @@
    config_mg_solve_npass = 1
    config_time_integration = 'SI'
    config_scalar_advection = T
-   config_time_comms = T
    config_mg_solver = 'VCMG'
 /
 

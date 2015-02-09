@@ -180,7 +180,6 @@ module mpas_grid_types
       ! Information used by the I/O layer
       type (io_info), pointer :: ioinfo       ! to be removed later
       character (len=StrKIND) :: fieldName
-!STEVE_edit
       character (len=StrKIND) :: fileFieldName
       character (len=StrKIND), dimension(:), pointer :: constituentNames => null()
       character (len=StrKIND), dimension(1) :: dimNames
@@ -463,8 +462,6 @@ module mpas_grid_types
       type (parallel_info), pointer :: parinfo
 
       type (block_type), pointer :: prev, next
-!STEVE_edit: added this to move between diffrent levels and to define the
-!current mg-level
       type (block_type), pointer :: coarser => null()
       type (block_type), pointer :: finer => null()
       integer :: nMgsLevels, mgsLevel
@@ -614,12 +611,8 @@ module mpas_grid_types
       type (domain_type), pointer :: dom !< Input/Output: Domain to deallocate
 
       type (block_type), pointer :: block_ptr
-!STEVE_edit: Include head pointer
       type (block_type), pointer :: block_ptrHead
 
-
-!STEVE_edit: loop over coarser for each head block - this code replaces the
-!comented code below
       block_ptrHead => dom % blocklist
       do while (associated(block_ptrHead))
         block_ptr => block_ptrHead
@@ -629,12 +622,6 @@ module mpas_grid_types
         end do
          block_ptrHead => block_ptrHead % next
       end do
-!Steve_edit: the above code replaces this:
-!      block_ptr => dom % blocklist
-!      do while (associated(block_ptr))
-!         call mpas_deallocate_block(block_ptr)
-!         block_ptr => block_ptr % next
-!      end do
 
       deallocate(dom)
 
@@ -1878,7 +1865,6 @@ module mpas_grid_types
 !> \details 
 !> This routine deallocates a block structure.
 !>
-!> STEVE_Edit: added code to deal with multiple grids
 !>
 !
 !-----------------------------------------------------------------------
@@ -1910,7 +1896,6 @@ module mpas_grid_types
 
       deallocate(b % parinfo)
 
-!STEVE_edit: include an upadted dealloc routine
 #include "block_deallocs.inc"
 
    end subroutine mpas_deallocate_block!}}}
