@@ -3528,7 +3528,7 @@ module atm_time_integration
       ! BEGIN iterative solution loop
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 
-      do iter = 1, config_niter_si  ! Iterative solution loop
+      do iter = 1, config_nQuasiNewton  ! Iterative solution loop
 
          if (debug) write(0,*) ' Solver iteration ', iter
 
@@ -3584,7 +3584,7 @@ module atm_time_integration
                          block % tend_physics, &
                          block % state % time_levs(2) % state % rho_zz % array(:,:), &
                          block % diag % rho_edge % array(:,:), & 
-                         iter - config_niter_si + 3 )                 ! Trick to get printed diagnostics on last call!
+                         iter - config_nQuasiNewton + 3 )                 ! Trick to get printed diagnostics on last call!
             block => block % next
          end do
          spt_modified = .false.
@@ -3651,7 +3651,7 @@ module atm_time_integration
          !JT
          ! On antepenultimate iteration perturb solution in order to examine correction
          ! at last iteration
-         !if (iter == config_niter_si - 4) then
+         !if (iter == config_nQuasiNewton - 4) then
          !  write(0,*) '    *** perturbing solution ***'
          !  domain % blocklist % diag % rtheta_pp % array(1,2799) = 1.0_RKIND
          !  domain % blocklist % diag % rho_pp % array(1,2799) = 0.1_RKIND
@@ -3659,7 +3659,7 @@ module atm_time_integration
          !  domain % blocklist % diag % ru_p % array(1,16069) = 1.0_RKIND
          !endif
          ! On last 3 iterations examine corrections
-         !if (iter > config_niter_si - 5) then
+         !if (iter > config_nQuasiNewton - 5) then
          !  write(0,*) '    rtheta_pp = ',domain % blocklist % diag % rtheta_pp % array(1:4,2799)
          !  write(0,*) '    rho_pp    = ',domain % blocklist % diag % rho_pp % array(1:4,2799)
          !  write(0,*) '    rw_p      = ',domain % blocklist % diag % rw_p % array(1:4,2799)
@@ -3693,7 +3693,7 @@ module atm_time_integration
             ! JT
             call atm_recover_derived_variables( block % state % time_levs(2) % state, &
                                                 block % diag, block % tend, &
-                                                block % mesh, dt, iter==config_niter_si )
+                                                block % mesh, dt, iter==config_nQuasiNewton )
             block => block % next
          end do
          if (debug) write(0,*) '    finished recover_derived_variables '
@@ -3735,7 +3735,7 @@ module atm_time_integration
 
             else if ( (config_si_scalar_advection_opt == 2 .and. iter == 1) .or.    &
                       (config_si_scalar_advection_opt == 3) .or.                    &
-                      (iter == config_niter_si) ) then
+                      (iter == config_nQuasiNewton) ) then
 
                ! RK3
 
@@ -3786,7 +3786,7 @@ module atm_time_integration
                      !       the functionality of the advance_scalars routine; however, it is noticeably slower, 
                      !       so we use the advance_scalars routine except on the last stage at the last iteration.
 
-                     if (rk_step < 3 .or. iter < config_niter_si .or. &
+                     if (rk_step < 3 .or. iter < config_nQuasiNewton .or. &
                          (.not. config_monotonic .and. .not. config_positive_definite)) then
                         if (debug) write(0,*) '       advance_scalars'
                         call atm_advance_scalars( block % tend, &

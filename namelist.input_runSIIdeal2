@@ -2,7 +2,7 @@
 config_dt = 1800.0
 config_start_time   = '2010-10-23_00:00:00'
 config_run_duration = '12_00:00:00'
-config_niter_si = 3
+config_nQuasiNewton = 3
 config_num_mgslevels = 3
 config_mg_solve_npass = 1
 config_time_integration = 'SI'

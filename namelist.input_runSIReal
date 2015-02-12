@@ -27,7 +27,7 @@
    config_smdiv = 0.1
    config_newpx = .false.
    config_h_ScaleWithMesh = .true.
-   config_niter_si = 3
+   config_nQuasiNewton = 3
    config_num_mgslevels = 3
    config_mg_solve_npass = 1
    config_time_integration = 'SI'
