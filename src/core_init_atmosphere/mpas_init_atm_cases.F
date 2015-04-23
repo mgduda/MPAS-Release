@@ -168,6 +168,48 @@ module init_atm_cases
             block_ptr => block_ptr % next
          end do
 
+      else if (config_init_case == 9 ) then
+
+         write(0,*) ' '
+         write(0,*) ' '
+         write(0,*) ' Setting up DCMIP test case '//trim(config_dcmip_case)
+         write(0,*) ' '
+         write(0,*) ' '
+
+         if (trim(config_dcmip_case) == '2-0-0' .or. &
+             trim(config_dcmip_case) == '2-0-1') then
+
+            block_ptr => domain % blocklist
+            do while (associated(block_ptr))
+               call init_atm_test_case_resting_atmosphere(block_ptr % mesh, block_ptr % state % time_levs(1) % state, &
+                                                          block_ptr % diag, config_init_case)
+               block_ptr => block_ptr % next
+            end do
+
+         else if (trim(config_dcmip_case) == '2-1'  .or. &
+                  trim(config_dcmip_case) == '2-1a' .or. &
+                  trim(config_dcmip_case) == '2-2'  .or. &
+                  trim(config_dcmip_case) == '3-1') then
+
+            block_ptr => domain % blocklist
+            do while (associated(block_ptr))
+               call init_atm_test_case_reduced_radius(block_ptr % mesh, block_ptr % state % time_levs(1) % state, &
+                                                      block_ptr % diag, config_init_case)
+               block_ptr => block_ptr % next
+            end do
+
+         else
+
+            write(0,*) ' '
+            write(0,*) ' *************'
+            write(0,*) ' Unrecognized DCMIP case '//trim(config_dcmip_case)
+            write(0,*) ' Please choose either 2-0-0, 2-0-1, 2-1, 2-1a, 2-2, or 3-1'
+            write(0,*) ' *************'
+            write(0,*) ' '
+            call mpas_dmpar_abort(domain % dminfo)
+
+         end if
+
       else
 
          write(0,*) ' '
@@ -327,7 +369,7 @@ module init_atm_cases
 
 
       r_earth = grid % sphere_radius
-      omega_e = omega
+      omega_e = omega * config_rotation_rate_scale
       p0 = 1.e+05
 
 
@@ -1438,7 +1480,7 @@ module init_atm_cases
    integer :: k,i, itr
 
    r_earth  = rad
-   omega_e = omega
+   omega_e = omega * config_rotation_rate_scale
    rdx = 1./(dlat*r_earth)
 
    do i=1,nlat-1
@@ -4213,6 +4255,1583 @@ write(0,*) 'PROCESSING SEAICE'
       end if    ! config_met_interp
 
    end subroutine init_atm_case_gfs
+
+
+!---------------------  TEST CASE 9 -----------------------------------------------
+
+
+   subroutine init_atm_test_case_reduced_radius(grid, state, diag, test_case)
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Setup Schar-type mountain wave test case on reduced radius sphere
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      implicit none
+
+      type (mesh_type), intent(inout) :: grid
+      type (state_type), intent(inout) :: state
+      type (diag_type), intent(inout) :: diag
+      integer, intent(in) :: test_case
+
+      real (kind=RKIND), parameter :: t0=300., hm=250., alpha=0.
+!      real (kind=RKIND), parameter :: t0=288., hm=0., alpha=0.
+
+      ! Parameters for test case 3-1
+      real (kind=RKIND), parameter :: widthParm = 5000.0, &
+                                      dTheta = 1.0,       &
+                                      L_z = 20000.0,      &
+                                      theta_c = 0.0,      &
+                                      lambda_c = 2.0 * pii / 3.0
+
+
+      real (kind=RKIND), dimension(:), pointer :: rdzw, dzu, rdzu, fzm, fzp
+      real (kind=RKIND), dimension(:,:), pointer :: zgrid, zx, zz, hx, cqw
+      real (kind=RKIND), dimension(:,:), pointer :: ppb, pb, rho_zz, rb, rr, tb, rtb, p, pp, dss, t, rt, u, ru 
+      real (kind=RKIND), dimension(:,:,:), pointer :: scalars, deriv_two, zb, zb3
+
+      !This is temporary variable here. It just need when calculate tangential velocity v.
+      integer :: eoe, j
+      integer, dimension(:), pointer :: nEdgesOnEdge, nEdgesOnCell
+      integer, dimension(:,:), pointer :: edgesOnEdge, CellsOnEdge, edgesOnCell
+      real (kind=RKIND), dimension(:), pointer :: dvEdge, AreaCell, xCell, yCell, dcEdge
+      real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
+
+      integer :: iCell, iCell1, iCell2 , iEdge, vtx1, vtx2, ivtx, i, k, kz, nz, nz1, itr, itrp, cell1, cell2, nCellsSolve
+      integer :: index_qv
+
+      real (kind=RKIND) :: ptop, p0, pis, flux, d2fdx2_cell1, d2fdx2_cell2
+
+      real (kind=RKIND) :: ztemp, zd, zt, dz, str
+      real(kind=RKIND), dimension(:), pointer :: hs, hs1
+
+      real (kind=RKIND), dimension(grid % nVertLevels, grid % nCells) :: rh
+      real (kind=RKIND) :: es, qvs, xnutr, ptemp
+      integer :: iter, nsm
+      integer, dimension(:,:), pointer :: cellsOnCell
+
+      type (field1DReal), pointer :: tempField
+      type (field1DReal), target :: tempFieldTarget
+
+      type (block_type), pointer :: block
+      type (parallel_info), pointer :: parinfo
+      type (dm_info), pointer :: dminfo
+
+      real (kind=RKIND), dimension(grid % nVertLevels + 1 ) :: zc, zw, ah
+      real (kind=RKIND), dimension(grid % nVertLevels ) :: zu, dzw, rdzwp, rdzwm
+      real (kind=RKIND), allocatable, dimension(:) :: psiVertex
+
+      real (kind=RKIND) :: d1, d2, d3, cof1, cof2, cf1, cf2, cf3
+      real (kind=RKIND) :: um, us,  rcp, rcv
+      real (kind=RKIND) :: xmid, temp, pres, a_scale, xac, xlac, shear, tsurf, usurf
+
+      real (kind=RKIND) :: xi, yi, ri, xa, xc, yc, xla, zinv, xn2, xn2m, xn2l, sm, dzh, dzht, dzmin, dzmina, dzminf, &
+                           dzmina_global, z_edge, z_edge3, sm0
+      real (kind=RKIND) :: theta_pert, s
+
+      integer, dimension(grid % nCells, 2) :: next_cell
+      real (kind=RKIND),  dimension(grid % nCells) :: hxzt, pitop, ptopb
+      logical, parameter :: terrain_smooth = .false. 
+
+      block => grid % block
+      parinfo => block % parinfo
+      dminfo => block % domain % dminfo
+
+
+      !
+      ! Scale all distances
+      !
+      a_scale = grid % sphere_radius
+
+      grid % xCell % array = grid % xCell % array * a_scale
+      grid % yCell % array = grid % yCell % array * a_scale
+      grid % zCell % array = grid % zCell % array * a_scale
+      grid % xVertex % array = grid % xVertex % array * a_scale
+      grid % yVertex % array = grid % yVertex % array * a_scale
+      grid % zVertex % array = grid % zVertex % array * a_scale
+      grid % xEdge % array = grid % xEdge % array * a_scale
+      grid % yEdge % array = grid % yEdge % array * a_scale
+      grid % zEdge % array = grid % zEdge % array * a_scale
+      grid % dvEdge % array = grid % dvEdge % array * a_scale
+      grid % dcEdge % array = grid % dcEdge % array * a_scale
+      grid % areaCell % array = grid % areaCell % array * a_scale**2.0
+      grid % areaTriangle % array = grid % areaTriangle % array * a_scale**2.0
+      grid % kiteAreasOnVertex % array = grid % kiteAreasOnVertex % array * a_scale**2.0
+
+      weightsOnEdge     => grid % weightsOnEdge % array
+      nEdgesOnEdge      => grid % nEdgesOnEdge % array
+      edgesOnEdge       => grid % edgesOnEdge % array  
+      edgesOnCell       => grid % edgesOnCell % array  
+      dvEdge            => grid % dvEdge % array
+      dcEdge            => grid % dcEdge % array
+      AreaCell          => grid % AreaCell % array
+      CellsOnEdge       => grid % CellsOnEdge % array
+      cellsOnCell       => grid % cellsOnCell % array
+      nEdgesOnCell      => grid % nEdgesOnCell % array
+      deriv_two         => grid % deriv_two % array
+      
+      nz1 = grid % nVertLevels
+      nz = nz1 + 1
+      nCellsSolve = grid % nCellsSolve
+
+      zgrid => grid % zgrid % array
+      zb => grid % zb % array
+      zb3 => grid % zb3 % array
+      rdzw => grid % rdzw % array
+      dzu => grid % dzu % array
+      rdzu => grid % rdzu % array
+      fzm => grid % fzm % array
+      fzp => grid % fzp % array
+      zx => grid % zx % array
+      zz => grid % zz % array
+      hx => grid % hx % array
+      dss => grid % dss % array
+ 
+      xCell => grid % xCell % array
+      yCell => grid % yCell % array
+
+      ppb => diag % pressure_base % array
+      pb => diag % exner_base % array
+      rb => diag % rho_base % array
+      tb => diag % theta_base % array
+      rtb => diag % rtheta_base % array
+      p => diag % exner % array
+      cqw => diag % cqw % array
+
+      rho_zz => state % rho_zz % array
+
+      pp => diag % pressure_p % array
+      rr => diag % rho_p % array
+      t => state % theta_m % array      
+      rt => diag % rtheta_p % array
+      u => state % u % array
+      ru => diag % ru % array
+
+      scalars => state % scalars % array
+
+      index_qv = state % index_qv
+
+      scalars(:,:,:) = 0.
+
+      call atm_initialize_advection_rk(grid) 
+      call atm_initialize_deformation_weights(grid) 
+
+      if (trim(config_dcmip_case) == '2-1') then
+        zt = 30000.
+        xnutr = 0.1          ! Coefficient for implicit w damping in absorbing layer 
+        zd = 20000.          ! Bottom of absorbing layer
+        write(0,*) ' test case 2-1, zt, zd, xnutr ', zt,zd,xnutr
+      end if
+
+      if (trim(config_dcmip_case) == '2-1a') then
+        zt = 20000.
+        xnutr = 0.1          ! Coefficient for implicit w damping in absorbing layer 
+        zd = 10000.          ! Bottom of absorbing layer
+        write(0,*) ' test case 2-1a, zt, zd, xnutr ', zt,zd,xnutr
+      end if
+
+      if (trim(config_dcmip_case) == '2-2') then
+        zt = 30000.
+        xnutr = 0.1          ! Coefficient for implicit w damping in absorbing layer 
+        zd = 20000.          ! Bottom of absorbing layer
+        write(0,*) ' test case 2-2, zt, zd, xnutr ', zt,zd,xnutr
+      end if
+
+      if (trim(config_dcmip_case) == '3-1') then
+        zt = 10000.
+        xnutr = 0.0          ! Coefficient for implicit w damping in absorbing layer 
+        zd = 10000.          ! Bottom of absorbing layer
+        write(0,*) ' test case 3-1, zt, zd, xnutr ', zt,zd,xnutr
+      end if
+
+      p0 = 1.e+05
+      rcp = rgas/cp
+      rcv = rgas/(cp-rgas)
+
+      !     metrics for hybrid coordinate and vertical stretching
+      str = 1.0
+
+
+      dz = zt/float(nz1)
+!      write(0,*) ' dz = ',dz
+
+      do k=1,nz
+		
+!           sh(k) is the stretching specified for height surfaces
+
+            zc(k) = zt*(real(k-1)*dz/zt)**str 
+				
+!           to specify specific heights zc(k) for coordinate surfaces,
+!           input zc(k) 
+!           zw(k) is the hieght of zeta surfaces
+!                zw(k) = (k-1)*dz yields constant dzeta
+!                        and nonconstant dzeta/dz
+!                zw(k) = sh(k)*zt yields nonconstant dzeta
+!                        and nearly constant dzeta/dz 
+
+!            zw(k) = float(k-1)*dz
+            zw(k) = zc(k)
+!
+!           ah(k) governs the transition between terrain-following 
+!           and pureheight coordinates
+!                ah(k) = 0 is a terrain-following coordinate
+!                ah(k) = 1 is a height coordinate
+ 
+!            ah(k) = 1.-cos(.5*pii*(k-1)*dz/zt)**6
+            ah(k) = 1.
+!	    write(0,*) ' k, zc, zw, ah ',k,zc(k),zw(k),ah(k)			
+      end do
+      do k=1,nz1
+         dzw (k) = zw(k+1)-zw(k)
+         rdzw(k) = 1./dzw(k)
+         zu(k  ) = .5*(zw(k)+zw(k+1))
+      end do
+      do k=2,nz1
+         dzu (k)  = .5*(dzw(k)+dzw(k-1))
+         rdzu(k)  =  1./dzu(k)
+         fzp (k)  = .5* dzw(k  )/dzu(k)
+         fzm (k)  = .5* dzw(k-1)/dzu(k)
+         rdzwp(k) = dzw(k-1)/(dzw(k  )*(dzw(k)+dzw(k-1)))
+         rdzwm(k) = dzw(k  )/(dzw(k-1)*(dzw(k)+dzw(k-1)))
+      end do
+
+!**********  how are we storing cf1, cf2 and cf3?
+
+      d1  = .5*dzw(1)
+      d2  = dzw(1)+.5*dzw(2)
+      d3  = dzw(1)+dzw(2)+.5*dzw(3)
+      !cf1 = d2*d3*(d3-d2)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+      !cf2 = d1*d3*(d1-d3)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+      !cf3 = d1*d2*(d2-d1)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+
+      cof1 = (2.*dzu(2)+dzu(3))/(dzu(2)+dzu(3))*dzw(1)/dzu(2)
+      cof2 =     dzu(2)        /(dzu(2)+dzu(3))*dzw(1)/dzu(3)
+      cf1  = fzp(2) + cof1
+      cf2  = fzm(2) - cof1 - cof2
+      cf3  = cof2
+
+      grid % cf1 % scalar = cf1
+      grid % cf2 % scalar = cf2
+      grid % cf3 % scalar = cf3
+
+      write(0,*) 'EARTH RADIUS = ', grid % sphere_radius
+
+! setting for terrain
+
+! MGD for both 2-1 and 2-1a (and 2-2)
+      if (trim(config_dcmip_case) == '2-1' .or. &
+          trim(config_dcmip_case) == '2-1a' .or. &
+          trim(config_dcmip_case) == '2-2') then
+         xa = 5000. 
+         xla = 4000.
+      end if
+
+     write(0,*) ' hm, xa, xla ',hm,xa,xla
+
+     hx = 0.         
+
+     do iCell=1,grid % nCells
+
+         xi = grid % lonCell % array(iCell)
+         yi = grid % latCell % array(iCell)
+         xc = sphere_distance(yi, xi, yi, 0., grid % sphere_radius)
+         yc = sphere_distance(yi, xi, 0., xi, grid % sphere_radius)
+         xac  = sphere_distance(yi, xa /grid % sphere_radius, yi, 0., grid % sphere_radius)
+         xlac = sphere_distance(yi, xla/grid % sphere_radius, yi, 0., grid % sphere_radius)
+
+         ri = sphere_distance(yi, xi, 0., 0., grid % sphere_radius)
+
+! MGD BEGIN 2-1
+!        Circular mountain with Schar mtn cross section
+         if (trim(config_dcmip_case) == '2-1') then
+            hx(1,iCell) = hm*exp(-(ri/xa)**2)*cos(pii*ri/xla)**2
+         end if
+! MGD END 2-1
+
+! MGD BEGIN 2-2
+!        Circular mountain with Schar mtn cross section
+         if (trim(config_dcmip_case) == '2-2') then
+            hx(1,iCell) = hm*exp(-(ri/xa)**2)*cos(pii*ri/xla)**2
+         end if
+! MGD END 2-2
+
+! MGD BEGIN 2-1a
+!        proposed to be run with x333 rather than x500
+!        Ridge mountain with Schar mtn cross section
+         if (trim(config_dcmip_case) == '2-1a') then
+            hx(1,iCell) = hm*exp(-(xc/xac)**2)*cos(pii*xc/xlac)**2*cos(yc/grid % sphere_radius)
+         end if
+! MGD END 2-1a
+
+         hx(nz,iCell) = zt
+
+
+      enddo      
+      write(0,*) ' hx computation complete '
+
+!!! MGD WE NEED TO REPLACE THIS TERRAIN SMOOTHING WITH TC9
+
+      kz = nz
+
+      if (config_smooth_surfaces) then
+
+         write(0,*) ' '
+         write(0,*) ' Smoothing vertical coordinate surfaces'
+         write(0,*) ' '
+
+         allocate(hs (grid % nCells+1))
+         allocate(hs1(grid % nCells+1))
+
+         dzmin = 0.5
+         sm0 = 0.5
+         nsm = 30
+
+         write(6,*) 'dzmin = ',dzmin,' sm0 = ',sm0,' nsm = ',nsm
+
+         do k=2,kz-1
+            hx(k,:) = hx(k-1,:)
+            dzminf = zw(k)-zw(k-1)
+
+!            dzmin = max(0.5_RKIND,1.-.5*zw(k)/hm)
+
+            sm =   sm0*max(  min(.5*zw(k)/hm,1.0_RKIND), .05  )
+          
+            do i=1,nsm
+               do iCell=1,grid % nCells
+                  hs1(iCell) = 0.
+                  do j = 1,nEdgesOnCell(iCell)
+
+                     hs1(iCell) = hs1(iCell) + dvEdge(edgesOnCell(j,iCell))    &
+                                           / dcEdge(edgesOnCell(j,iCell))    &
+                                           *  (hx(k,cellsOnCell(j,iCell))-hx(k,iCell))
+                  end do
+                  hs1(iCell) = hx(k,iCell) + sm*hs1(iCell)
+
+                  hs(iCell) = 0.
+              !    do j = 1,nEdgesOnCell(iCell)
+              !       hs(iCell) = hs(iCell) + dvEdge(edgesOnCell(j,iCell))    &
+              !                             / dcEdge(edgesOnCell(j,iCell))    &
+              !                             *  (hs1(cellsOnCell(j,iCell))-hs1(iCell))
+              !    end do
+                  hs(iCell) = hs1(iCell) - 0.*hs(iCell)
+
+               end do
+
+               tempField => tempFieldTarget
+               tempField % block => block
+               tempField % dimSizes(1) = grid % nCells
+               tempField % sendList => parinfo % cellsToSend
+               tempField % recvList => parinfo % cellsToRecv
+               tempField % copyList => parinfo % cellsToCopy
+               tempField % array => hs
+               tempField % prev => null()
+               tempField % next => null()
+
+               call mpas_dmpar_exch_halo_field(tempField)
+
+             !  dzmina = minval(hs(:)-hx(k-1,:))
+               dzmina = minval(zw(k)+ah(k)*hs(1:grid%nCellsSolve)-zw(k-1)-ah(k-1)*hx(k-1,1:grid%nCellsSolve))
+               call mpas_dmpar_min_real(dminfo, dzmina, dzmina_global)
+             !  write(0,*) ' k,i, dzmina, dzmin, zw(k)-zw(k-1) ', k,i, dzmina, dzmin, zw(k)-zw(k-1)
+               if (dzmina_global >= dzmin*(zw(k)-zw(k-1))) then
+                  hx(k,:)=hs(:)
+                  dzminf = dzmina_global
+               else
+                  exit
+               end if
+            end do
+            write(0,*) k,i,sm,dzminf/(zw(k)-zw(k-1)),dzmina/(zw(k)-zw(k-1))
+         end do
+
+         do k=kz,nz
+               hx(k,:) = 0.
+         end do
+
+         deallocate(hs )
+         deallocate(hs1)
+
+      else
+
+         do k=2,nz1
+            dzmina = minval(zw(k)+ah(k)*hx(k,:)-zw(k-1)-ah(k-1)*hx(k-1,:))
+            write(0,*) k,dzmina/(zw(k)-zw(k-1))
+         end do
+
+      end if
+
+
+      do iCell=1,grid % nCells
+        do k=1,nz
+            if (config_smooth_surfaces) then
+               zgrid(k,iCell) = ah(k)*(zc(k)*(1.-hx(k,iCell)/zt)+hx(k,iCell)) &
+                              + (1.-ah(k)) * zc(k)
+            else
+               zgrid(k,iCell) = ah(k)*(zc(k)*(1.-hx(1,iCell)/zt)+hx(1,iCell)) &
+                              + (1.-ah(k)) * zc(k)
+            end if
+        end do
+        do k=1,nz1
+          zz (k,iCell) = (zw(k+1)-zw(k))/(zgrid(k+1,iCell)-zgrid(k,iCell))
+        end do
+      end do
+
+      do i=1, grid % nEdges
+        iCell1 = grid % CellsOnEdge % array(1,i)
+        iCell2 = grid % CellsOnEdge % array(2,i)
+        do k=1,nz
+          zx (k,i) = (zgrid(k,iCell2)-zgrid(k,iCell1)) / grid % dcEdge % array(i)
+        end do
+      end do
+      do i=1, grid % nCells
+        do k=1,nz1
+          ztemp = .5*(zgrid(k+1,i)+zgrid(k,i))
+          dss(k,i) = 0.
+          ztemp = zgrid(k,i)
+          if(ztemp.gt.zd+.1)  then
+             dss(k,i) = dss(k,i)+xnutr*sin(.5*pii*(ztemp-zd)/(zt-zd))**2
+          end if
+        end do
+      enddo
+
+      write(0,*) ' grid metrics setup complete '
+
+!
+! mountain wave initialization
+!
+!MGD BEGIN 3-1
+!        Coefficients used to initialize 2 layer sounding based on stability
+         if (trim(config_dcmip_case) == '3-1') then
+            zinv = 3000.     ! Height of lower layer
+            xn2  = 0.0001    ! N^2 for upper layer
+            xn2m = 0.0001    ! N^2 for reference sounding
+            xn2l = 0.0001    ! N^@ for lower layer
+         end if
+!MGD END 3-1
+
+         if (trim(config_dcmip_case) == '2-1' .or. &
+             trim(config_dcmip_case) == '2-1a' .or. &
+             trim(config_dcmip_case) == '2-2' .or. &
+             trim(config_dcmip_case) == '3-1') then
+            um = 20.         ! base wind for 2-1, 2-1a, 2-2, and 3-1
+         end if
+
+         if (trim(config_dcmip_case) == '2-2') then
+            shear = 0.00025   ! MGD 2-2
+         else
+            shear = 0.        ! MGD everything else, 2-1, ...
+         end if
+
+         do i=1,grid % nCells
+
+!           Surface temp and Exner function as function of latitude to balance wind fed
+
+            tsurf = t0*exp(-shear*um**2/gravity*sin(grid%latCell%array(i))**2)
+            pis  = exp(-um**2*sin(grid%latCell%array(i))**2/(2.*cp*tsurf))
+
+            do k=1,nz1
+               ztemp   = .5*(zgrid(k,i)+zgrid(k+1,i))
+
+!MGD FOR 2-1, 2-1a, 2-2
+!              Isothermal temerature initialization
+               if (trim(config_dcmip_case) == '2-1' .or. &
+                   trim(config_dcmip_case) == '2-1a' .or. &
+                   trim(config_dcmip_case) == '2-2') then
+
+                  t (k,i) = tsurf/pis*exp(gravity*ztemp/(cp*tsurf))
+                  tb (k,i) = t0*exp(gravity*ztemp/(cp*t0))
+!!  JBK fix, 20120801
+               !!   tb(k,i) = t(k,i)
+
+               end if
+
+!MGD FOR 3-1
+!              Initialization based on stability
+               if (trim(config_dcmip_case) == '3-1') then
+                  if(ztemp .le. zinv) then
+                     t (k,i) = t0*(1.+xn2l/gravity*ztemp)
+                  else
+                     t (k,i) = t0*(1.+xn2l/gravity*zinv+xn2/gravity*(ztemp-zinv)) 
+                  end if
+                  tb(k,i) =  t0*(1. + xn2m/gravity*ztemp) 
+               end if
+
+               rh(k,i) = 0. 
+            end do
+
+
+! MGD ADD CODE HERE FOR 3-1 THERMAL PERT
+            if (trim(config_dcmip_case) == '3-1') then
+              do k=1,nz1
+               s = widthParm**2.0 / (widthParm**2.0 + sphere_distance(theta_c,                   lambda_c,              &
+                                                                      grid%latCell%array(i), grid%lonCell%array(i), &
+                                                                      grid%sphere_radius)**2.0)
+               theta_pert = dTheta * s * sin((2.0_RKIND * pii * 0.5*(zgrid(k,i)+zgrid(k+1,i))) / L_z)
+             !  diag % theta % array(k,i) = diag % theta % array(k,i) + theta_pert
+                t(k,i) = t(k,i) + theta_pert
+              end do
+            end if
+
+
+
+         end do
+
+      !
+      ! Initialize wind field
+      !
+      allocate(psiVertex(grid % nVertices))
+      do iVtx=1,grid % nVertices
+         psiVertex(iVtx) = -grid % sphere_radius * um * ( &
+                                       sin(grid%latVertex%array(iVtx)) * cos(alpha) - &
+                                       cos(grid%lonVertex%array(iVtx)) * cos(grid%latVertex%array(iVtx)) * sin(alpha) &
+                                     )
+      end do
+      do iEdge=1,grid % nEdges
+         cell1 = grid % CellsOnEdge % array(1,iEdge)
+         cell2 = grid % CellsOnEdge % array(2,iEdge)
+         usurf = -1.0 * ( &
+                                               psiVertex(grid%verticesOnEdge%array(2,iEdge)) - &
+                                               psiVertex(grid%verticesOnEdge%array(1,iEdge)) &
+                                             ) / grid%dvEdge%array(iEdge)
+         do k=1,nz1
+            ztemp = .25*( zgrid(k,cell1)+zgrid(k+1,cell1 )  &
+                         +zgrid(k,cell2)+zgrid(k+1,cell2))
+
+!           Top of shear layer set at 10 km
+!            if(ztemp.lt.10000.)  then
+               u(k,iEdge) = usurf * sqrt(1.+2.*shear*ztemp)
+!            else
+!               u(k,iEdge) = usurf * sqrt(1.+2.*shear*10000.)
+!            end if
+         end do
+      end do
+      deallocate(psiVertex)
+
+      do k=1,nz1
+            ztemp = .5*( zw(k)+zw(k+1))
+!            if(ztemp.lt.10000.)  then
+               grid % u_init % array(k) = um * sqrt(1.+2.*shear*ztemp)
+!            else
+!               grid % u_init % array(k) = um * sqrt(1.+2.*shear*10000.)
+!            end if
+      end do
+
+!
+!     reference sounding based on dry atmosphere
+!
+      do i=1, grid % nCells
+
+         tsurf = t0*exp(-shear*um**2/gravity*sin(grid%latCell%array(i))**2)
+
+!! JBK fix 20120801
+!!         pis  = exp(-um**2*sin(grid%latCell%array(i))**2/(2.*cp*tsurf))
+         pis = 1.
+
+         pitop(i) = pis-.5*dzw(1)*gravity/(cp*tb(1,1)*zz(1,1))
+         do k=2,nz1
+            pitop(i) = pitop(i)-dzu(k)*gravity/(cp*(fzm(k)*tb(k,1)+fzp(k)*tb(k-1,1))   &
+                                            *(fzm(k)*zz(k,1)+fzp(k)*zz(k-1,1)))
+         end do
+         pitop(i) = pitop(i)-.5*dzw(nz1)*gravity/(cp*tb(nz1,1)*zz(nz1,1))
+         ptopb(i) = p0*pitop(i)**(1./rcp)
+                
+         pb(nz1,i) = pitop(i)+.5*dzw(nz1)*gravity/(cp*tb(nz1,i)*zz(nz1,i))
+         p (nz1,i) = pitop(i)+.5*dzw(nz1)*gravity/(cp*t (nz1,i)*zz(nz1,i))
+         do k=nz1-1,1,-1
+            pb(k,i)  = pb(k+1,i) + dzu(k+1)*gravity/(cp*.5*(tb(k,i)+tb(k+1,i))   &
+                                           *.5*(zz(k,i)+zz(k+1,i)))
+            p (k,i)  = p (k+1,i) + dzu(k+1)*gravity/(cp*.5*(t (k,i)+t (k+1,i))   &
+                                           *.5*(zz(k,i)+zz(k+1,i)))
+         end do
+         do k=1,nz1
+            rb (k,i) = pb(k,i)**(1./rcv)/((rgas/p0)*tb(k,i)*zz(k,i))
+            rtb(k,i) = rb(k,i)*tb(k,i)
+            rr (k,i) = p (k,i)**(1./rcv)/((rgas/p0)*t (k,i)*zz(k,i))-rb(k,i)
+            cqw(k,i) = 1.
+         end do
+      end do
+
+       write(0,*) ' ***** base state sounding ***** '
+       write(0,*) 'k       pb        p         rb         rtb         rr          tb          t'
+       do k=1,grid%nVertLevels
+          write(0,'(i2,7(2x,f14.9))') k,pb(k,1),p(k,1),rb(k,1),rtb(k,1),rr(k,1),tb(k,1),t(k,1)
+       end do
+ 
+       scalars(index_qv,:,:) = 0.
+!!!
+!-------------------------------------------------------------------
+!     ITERATIONS TO CONVERGE MOIST SOUNDING
+      do itr=1,30
+
+        do i = 1, grid % nCells
+
+           tsurf = t0*exp(-shear*um**2/gravity*sin(grid%latCell%array(i))**2)
+           pis  = exp(-um**2*sin(grid%latCell%array(i))**2/(2.*cp*tsurf))
+!           pis = 1.
+
+           pitop(i) = pis-.5*dzw(1)*gravity*(1.+scalars(index_qv,1,1))/(cp*t(1,1)*zz(1,1))
+
+           do k=2,nz1
+              pitop(i) = pitop(i)-dzu(k)*gravity/(cp*cqw(k,1)*(fzm(k)*t (k,1)+fzp(k)*t (k-1,1)) &
+                                                   *(fzm(k)*zz(k,1)+fzp(k)*zz(k-1,1)))
+           end do
+           pitop(i) = pitop(i) - .5*dzw(nz1)*gravity*(1.+scalars(index_qv,nz1,1))/(cp*t(nz1,1)*zz(nz1,1))
+           ptop = p0*pitop(i)**(1./rcp)
+
+           pp(nz1,i) = ptop-ptopb(i)+.5*dzw(nz1)*gravity*   &
+                       (rr(nz1,i)+(rr(nz1,i)+rb(nz1,i))*scalars(index_qv,nz1,i))
+           do k=nz1-1,1,-1
+              pp(k,i) = pp(k+1,i)+dzu(k+1)*gravity*                   &
+                            (fzm(k)*(rr(k  ,i)+(rr(k  ,i)+rb(k  ,i))*scalars(index_qv,k  ,i))  &
+                            +fzp(k)*(rr(k+1,i)+(rr(k+1,i)+rb(k+1,i))*scalars(index_qv,k+1,i)))
+           end do
+           do k=1,nz1
+              rt(k,i) = (pp(k,i)/(rgas*zz(k,i))                   &
+                      -rtb(k,i)*(p(k,i)-pb(k,i)))/p(k,i)
+              p (k,i) = (zz(k,i)*(rgas/p0)*(rtb(k,i)+rt(k,i)))**rcv
+              rr(k,i) = (rt(k,i)-rb(k,i)*(t(k,i)-tb(k,i)))/t(k,i)
+           end do
+!
+!     update water vapor mixing ratio from humitidty profile
+!
+           do k=1,nz1
+              temp   = p(k,i)*t(k,i)
+              pres   = p0*p(k,i)**(1./rcp)
+              qvs    = 380.*exp(17.27*(temp-273.)/(temp-36.))/pres
+              scalars(index_qv,k,i) = min(0.014_RKIND,rh(k,i)*qvs)
+           end do
+                         
+           do k=1,nz1
+              t (k,i) = t(k,i)*(1.+1.61*scalars(index_qv,k,i))
+           end do
+           do k=2,nz1
+              cqw(k,i) = 1./(1.+.5*( scalars(index_qv,k-1,i)  &
+                                    +scalars(index_qv,k  ,i)))
+           end do
+
+        end do ! loop over cells
+
+      end do !  iteration loop
+!----------------------------------------------------------------------
+!
+      write(0,*) ' *** sounding for the simulation ***'
+      write(0,*) '    z       theta       pres         qv       rho_m        u        rr'
+      do k=1,nz1
+         write(0,'(8(f14.9,2x))') .5*(zgrid(k,1)+zgrid(k+1,1))/1000.,   &
+                       t(k,1)/(1.+1.61*scalars(index_qv,k,1)),        &
+                       .01*p0*p(k,1)**(1./rcp),                       &
+                       1000.*scalars(index_qv,k,1),                   &
+                       (rb(k,1)+rr(k,1))*(1.+scalars(index_qv,k,1)),  &
+                       grid % u_init % array(k), rr(k,1)
+      end do
+
+      do i=1,grid % ncells
+         do k=1,nz1
+            rho_zz(k,i) = rb(k,i)+rr(k,i)
+         end do
+
+        do k=1,nz1
+            grid % t_init % array(k,i) = t(k,i)
+        end do
+      end do
+
+      do i=1,grid % nEdges
+        cell1 = grid % CellsOnEdge % array(1,i)
+        cell2 = grid % CellsOnEdge % array(2,i)
+        if(cell1 <= nCellsSolve .or. cell2 <= nCellsSolve) then
+          do k=1,nz1
+            ru (k,i)  = 0.5*(rho_zz(k,cell1)+rho_zz(k,cell2))*u(k,i)    
+          end do
+        end if
+      end do
+
+!
+!     pre-calculation z-metric terms in omega eqn.
+!
+      do iEdge = 1,grid % nEdges
+         cell1 = CellsOnEdge(1,iEdge)
+         cell2 = CellsOnEdge(2,iEdge)
+         if (cell1 <= nCellsSolve .or. cell2 <= nCellsSolve ) then
+
+            do k = 1, grid%nVertLevels
+
+               if (config_theta_adv_order == 2) then
+!!         test for metric consistency - forces 2nd order metrics with 4th order advection
+!               if (config_theta_adv_order == 4) then
+
+                  z_edge = (zgrid(k,cell1)+zgrid(k,cell2))/2.
+
+               else !theta_adv_order == 3 or 4 
+
+                  d2fdx2_cell1 = deriv_two(1,1,iEdge) * zgrid(k,cell1)
+                  d2fdx2_cell2 = deriv_two(1,2,iEdge) * zgrid(k,cell2)
+                  do i=1, grid % nEdgesOnCell % array (cell1)
+                     if ( grid % CellsOnCell % array (i,cell1) > 0)       &
+                     d2fdx2_cell1 = d2fdx2_cell1 + deriv_two(i+1,1,iEdge) * zgrid(k,grid % CellsOnCell % array (i,cell1))
+                  end do
+                  do i=1, grid % nEdgesOnCell % array (cell2)
+                     if ( grid % CellsOnCell % array (i,cell2) > 0)       &
+                     d2fdx2_cell2 = d2fdx2_cell2 + deriv_two(i+1,2,iEdge) * zgrid(k,grid % CellsOnCell % array (i,cell2))
+                  end do             
+             
+                  z_edge =  0.5*(zgrid(k,cell1) + zgrid(k,cell2))         &
+                                - (grid % dcEdge % array(iEdge) **2) * (d2fdx2_cell1 + d2fdx2_cell2) / 12. 
+
+                  if (config_theta_adv_order == 3) then
+                     z_edge3 =  - (grid % dcEdge % array(iEdge) **2) * (d2fdx2_cell1 - d2fdx2_cell2) / 12.   
+                  else 
+                     z_edge3 = 0.
+                  end if
+
+               end if
+
+                  zb(k,1,iEdge) = (z_edge-zgrid(k,cell1))*dvEdge(iEdge)/AreaCell(cell1) 
+                  zb(k,2,iEdge) = (z_edge-zgrid(k,cell2))*dvEdge(iEdge)/AreaCell(cell2) 
+                  zb3(k,1,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell1) 
+                  zb3(k,2,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell2) 
+  
+!                  if (k /= 1) then
+!                     zf(k,1,iEdge) = ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb(k,1,iEdge)
+!                     zf(k,2,iEdge) = ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb(k,2,iEdge)
+!                     zf3(k,1,iEdge)= ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb3(k,1,iEdge)
+!                     zf3(k,2,iEdge)= ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb3(k,2,iEdge)
+!                  end if
+
+            end do
+
+         end if
+       end do
+
+!     for including terrain
+      state % w % array(:,:) = 0.0
+      diag % rw % array(:,:) = 0.0
+
+!
+!     calculation of omega, rw = zx * ru + zz * rw
+!
+
+!      do iEdge = 1,grid % nEdges
+
+!         cell1 = CellsOnEdge(1,iEdge)
+!         cell2 = CellsOnEdge(2,iEdge)
+
+!         if (cell1 <= nCellsSolve .or. cell2 <= nCellsSolve ) then
+!         do k = 2, grid%nVertLevels
+!            flux =  (fzm(k)*ru(k,iEdge)+fzp(k)*ru(k-1,iEdge))  
+!            diag % rw % array(k,cell2) = diag % rw % array(k,cell2) + zf(k,2,iEdge)*flux 
+!            diag % rw % array(k,cell1) = diag % rw % array(k,cell1) - zf(k,1,iEdge)*flux 
+
+!            if (config_theta_adv_order ==3) then
+!               diag % rw % array(k,cell2) = diag % rw % array(k,cell2)    &
+!                                            - sign(1.0_RKIND,ru(k,iEdge))*config_coef_3rd_order*zf3(k,2,iEdge)*flux
+!               diag % rw % array(k,cell1) = diag % rw % array(k,cell1)    &
+!                                            + sign(1.0_RKIND,ru(k,iEdge))*config_coef_3rd_order*zf3(k,1,iEdge)*flux
+!            end if
+
+!         end do
+!         end if
+
+!      end do
+
+      ! Compute w from rho_zz and rw
+      do iCell=1,grid%nCells
+         do k=2,grid%nVertLevels
+            state % w % array(k,iCell) = diag % rw % array(k,iCell)     & 
+                                       / (fzp(k) * state % rho_zz % array(k-1,iCell) + fzm(k) * state % rho_zz % array(k,iCell))
+         end do
+      end do
+
+
+      do iEdge=1,grid % nEdges
+         grid % fEdge % array(iEdge) = 0.
+      end do
+
+      do iVtx=1,grid % nVertices
+         grid % fVertex % array(iVtx) = 0.
+      end do
+
+      !
+      ! Compute mass fluxes tangential to each edge (i.e., through the faces of dual grid cells)
+      !
+      diag % v % array(:,:) = 0.0
+      do iEdge = 1, grid%nEdges
+         do i=1,nEdgesOnEdge(iEdge)
+            eoe = edgesOnEdge(i,iEdge)
+            if (eoe > 0) then
+               do k = 1, grid%nVertLevels
+                 diag % v % array(k,iEdge) = diag % v %array(k,iEdge) + weightsOnEdge(i,iEdge) * state % u % array(k, eoe)
+              end do
+            end if
+         end do
+      end do
+
+!      do k=1,grid%nVertLevels
+!        write(0,*) ' k,u_init, t_init, qv_init ',k,grid % u_init % array(k),grid % t_init% array(k),grid % qv_init % array(k)
+!      end do
+
+      ! Compute rho and theta from rho_zz and theta_m
+      do iCell=1,grid%nCells
+         do k=1,grid%nVertLevels
+            diag % rho % array(k,iCell) = state % rho_zz % array(k,iCell) * zz(k,iCell)
+            diag % theta % array(k,iCell) = state % theta_m % array(k,iCell) / (1.0 + 1.61 * scalars(index_qv,k,iCell))
+         end do
+      end do
+
+! MGD FOR 3-1:
+!     zt = 10000.0
+!     nVertLevels = 10
+!     X = 125
+!     dt = 12.
+!     nso = 8
+!     2nd-order horiz mixing = 50.0
+
+   end subroutine init_atm_test_case_reduced_radius
+
+
+!---------------------  TEST CASE 9 -----------------------------------------------
+
+
+   subroutine init_atm_test_case_resting_atmosphere(grid, state, diag, test_case)
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Setup resting atmosphere test case with terrian
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      implicit none
+
+      type (mesh_type), intent(inout) :: grid
+      type (state_type), intent(inout) :: state
+      type (diag_type), intent(inout) :: diag
+      integer, intent(in) :: test_case
+
+      real (kind=RKIND), parameter :: t0=300., alpha=0.
+      real (kind=RKIND) :: hm
+
+      real (kind=RKIND), dimension(:), pointer :: rdzw, dzu, rdzu, fzm, fzp
+      real (kind=RKIND), dimension(:,:), pointer :: zgrid, zx, zz, hx, cqw
+      real (kind=RKIND), dimension(:,:), pointer :: ppb, pb, rho_zz, rb, rr, tb, rtb, p, pp, dss, t, rt, u, ru 
+      real (kind=RKIND), dimension(:,:,:), pointer :: scalars, deriv_two, zb, zb3
+
+      !This is temporary variable here. It just need when calculate tangential velocity v.
+      integer :: eoe, j
+      integer, dimension(:), pointer :: nEdgesOnEdge 
+      integer, dimension(:,:), pointer :: edgesOnEdge, CellsOnEdge, cellsOnCell, edgesOnCell
+      integer, dimension(:), pointer :: nEdgesOnCell
+      real (kind=RKIND), dimension(:), pointer :: dvEdge, dcedge, AreaCell, xCell, yCell 
+      real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
+
+      integer :: iCell, iCell1, iCell2 , iEdge, vtx1, vtx2, ivtx, i, k, nz, nz1, itr, itrp, cell1, cell2, nCellsSolve
+      integer :: index_qv
+
+      real (kind=RKIND) :: ptop, p0, pis, flux, d2fdx2_cell1, d2fdx2_cell2
+      real(kind=RKIND), dimension(:), pointer :: hs, hs1
+
+      real (kind=RKIND) :: ztemp, zd, zt, dz, str, zh, hmax
+
+      real (kind=RKIND), dimension(grid % nVertLevels, grid % nCells) :: rh
+      real (kind=RKIND) :: es, qvs, xnutr, ptemp
+      integer :: iter, nsm, kz
+
+      type (field1DReal), pointer :: tempField
+      type (field1DReal), target :: tempFieldTarget
+
+      type (block_type), pointer :: block
+      type (parallel_info), pointer :: parinfo
+      type (dm_info), pointer :: dminfo
+
+      real (kind=RKIND), dimension(grid % nVertLevels + 1 ) :: zc, zw, ah
+      real (kind=RKIND), dimension(grid % nVertLevels ) :: zu, dzw, rdzwp, rdzwm
+      real (kind=RKIND), allocatable, dimension(:) :: psiVertex
+
+      real (kind=RKIND) :: d1, d2, d3, cof1, cof2, cf1, cf2, cf3
+      real (kind=RKIND) :: um, us,  rcp, rcv, gamma, xa, zinb, zint, tinv, th_inb, th_int 
+      real (kind=RKIND) :: xmid, temp, pres, a_scale, rad, shear, tsurf, usurf, sm0, dzmina, dzmina_global, dzminf
+
+      real (kind=RKIND) :: xi, yi, r1m, r2m, xc, yc, xla, zinv, xn2, xn2m, xn2l, sm, dzh, dzht, dzmin, z_edge, z_edge3 
+
+      integer, dimension(grid % nCells, 2) :: next_cell
+      real (kind=RKIND),  dimension(grid % nCells) :: pitop, ptopb
+      logical, parameter :: hybrid = .false.
+!      logical, parameter :: hybrid = .true. 
+
+      block => grid % block
+      parinfo => block % parinfo
+      dminfo => block % domain % dminfo
+
+
+      !
+      ! Scale all distances
+      !
+      a_scale = grid % sphere_radius
+
+      grid % xCell % array = grid % xCell % array * a_scale
+      grid % yCell % array = grid % yCell % array * a_scale
+      grid % zCell % array = grid % zCell % array * a_scale
+      grid % xVertex % array = grid % xVertex % array * a_scale
+      grid % yVertex % array = grid % yVertex % array * a_scale
+      grid % zVertex % array = grid % zVertex % array * a_scale
+      grid % xEdge % array = grid % xEdge % array * a_scale
+      grid % yEdge % array = grid % yEdge % array * a_scale
+      grid % zEdge % array = grid % zEdge % array * a_scale
+      grid % dvEdge % array = grid % dvEdge % array * a_scale
+      grid % dcEdge % array = grid % dcEdge % array * a_scale
+      grid % areaCell % array = grid % areaCell % array * a_scale**2.0
+      grid % areaTriangle % array = grid % areaTriangle % array * a_scale**2.0
+      grid % kiteAreasOnVertex % array = grid % kiteAreasOnVertex % array * a_scale**2.0
+
+      weightsOnEdge     => grid % weightsOnEdge % array
+      nEdgesOnEdge      => grid % nEdgesOnEdge % array
+      edgesOnEdge       => grid % edgesOnEdge % array  
+      dvEdge            => grid % dvEdge % array
+      dcEdge            => grid % dcEdge % array
+      AreaCell          => grid % AreaCell % array
+      CellsOnEdge       => grid % CellsOnEdge % array
+      cellsOnCell       => grid % cellsOnCell % array
+      nEdgesOnCell      => grid % nEdgesOnCell % array
+      edgesOnCell       => grid % edgesOnCell % array
+      deriv_two         => grid % deriv_two % array
+      
+      nz1 = grid % nVertLevels
+      nz = nz1 + 1
+      nCellsSolve = grid % nCellsSolve
+
+      zgrid => grid % zgrid % array
+      zb => grid % zb % array
+      zb3 => grid % zb3 % array
+      rdzw => grid % rdzw % array
+      dzu => grid % dzu % array
+      rdzu => grid % rdzu % array
+      fzm => grid % fzm % array
+      fzp => grid % fzp % array
+      zx => grid % zx % array
+      zz => grid % zz % array
+      hx => grid % hx % array
+      dss => grid % dss % array
+ 
+      xCell => grid % xCell % array
+      yCell => grid % yCell % array
+
+      ppb => diag % pressure_base % array
+      pb => diag % exner_base % array
+      rb => diag % rho_base % array
+      tb => diag % theta_base % array
+      rtb => diag % rtheta_base % array
+      p => diag % exner % array
+      cqw => diag % cqw % array
+
+      rho_zz => state % rho_zz % array
+
+      pp => diag % pressure_p % array
+      rr => diag % rho_p % array
+      t => state % theta_m % array      
+      rt => diag % rtheta_p % array
+      u => state % u % array
+      ru => diag % ru % array
+
+      scalars => state % scalars % array
+
+      index_qv = state % index_qv
+
+      scalars(:,:,:) = 0.
+
+      call atm_initialize_advection_rk(grid) 
+      call atm_initialize_deformation_weights(grid) 
+
+      xnutr = 0.1
+      zd = 12000.
+
+      p0 = 1.e+05
+      rcp = rgas/cp
+      rcv = rgas/(cp-rgas)
+
+      !     metrics for hybrid coordinate and vertical stretching
+      str = 1.0
+
+      zt = 12000.
+
+      dz = zt/float(nz1)
+!      write(0,*) ' dz = ',dz
+
+      do k=1,nz
+         zw(k) = (real(k-1)/real(nz1))**str*zt
+         if(k.gt.1)  dzw(k-1) = zw(k)-zw(k-1)
+      end do
+
+!     ah(k) governs the transition between terrain-following 
+!        and pure height coordinates
+!           ah(k) = 1           is a smoothed terrain-following coordinate
+!           ah(k) = 1.-zw(k)/zt is the basic terrain-following coordinate
+!           ah(k) = 0           is a height coordinate
+
+      write(6,*) ' hybrid = ',hybrid
+      kz = nz
+
+      if(hybrid)  then
+      
+         zh = zt
+
+         do k=1,nz
+            if(zw(k).lt.zh)  then
+
+!               if(k.le.2)  then
+!                  ah(k) = 1.
+!               else
+!                  ah(k) = cos(.5*pii*(zw(k)-zw(2))/zh)**6
+!               end if
+
+!               ah(k) = cos(.5*pii*zw(k)/zh)**6
+               ah(k) = cos(.5*pii*zw(k)/zh)**2
+!
+!               ah(k) = ah(k)*(1.-zw(k)/zt)
+!
+            else
+               ah(k) = 0.
+               kz = min(kz,k)
+            end if
+         end do
+
+      else
+	
+         do k=1,nz
+            ah(k) = 1.-zw(k)/zt
+         end do
+
+      end if
+
+
+      do k=1,nz
+         write(6,*) k,zw(k), ah(k)
+      end do
+
+      write(0,*) 'EARTH RADIUS = ', grid % sphere_radius
+
+! MGD 2-0-0, not used in 2-0-1
+      if (trim(config_dcmip_case) == '2-0-0') then
+         ! for hx computation
+         r1m = .75*pii
+         r2m = pii/16.
+      end if
+
+! MGD 2-0-1, not used in 2-0-0
+      if (trim(config_dcmip_case) == '2-0-1') then
+! setting for terrain
+!         xa = pii/16.                    ! for specifying mtn with in degrees
+         xa = pii*grid%sphere_radius/16.    !  corresponds to ~11 grid intervals across entire mtn with 2 deg res
+      end if
+
+
+! MGD both 2-0-0 and 2-0-1
+      hm = 2000.0
+
+      do iCell=1,grid % nCells
+
+
+         if (trim(config_dcmip_case) == '2-0-0') then
+!        Comb mountain as specified for DCMIP case 2.0
+! MGD BEGIN 2-0-0
+            xi = grid % lonCell % array(iCell)
+            yi = grid % latCell % array(iCell)
+
+            rad = acos(cos(xi)*cos(yi))
+
+            if (rad.lt.r1m)  THEN
+               hx(1,iCell) = hm*cos(.5*pii*rad/r1m)**2.*cos(pii*rad/r2m)**2
+            else
+               hx(1,iCell) = 0.
+            end if
+! MGD END 2-0-0
+         end if
+
+         if (trim(config_dcmip_case) == '2-0-1') then
+!        cosine**2 ridge
+! MGD BEGIN 2-0-1
+
+            xi = grid % lonCell % array(iCell)
+            yi = grid % latCell % array(iCell)
+            xc = sphere_distance(yi, xi, yi, 0., grid % sphere_radius)
+            yc = sphere_distance(yi, xi, 0., xi, grid % sphere_radius)
+
+            if (abs(xc).ge.xa)  then                            ! for mtn ridge with uniform width in km
+!            if (abs(xi).ge.xa.and.abs(2.*pii-xi).ge.xa)  then  ! for mtn ridge with uniform width in degrees
+               hx(1,iCell) = 0.
+            else
+!              for mtn ridge with uniform width in km
+               hx(1,iCell) = hm*cos(.5*pii*xc/xa)**2*cos(yc/grid % sphere_radius)
+!              for mtn ridge with uniform width in degrees
+!               hx(1,iCell) = hm*cos(.5*pii*xi/xa)**2*cos(yc/grid % sphere_radius)
+            end if
+! MGD END 2-0-1
+         end if
+
+         hx(:,iCell) = hx(1,iCell)
+
+         hx(nz,iCell) = zt
+
+      end do
+
+      hmax = maxval(hx(1,:))
+      write(6,*) "max terrain height = ",hmax
+
+      if (config_smooth_surfaces) then
+
+         write(0,*) ' '
+         write(0,*) ' Smoothing vertical coordinate surfaces'
+         write(0,*) ' '
+
+         allocate(hs (grid % nCells+1))
+         allocate(hs1(grid % nCells+1))
+
+         dzmin = 0.5
+         sm0 = 0.5
+         nsm = 30
+
+         write(6,*) 'dzmin = ',dzmin,' sm0 = ',sm0,' nsm = ',nsm
+
+         do k=2,kz-1
+            hx(k,:) = hx(k-1,:)
+            dzminf = zw(k)-zw(k-1)
+
+!            dzmin = max(0.5_RKIND,1.-.5*zw(k)/hm)
+
+            sm =   sm0*max(  min(.5*zw(k)/hm,1.0_RKIND), .05  )
+          
+            do i=1,nsm
+               do iCell=1,grid % nCells
+                  hs1(iCell) = 0.
+                  do j = 1,nEdgesOnCell(iCell)
+
+                     hs1(iCell) = hs1(iCell) + dvEdge(edgesOnCell(j,iCell))    &
+                                           / dcEdge(edgesOnCell(j,iCell))    &
+                                           *  (hx(k,cellsOnCell(j,iCell))-hx(k,iCell))
+                  end do
+                  hs1(iCell) = hx(k,iCell) + sm*hs1(iCell)
+
+                  hs(iCell) = 0.
+              !    do j = 1,nEdgesOnCell(iCell)
+              !       hs(iCell) = hs(iCell) + dvEdge(edgesOnCell(j,iCell))    &
+              !                             / dcEdge(edgesOnCell(j,iCell))    &
+              !                             *  (hs1(cellsOnCell(j,iCell))-hs1(iCell))
+              !    end do
+                  hs(iCell) = hs1(iCell) - 0.*hs(iCell)
+
+               end do
+
+               tempField => tempFieldTarget
+               tempField % block => block
+               tempField % dimSizes(1) = grid % nCells
+               tempField % sendList => parinfo % cellsToSend
+               tempField % recvList => parinfo % cellsToRecv
+               tempField % copyList => parinfo % cellsToCopy
+               tempField % array => hs
+               tempField % prev => null()
+               tempField % next => null()
+
+               call mpas_dmpar_exch_halo_field(tempField)
+
+             !  dzmina = minval(hs(:)-hx(k-1,:))
+               dzmina = minval(zw(k)+ah(k)*hs(1:grid%nCellsSolve)-zw(k-1)-ah(k-1)*hx(k-1,1:grid%nCellsSolve))
+               call mpas_dmpar_min_real(dminfo, dzmina, dzmina_global)
+             !  write(0,*) ' k,i, dzmina, dzmin, zw(k)-zw(k-1) ', k,i, dzmina, dzmin, zw(k)-zw(k-1)
+               if (dzmina_global >= dzmin*(zw(k)-zw(k-1))) then
+                  hx(k,:)=hs(:)
+                  dzminf = dzmina_global
+               else
+                  exit
+               end if
+            end do
+            write(0,*) k,i,sm,dzminf/(zw(k)-zw(k-1)),dzmina/(zw(k)-zw(k-1))
+         end do
+
+         do k=kz,nz
+               hx(k,:) = 0.
+         end do
+
+         deallocate(hs )
+         deallocate(hs1)
+
+      else
+
+         do k=2,nz1
+            dzmina = minval(zw(k)+ah(k)*hx(k,:)-zw(k-1)-ah(k-1)*hx(k-1,:))
+            write(0,*) k,dzmina/(zw(k)-zw(k-1))
+         end do
+
+      end if
+
+
+      do iCell=1,grid % nCells
+        do k=1,nz	
+          zgrid(k,iCell) = zw(k) + ah(k)*hx(k,iCell)
+        end do
+        do k=1,nz1
+          zz (k,iCell) = (zw(k+1)-zw(k))/(zgrid(k+1,iCell)-zgrid(k,iCell))
+        end do
+      end do
+
+      do i=1, grid % nEdges
+        iCell1 = grid % CellsOnEdge % array(1,i)
+        iCell2 = grid % CellsOnEdge % array(2,i)
+        do k=1,nz
+          zx (k,i) = (zgrid(k,iCell2)-zgrid(k,iCell1)) / grid % dcEdge % array(i)
+        end do
+      end do
+      do i=1, grid % nCells
+        do k=1,nz1
+          ztemp = .5*(zgrid(k+1,i)+zgrid(k,i))
+          dss(k,i) = 0.
+          ztemp = zgrid(k,i)
+          if(ztemp.gt.zd+.1)  then
+             dss(k,i) = dss(k,i)+xnutr*sin(.5*pii*(ztemp-zd)/(zt-zd))**2
+          end if
+        end do
+      enddo
+
+      write(0,*) ' grid metrics setup complete '
+
+      do k=1,nz1
+         dzw (k) = zw(k+1)-zw(k)
+         rdzw(k) = 1./dzw(k)
+         zu(k  ) = .5*(zw(k)+zw(k+1))
+      end do
+      do k=2,nz1
+         dzu (k)  = .5*(dzw(k)+dzw(k-1))
+         rdzu(k)  =  1./dzu(k)
+         fzp (k)  = .5* dzw(k  )/dzu(k)
+         fzm (k)  = .5* dzw(k-1)/dzu(k)
+         rdzwp(k) = dzw(k-1)/(dzw(k  )*(dzw(k)+dzw(k-1)))
+         rdzwm(k) = dzw(k  )/(dzw(k-1)*(dzw(k)+dzw(k-1)))
+      end do
+
+!      d1  = .5*dzw(1)
+!      d2  = dzw(1)+.5*dzw(2)
+!      d3  = dzw(1)+dzw(2)+.5*dzw(3)
+!      cf1 = d2*d3*(d3-d2)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+!      cf2 = d1*d3*(d1-d3)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+!      cf3 = d1*d2*(d2-d1)/(d2*d3*(d3-d2)+d1*d3*(d1-d3)+d1*d2*(d2-d1))
+
+      cof1 = (2.*dzu(2)+dzu(3))/(dzu(2)+dzu(3))*dzw(1)/dzu(2)
+      cof2 =     dzu(2)        /(dzu(2)+dzu(3))*dzw(1)/dzu(3)
+      cf1  = fzp(2) + cof1
+      cf2  = fzm(2) - cof1 - cof2
+      cf3  = cof2
+
+      grid % cf1 % scalar = cf1
+      grid % cf2 % scalar = cf2
+      grid % cf3 % scalar = cf3
+
+         um = 0.
+         gamma = .0065    ! temp lapse rate in K/km
+
+! MGD BEGIN 2-0-0
+         if (trim(config_dcmip_case) == '2-0-0') then
+            zinb = zt     ! no inversion layer
+            zint = zt     ! no inversion layer
+         end if
+! MGD END 2-0-0
+! MGD BEGIN 2-0-1
+         if (trim(config_dcmip_case) == '2-0-1') then
+            zinb = 3000.     ! bottom of inversion layer
+            zint = 5000.     ! top of inversion layer
+         end if
+! MGD END 2-0-1
+
+         ! computing intermediate T and Theta used to build sounding that includes inversion layer
+         tinv = t0-gamma*zinb
+         th_inb = t0*(1.-gamma*zinb/t0)**(1.-gravity/(cp*gamma))
+         th_int = th_inb*exp((gravity*(zint-zinb))/(cp*tinv))
+         write(6,*) ' zinb = ',zinb,' zint = ',zint,' tinv = ',tinv,'th_inb = ',th_inb,' th_int = ',th_int
+
+         do i=1,grid % nCells
+
+            pis  = 1.
+
+            do k=1,nz1
+               ztemp   = .5*(zgrid(k,i)+zgrid(k+1,i))
+
+!               Isothermal reference sounding
+
+               tb(k,i) =  t0*exp(gravity*ztemp/(cp*t0))
+
+!              Low level inversion initial sounding
+ 
+               if(ztemp.le.zinb)  then
+                  t (k,i) = t0*(1.-gamma*ztemp/t0)**(1.-gravity/(cp*gamma))
+               else if(ztemp.le.zint)  then
+                  t (k,i) = th_inb*exp((gravity*(ztemp-zinb))/(cp*tinv))
+               else
+                  t (k,i) = th_int*(1.-gamma*(ztemp-zint)/tinv)**(1.-gravity/(cp*gamma))
+               end if     
+
+               rh(k,i) = 0. 
+            end do
+         end do
+
+      !
+      ! Initialize wind field
+      !
+      do iEdge=1,grid % nEdges
+         do k=1,nz1
+            u(k,iEdge) = um
+         end do
+      end do
+
+      do k=1,nz1
+         grid % u_init % array(k) = um 
+      end do
+
+!
+!     reference sounding based on dry atmosphere
+!
+      do i=1, grid % nCells
+
+         pis = 1.
+
+         pitop(i) = pis-.5*dzw(1)*gravity/(cp*tb(1,1)*zz(1,1))
+         do k=2,nz1
+            pitop(i) = pitop(i)-dzu(k)*gravity/(cp*(fzm(k)*tb(k,1)+fzp(k)*tb(k-1,1))   &
+                                            *(fzm(k)*zz(k,1)+fzp(k)*zz(k-1,1)))
+         end do
+         pitop(i) = pitop(i)-.5*dzw(nz1)*gravity/(cp*tb(nz1,1)*zz(nz1,1))
+         ptopb(i) = p0*pitop(i)**(1./rcp)
+                
+         pb(nz1,i) = pitop(i)+.5*dzw(nz1)*gravity/(cp*tb(nz1,i)*zz(nz1,i))
+         p (nz1,i) = pitop(i)+.5*dzw(nz1)*gravity/(cp*t (nz1,i)*zz(nz1,i))
+         do k=nz1-1,1,-1
+            pb(k,i)  = pb(k+1,i) + dzu(k+1)*gravity/(cp*.5*(tb(k,i)+tb(k+1,i))   &
+                                           *.5*(zz(k,i)+zz(k+1,i)))
+            p (k,i)  = p (k+1,i) + dzu(k+1)*gravity/(cp*.5*(t (k,i)+t (k+1,i))   &
+                                           *.5*(zz(k,i)+zz(k+1,i)))
+         end do
+         do k=1,nz1
+            rb (k,i) = pb(k,i)**(1./rcv)/((rgas/p0)*tb(k,i)*zz(k,i))
+            rtb(k,i) = rb(k,i)*tb(k,i)
+            rr (k,i) = p (k,i)**(1./rcv)/((rgas/p0)*t (k,i)*zz(k,i))-rb(k,i)
+            cqw(k,i) = 1.
+         end do
+      end do
+
+       write(0,*) ' ***** base state sounding ***** '
+       write(0,*) 'k       pb        p         rb         rtb         rr          tb          t'
+       do k=1,grid%nVertLevels
+          write(0,'(i2,7(2x,f14.9))') k,pb(k,1),p(k,1),rb(k,1),rtb(k,1),rr(k,1),tb(k,1),t(k,1)
+       end do
+ 
+       scalars(index_qv,:,:) = 0.
+!!!
+!-------------------------------------------------------------------
+!     ITERATIONS TO CONVERGE MOIST SOUNDING
+      do itr=1,30
+
+        do i = 1, grid % nCells
+
+           pis = 1.
+
+           pitop(i) = pis-.5*dzw(1)*gravity*(1.+scalars(index_qv,1,1))/(cp*t(1,1)*zz(1,1))
+
+           do k=2,nz1
+              pitop(i) = pitop(i)-dzu(k)*gravity/(cp*cqw(k,1)*(fzm(k)*t (k,1)+fzp(k)*t (k-1,1)) &
+                                                   *(fzm(k)*zz(k,1)+fzp(k)*zz(k-1,1)))
+           end do
+           pitop(i) = pitop(i) - .5*dzw(nz1)*gravity*(1.+scalars(index_qv,nz1,1))/(cp*t(nz1,1)*zz(nz1,1))
+           ptop = p0*pitop(i)**(1./rcp)
+
+           pp(nz1,i) = ptop-ptopb(i)+.5*dzw(nz1)*gravity*   &
+                       (rr(nz1,i)+(rr(nz1,i)+rb(nz1,i))*scalars(index_qv,nz1,i))
+           do k=nz1-1,1,-1
+              pp(k,i) = pp(k+1,i)+dzu(k+1)*gravity*                   &
+                            (fzm(k)*(rr(k  ,i)+(rr(k  ,i)+rb(k  ,i))*scalars(index_qv,k  ,i))  &
+                            +fzp(k)*(rr(k+1,i)+(rr(k+1,i)+rb(k+1,i))*scalars(index_qv,k+1,i)))
+           end do
+           do k=1,nz1
+              rt(k,i) = (pp(k,i)/(rgas*zz(k,i))                   &
+                      -rtb(k,i)*(p(k,i)-pb(k,i)))/p(k,i)
+              p (k,i) = (zz(k,i)*(rgas/p0)*(rtb(k,i)+rt(k,i)))**rcv
+              rr(k,i) = (rt(k,i)-rb(k,i)*(t(k,i)-tb(k,i)))/t(k,i)
+           end do
+!
+!     update water vapor mixing ratio from humitidty profile
+!
+           do k=1,nz1
+              temp   = p(k,i)*t(k,i)
+              pres   = p0*p(k,i)**(1./rcp)
+              qvs    = 380.*exp(17.27*(temp-273.)/(temp-36.))/pres
+              scalars(index_qv,k,i) = min(0.014_RKIND,rh(k,i)*qvs)
+           end do
+                         
+           do k=1,nz1
+              t (k,i) = t(k,i)*(1.+1.61*scalars(index_qv,k,i))
+           end do
+           do k=2,nz1
+              cqw(k,i) = 1./(1.+.5*( scalars(index_qv,k-1,i)  &
+                                    +scalars(index_qv,k  ,i)))
+           end do
+
+        end do ! loop over cells
+
+      end do !  iteration loop
+!----------------------------------------------------------------------
+!
+      write(0,*) ' *** sounding for the simulation ***'
+      write(0,*) '    z            temp           theta              pres            rho_m              u              rr'
+      do k=1,nz1
+         write(0,'(8(f14.9,2x))') .5*(zgrid(k,1)+zgrid(k+1,1))/1000.,   &
+                       t(k,1)/(1.+1.61*scalars(index_qv,k,1))*p(k,1),   &
+                       t(k,1)/(1.+1.61*scalars(index_qv,k,1)),        &
+                       .01*p0*p(k,1)**(1./rcp),                       &
+!                       1000.*scalars(index_qv,k,1),                   &
+                       (rb(k,1)+rr(k,1))*(1.+scalars(index_qv,k,1)),  &
+                       grid % u_init % array(k), rr(k,1)
+      end do
+
+      do i=1,grid % ncells
+         do k=1,nz1
+            rho_zz(k,i) = rb(k,i)+rr(k,i)
+         end do
+
+        do k=1,nz1
+            grid % t_init % array(k,i) = t(k,i)
+        end do
+      end do
+
+      do i=1,grid % nEdges
+        cell1 = grid % CellsOnEdge % array(1,i)
+        cell2 = grid % CellsOnEdge % array(2,i)
+        if(cell1 <= nCellsSolve .or. cell2 <= nCellsSolve) then
+          do k=1,nz1
+            ru (k,i)  = 0.5*(rho_zz(k,cell1)+rho_zz(k,cell2))*u(k,i)    
+          end do
+        end if
+      end do
+
+!
+!     pre-calculation z-metric terms in omega eqn.
+!
+      do iEdge = 1,grid % nEdges
+         cell1 = CellsOnEdge(1,iEdge)
+         cell2 = CellsOnEdge(2,iEdge)
+         if (cell1 <= nCellsSolve .or. cell2 <= nCellsSolve ) then
+
+            do k = 1, grid%nVertLevels
+
+               if (config_theta_adv_order == 2) then
+!!         test for metric consistency - forces 2nd order metrics with 4th order advection
+!               if (config_theta_adv_order == 4) then
+
+                  z_edge = (zgrid(k,cell1)+zgrid(k,cell2))/2.
+
+               else !theta_adv_order == 3 or 4 
+
+                  d2fdx2_cell1 = deriv_two(1,1,iEdge) * zgrid(k,cell1)
+                  d2fdx2_cell2 = deriv_two(1,2,iEdge) * zgrid(k,cell2)
+                  do i=1, grid % nEdgesOnCell % array (cell1)
+                     if ( grid % CellsOnCell % array (i,cell1) > 0)       &
+                     d2fdx2_cell1 = d2fdx2_cell1 + deriv_two(i+1,1,iEdge) * zgrid(k,grid % CellsOnCell % array (i,cell1))
+                  end do
+                  do i=1, grid % nEdgesOnCell % array (cell2)
+                     if ( grid % CellsOnCell % array (i,cell2) > 0)       &
+                     d2fdx2_cell2 = d2fdx2_cell2 + deriv_two(i+1,2,iEdge) * zgrid(k,grid % CellsOnCell % array (i,cell2))
+                  end do             
+             
+                  z_edge =  0.5*(zgrid(k,cell1) + zgrid(k,cell2))         &
+                                - (grid % dcEdge % array(iEdge) **2) * (d2fdx2_cell1 + d2fdx2_cell2) / 12. 
+
+                  if (config_theta_adv_order == 3) then
+                     z_edge3 =  - (grid % dcEdge % array(iEdge) **2) * (d2fdx2_cell1 - d2fdx2_cell2) / 12.   
+                  else 
+                     z_edge3 = 0.
+                  end if
+
+               end if
+
+                  zb(k,1,iEdge) = (z_edge-zgrid(k,cell1))*dvEdge(iEdge)/AreaCell(cell1) 
+                  zb(k,2,iEdge) = (z_edge-zgrid(k,cell2))*dvEdge(iEdge)/AreaCell(cell2) 
+                  zb3(k,1,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell1) 
+                  zb3(k,2,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell2) 
+  
+!                  if (k /= 1) then
+!                     zf(k,1,iEdge) = ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb(k,1,iEdge)
+!                     zf(k,2,iEdge) = ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb(k,2,iEdge)
+!                     zf3(k,1,iEdge)= ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb3(k,1,iEdge)
+!                     zf3(k,2,iEdge)= ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb3(k,2,iEdge)
+!                  end if
+
+            end do
+
+         end if
+       end do
+
+!     for including terrain
+      state % w % array(:,:) = 0.0
+      diag % rw % array(:,:) = 0.0
+
+!
+!     calculation of omega, rw = zx * ru + zz * rw
+!
+
+!      do iEdge = 1,grid % nEdges
+
+!         cell1 = CellsOnEdge(1,iEdge)
+!         cell2 = CellsOnEdge(2,iEdge)
+
+!         if (cell1 <= nCellsSolve .or. cell2 <= nCellsSolve ) then
+!         do k = 2, grid%nVertLevels
+!            flux =  (fzm(k)*ru(k,iEdge)+fzp(k)*ru(k-1,iEdge))  
+!            diag % rw % array(k,cell2) = diag % rw % array(k,cell2) + zf(k,2,iEdge)*flux 
+!            diag % rw % array(k,cell1) = diag % rw % array(k,cell1) - zf(k,1,iEdge)*flux 
+
+!            if (config_theta_adv_order ==3) then
+!               diag % rw % array(k,cell2) = diag % rw % array(k,cell2)    &
+!                                            - sign(1.0_RKIND,ru(k,iEdge))*config_coef_3rd_order*zf3(k,2,iEdge)*flux
+!               diag % rw % array(k,cell1) = diag % rw % array(k,cell1)    &
+!                                            + sign(1.0_RKIND,ru(k,iEdge))*config_coef_3rd_order*zf3(k,1,iEdge)*flux
+!            end if
+
+!         end do
+!         end if
+
+!      end do
+
+      ! Compute w from rho_zz and rw
+      do iCell=1,grid%nCells
+         do k=2,grid%nVertLevels
+            state % w % array(k,iCell) = diag % rw % array(k,iCell)     & 
+                                       / (fzp(k) * state % rho_zz % array(k-1,iCell) + fzm(k) * state % rho_zz % array(k,iCell))
+         end do
+      end do
+
+
+      do iEdge=1,grid % nEdges
+         grid % fEdge % array(iEdge) = 0.
+      end do
+
+      do iVtx=1,grid % nVertices
+         grid % fVertex % array(iVtx) = 0.
+      end do
+
+      !
+      ! Compute mass fluxes tangential to each edge (i.e., through the faces of dual grid cells)
+      !
+      diag % v % array(:,:) = 0.0
+      do iEdge = 1, grid%nEdges
+         do i=1,nEdgesOnEdge(iEdge)
+            eoe = edgesOnEdge(i,iEdge)
+            if (eoe > 0) then
+               do k = 1, grid%nVertLevels
+                 diag % v % array(k,iEdge) = diag % v %array(k,iEdge) + weightsOnEdge(i,iEdge) * state % u % array(k, eoe)
+              end do
+            end if
+         end do
+      end do
+
+!      do k=1,grid%nVertLevels
+!        write(0,*) ' k,u_init, t_init, qv_init ',k,grid % u_init % array(k),grid % t_init% array(k),grid % qv_init % array(k)
+!      end do
+
+      ! Compute rho and theta from rho_zz and theta_m
+      do iCell=1,grid%nCells
+         do k=1,grid%nVertLevels
+            diag % rho % array(k,iCell) = state % rho_zz % array(k,iCell) * zz(k,iCell)
+            diag % theta % array(k,iCell) = state % theta_m % array(k,iCell) / (1.0 + 1.61 * scalars(index_qv,k,iCell))
+         end do
+      end do
+
+   end subroutine init_atm_test_case_resting_atmosphere
 
 
    integer function nearest_edge(target_lat, target_lon, &

@@ -42,6 +42,12 @@
                 <nml_option name="config_num_mgslevels"         type="integer"       default_value="1"/>
         </nml_record>
 
+        <nml_record name="dcmip">
+                <nml_option name="config_dcmip_case"            type="character"     default_value="2-0-0"/>
+                <nml_option name="config_planet_scale"          type="real"          default_value="1.0"/>
+                <nml_option name="config_rotation_rate_scale"   type="real"          default_value="1.0"/>
+        </nml_record>
+
         <nml_record name="dimensions">
                 <nml_option name="config_nvertlevels"           type="integer"       default_value="26"/>
                 <nml_option name="config_nsoillevels"           type="integer"       default_value="4"/>

@@ -29,7 +29,7 @@ module mpas_core
       block => domain % blocklist
       do while (associated(block))
          block % state % time_levs(1) % state % xtime % scalar = startTimeStamp
-         block % mesh % sphere_radius = a
+         block % mesh % sphere_radius = a / config_planet_scale
          block => block % next
       end do 
 
