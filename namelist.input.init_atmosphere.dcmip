@@ -1,0 +1,41 @@
+&nhyd_model
+   config_init_case = 9
+   config_theta_adv_order = 3
+/
+
+&dcmip
+   config_dcmip_case          = '3-1'
+   config_planet_scale        = 125.0
+   config_rotation_rate_scale = 0.0
+/
+
+&dimensions
+   config_nvertlevels     = 10
+   config_nsoillevels     = 1
+/
+
+&data_sources
+/
+
+&vertical_grid
+   config_ztop            = 10000.0
+   config_nsmterrain      = 0
+   config_smooth_surfaces = .false.
+/
+
+&preproc_stages 
+/
+
+&io
+   config_input_name         = 'x1.40962.grid.nc'
+   config_output_name        = 'x1.40962.init.nc'
+   config_pio_num_iotasks    = 0
+   config_pio_stride         = 1
+/
+
+&decomposition
+   config_block_decomp_file_prefix = 'x1.40962.graph.info.part.' 
+/
+
+&restart
+/
