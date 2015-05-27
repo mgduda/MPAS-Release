@@ -1,0 +1,24 @@
+&nhyd_model
+config_init_case = 7 
+/
+
+&dimensions
+config_nvertlevels = 41 
+config_nsoillevels = 4
+/
+
+&data_sources
+config_geog_data_path = '/Users/ss421/Code/Git/Bitbucket/RealData/GEOG/geog_complete/'
+/
+
+&preproc_stages
+config_static_interp = .true. 
+config_vertical_grid = .false. 
+config_met_interp = .false. 
+config_input_sst = .false.
+/
+
+&io
+config_input_name = 'mg.grid.x1.10242.nc'
+config_output_name = 'mg.static.x1.10242.nc'
+/

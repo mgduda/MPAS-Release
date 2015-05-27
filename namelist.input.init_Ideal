@@ -1,0 +1,18 @@
+&nhyd_model
+   config_init_case = 2
+   config_theta_adv_order = 3
+   config_num_mgslevels = 1
+/
+
+&dimensions
+   config_nvertlevels     = 41
+/
+
+&io
+   config_input_name         = 'mg.grid.x1.10242.nc'
+   config_output_name        = 'init.x1.10242.nc'
+/
+
+&decomposition
+   config_block_decomp_file_prefix = 'x1.10242.graph.info.part.'
+/
