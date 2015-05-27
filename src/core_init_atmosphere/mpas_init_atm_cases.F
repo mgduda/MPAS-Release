@@ -4841,6 +4841,8 @@ write(0,*) 'PROCESSING SEAICE'
                                            *.5*(zz(k,i)+zz(k+1,i)))
          end do
          do k=1,nz1
+!!JT include calculation of ppb (needed for SI scheme)
+            ppb(k,i) = p0*pb(k,i)**(1./rcp)
             rb (k,i) = pb(k,i)**(1./rcv)/((rgas/p0)*tb(k,i)*zz(k,i))
             rtb(k,i) = rb(k,i)*tb(k,i)
             rr (k,i) = p (k,i)**(1./rcv)/((rgas/p0)*t (k,i)*zz(k,i))-rb(k,i)
