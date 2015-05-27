@@ -214,7 +214,7 @@ module init_atm_cases
 
          write(0,*) ' '
          write(0,*) ' ****************************************************'
-         write(0,*) ' Only test cases 0 through 8 are currently supported.'
+         write(0,*) ' Only test cases 0 through 9 are currently supported.'
          write(0,*) ' ****************************************************'
          write(0,*) ' '
          call mpas_dmpar_abort(domain % dminfo)
@@ -4288,7 +4288,6 @@ write(0,*) 'PROCESSING SEAICE'
       real (kind=RKIND), dimension(:,:), pointer :: ppb, pb, rho_zz, rb, rr, tb, rtb, p, pp, dss, t, rt, u, ru 
       real (kind=RKIND), dimension(:,:,:), pointer :: scalars, deriv_two, zb, zb3
 
-      !This is temporary variable here. It just need when calculate tangential velocity v.
       integer :: eoe, j
       integer, dimension(:), pointer :: nEdgesOnEdge, nEdgesOnCell
       integer, dimension(:,:), pointer :: edgesOnEdge, CellsOnEdge, edgesOnCell
@@ -4337,7 +4336,7 @@ write(0,*) 'PROCESSING SEAICE'
 
 
       !
-      ! Scale all distances
+      ! Scale all distances and areas
       !
       a_scale = grid % sphere_radius
 
@@ -4440,6 +4439,15 @@ write(0,*) 'PROCESSING SEAICE'
         xnutr = 0.0          ! Coefficient for implicit w damping in absorbing layer 
         zd = 10000.          ! Bottom of absorbing layer
         write(0,*) ' test case 3-1, zt, zd, xnutr ', zt,zd,xnutr
+
+! MGD NAMELIST SETTINGS FOR 3-1:
+!     zt = 10000.0
+!     nVertLevels = 10
+!     X = 125
+!     dt = 12.
+!     nso = 8
+!     2nd-order horiz mixing = 50.0
+
       end if
 
       p0 = 1.e+05
@@ -4451,14 +4459,13 @@ write(0,*) 'PROCESSING SEAICE'
 
 
       dz = zt/float(nz1)
-!      write(0,*) ' dz = ',dz
 
       do k=1,nz
-		
+
 !           sh(k) is the stretching specified for height surfaces
 
             zc(k) = zt*(real(k-1)*dz/zt)**str 
-				
+
 !           to specify specific heights zc(k) for coordinate surfaces,
 !           input zc(k) 
 !           zw(k) is the hieght of zeta surfaces
@@ -4477,7 +4484,6 @@ write(0,*) 'PROCESSING SEAICE'
  
 !            ah(k) = 1.-cos(.5*pii*(k-1)*dz/zt)**6
             ah(k) = 1.
-!	    write(0,*) ' k, zc, zw, ah ',k,zc(k),zw(k),ah(k)			
       end do
       do k=1,nz1
          dzw (k) = zw(k+1)-zw(k)
@@ -4492,8 +4498,6 @@ write(0,*) 'PROCESSING SEAICE'
          rdzwp(k) = dzw(k-1)/(dzw(k  )*(dzw(k)+dzw(k-1)))
          rdzwm(k) = dzw(k  )/(dzw(k-1)*(dzw(k)+dzw(k-1)))
       end do
-
-!**********  how are we storing cf1, cf2 and cf3?
 
       d1  = .5*dzw(1)
       d2  = dzw(1)+.5*dzw(2)
@@ -4590,8 +4594,6 @@ write(0,*) 'PROCESSING SEAICE'
             hx(k,:) = hx(k-1,:)
             dzminf = zw(k)-zw(k-1)
 
-!            dzmin = max(0.5_RKIND,1.-.5*zw(k)/hm)
-
             sm =   sm0*max(  min(.5*zw(k)/hm,1.0_RKIND), .05  )
           
             do i=1,nsm
@@ -4627,10 +4629,8 @@ write(0,*) 'PROCESSING SEAICE'
 
                call mpas_dmpar_exch_halo_field(tempField)
 
-             !  dzmina = minval(hs(:)-hx(k-1,:))
                dzmina = minval(zw(k)+ah(k)*hs(1:grid%nCellsSolve)-zw(k-1)-ah(k-1)*hx(k-1,1:grid%nCellsSolve))
                call mpas_dmpar_min_real(dminfo, dzmina, dzmina_global)
-             !  write(0,*) ' k,i, dzmina, dzmin, zw(k)-zw(k-1) ', k,i, dzmina, dzmin, zw(k)-zw(k-1)
                if (dzmina_global >= dzmin*(zw(k)-zw(k-1))) then
                   hx(k,:)=hs(:)
                   dzminf = dzmina_global
@@ -4702,7 +4702,7 @@ write(0,*) 'PROCESSING SEAICE'
             zinv = 3000.     ! Height of lower layer
             xn2  = 0.0001    ! N^2 for upper layer
             xn2m = 0.0001    ! N^2 for reference sounding
-            xn2l = 0.0001    ! N^@ for lower layer
+            xn2l = 0.0001    ! N^2 for lower layer
          end if
 !MGD END 3-1
 
@@ -4737,8 +4737,6 @@ write(0,*) 'PROCESSING SEAICE'
 
                   t (k,i) = tsurf/pis*exp(gravity*ztemp/(cp*tsurf))
                   tb (k,i) = t0*exp(gravity*ztemp/(cp*t0))
-!!  JBK fix, 20120801
-               !!   tb(k,i) = t(k,i)
 
                end if
 
@@ -4760,11 +4758,10 @@ write(0,*) 'PROCESSING SEAICE'
 ! MGD ADD CODE HERE FOR 3-1 THERMAL PERT
             if (trim(config_dcmip_case) == '3-1') then
               do k=1,nz1
-               s = widthParm**2.0 / (widthParm**2.0 + sphere_distance(theta_c,                   lambda_c,              &
-                                                                      grid%latCell%array(i), grid%lonCell%array(i), &
-                                                                      grid%sphere_radius)**2.0)
-               theta_pert = dTheta * s * sin((2.0_RKIND * pii * 0.5*(zgrid(k,i)+zgrid(k+1,i))) / L_z)
-             !  diag % theta % array(k,i) = diag % theta % array(k,i) + theta_pert
+                s = widthParm**2.0 / (widthParm**2.0 + sphere_distance(theta_c,               lambda_c,              &
+                                                                       grid%latCell%array(i), grid%lonCell%array(i), &
+                                                                       grid%sphere_radius)**2.0)
+                theta_pert = dTheta * s * sin((2.0_RKIND * pii * 0.5*(zgrid(k,i)+zgrid(k+1,i))) / L_z)
                 t(k,i) = t(k,i) + theta_pert
               end do
             end if
@@ -4857,7 +4854,8 @@ write(0,*) 'PROCESSING SEAICE'
        end do
  
        scalars(index_qv,:,:) = 0.
-!!!
+
+!
 !-------------------------------------------------------------------
 !     ITERATIONS TO CONVERGE MOIST SOUNDING
       do itr=1,30
@@ -4955,12 +4953,10 @@ write(0,*) 'PROCESSING SEAICE'
             do k = 1, grid%nVertLevels
 
                if (config_theta_adv_order == 2) then
-!!         test for metric consistency - forces 2nd order metrics with 4th order advection
-!               if (config_theta_adv_order == 4) then
 
                   z_edge = (zgrid(k,cell1)+zgrid(k,cell2))/2.
 
-               else !theta_adv_order == 3 or 4 
+               else   ! theta_adv_order == 3 or 4 
 
                   d2fdx2_cell1 = deriv_two(1,1,iEdge) * zgrid(k,cell1)
                   d2fdx2_cell2 = deriv_two(1,2,iEdge) * zgrid(k,cell2)
@@ -4989,13 +4985,6 @@ write(0,*) 'PROCESSING SEAICE'
                   zb3(k,1,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell1) 
                   zb3(k,2,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell2) 
   
-!                  if (k /= 1) then
-!                     zf(k,1,iEdge) = ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb(k,1,iEdge)
-!                     zf(k,2,iEdge) = ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb(k,2,iEdge)
-!                     zf3(k,1,iEdge)= ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb3(k,1,iEdge)
-!                     zf3(k,2,iEdge)= ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb3(k,2,iEdge)
-!                  end if
-
             end do
 
          end if
@@ -5064,10 +5053,6 @@ write(0,*) 'PROCESSING SEAICE'
          end do
       end do
 
-!      do k=1,grid%nVertLevels
-!        write(0,*) ' k,u_init, t_init, qv_init ',k,grid % u_init % array(k),grid % t_init% array(k),grid % qv_init % array(k)
-!      end do
-
       ! Compute rho and theta from rho_zz and theta_m
       do iCell=1,grid%nCells
          do k=1,grid%nVertLevels
@@ -5075,14 +5060,6 @@ write(0,*) 'PROCESSING SEAICE'
             diag % theta % array(k,iCell) = state % theta_m % array(k,iCell) / (1.0 + 1.61 * scalars(index_qv,k,iCell))
          end do
       end do
-
-! MGD FOR 3-1:
-!     zt = 10000.0
-!     nVertLevels = 10
-!     X = 125
-!     dt = 12.
-!     nso = 8
-!     2nd-order horiz mixing = 50.0
 
    end subroutine init_atm_test_case_reduced_radius
 
@@ -5248,7 +5225,6 @@ write(0,*) 'PROCESSING SEAICE'
       zt = 12000.
 
       dz = zt/float(nz1)
-!      write(0,*) ' dz = ',dz
 
       do k=1,nz
          zw(k) = (real(k-1)/real(nz1))**str*zt
@@ -5264,7 +5240,7 @@ write(0,*) 'PROCESSING SEAICE'
       write(6,*) ' hybrid = ',hybrid
       kz = nz
 
-      if(hybrid)  then
+      if (hybrid) then
       
          zh = zt
 
@@ -5289,7 +5265,7 @@ write(0,*) 'PROCESSING SEAICE'
          end do
 
       else
-	
+
          do k=1,nz
             ah(k) = 1.-zw(k)/zt
          end do
@@ -5313,7 +5289,7 @@ write(0,*) 'PROCESSING SEAICE'
 ! MGD 2-0-1, not used in 2-0-0
       if (trim(config_dcmip_case) == '2-0-1') then
 ! setting for terrain
-!         xa = pii/16.                    ! for specifying mtn with in degrees
+!         xa = pii/16.                    ! for specifying mtn width in degrees
          xa = pii*grid%sphere_radius/16.    !  corresponds to ~11 grid intervals across entire mtn with 2 deg res
       end if
 
@@ -5389,8 +5365,6 @@ write(0,*) 'PROCESSING SEAICE'
             hx(k,:) = hx(k-1,:)
             dzminf = zw(k)-zw(k-1)
 
-!            dzmin = max(0.5_RKIND,1.-.5*zw(k)/hm)
-
             sm =   sm0*max(  min(.5*zw(k)/hm,1.0_RKIND), .05  )
           
             do i=1,nsm
@@ -5426,10 +5400,8 @@ write(0,*) 'PROCESSING SEAICE'
 
                call mpas_dmpar_exch_halo_field(tempField)
 
-             !  dzmina = minval(hs(:)-hx(k-1,:))
                dzmina = minval(zw(k)+ah(k)*hs(1:grid%nCellsSolve)-zw(k-1)-ah(k-1)*hx(k-1,1:grid%nCellsSolve))
                call mpas_dmpar_min_real(dminfo, dzmina, dzmina_global)
-             !  write(0,*) ' k,i, dzmina, dzmin, zw(k)-zw(k-1) ', k,i, dzmina, dzmin, zw(k)-zw(k-1)
                if (dzmina_global >= dzmin*(zw(k)-zw(k-1))) then
                   hx(k,:)=hs(:)
                   dzminf = dzmina_global
@@ -5458,7 +5430,7 @@ write(0,*) 'PROCESSING SEAICE'
 
 
       do iCell=1,grid % nCells
-        do k=1,nz	
+        do k=1,nz
           zgrid(k,iCell) = zw(k) + ah(k)*hx(k,iCell)
         end do
         do k=1,nz1
@@ -5517,52 +5489,52 @@ write(0,*) 'PROCESSING SEAICE'
       grid % cf2 % scalar = cf2
       grid % cf3 % scalar = cf3
 
-         um = 0.
-         gamma = .0065    ! temp lapse rate in K/km
+      um = 0.
+      gamma = .0065    ! temp lapse rate in K/km
 
 ! MGD BEGIN 2-0-0
-         if (trim(config_dcmip_case) == '2-0-0') then
-            zinb = zt     ! no inversion layer
-            zint = zt     ! no inversion layer
-         end if
+      if (trim(config_dcmip_case) == '2-0-0') then
+         zinb = zt     ! no inversion layer
+         zint = zt     ! no inversion layer
+      end if
 ! MGD END 2-0-0
 ! MGD BEGIN 2-0-1
-         if (trim(config_dcmip_case) == '2-0-1') then
-            zinb = 3000.     ! bottom of inversion layer
-            zint = 5000.     ! top of inversion layer
-         end if
+      if (trim(config_dcmip_case) == '2-0-1') then
+         zinb = 3000.     ! bottom of inversion layer
+         zint = 5000.     ! top of inversion layer
+      end if
 ! MGD END 2-0-1
 
-         ! computing intermediate T and Theta used to build sounding that includes inversion layer
-         tinv = t0-gamma*zinb
-         th_inb = t0*(1.-gamma*zinb/t0)**(1.-gravity/(cp*gamma))
-         th_int = th_inb*exp((gravity*(zint-zinb))/(cp*tinv))
-         write(6,*) ' zinb = ',zinb,' zint = ',zint,' tinv = ',tinv,'th_inb = ',th_inb,' th_int = ',th_int
+      ! computing intermediate T and Theta used to build sounding that includes inversion layer
+      tinv = t0-gamma*zinb
+      th_inb = t0*(1.-gamma*zinb/t0)**(1.-gravity/(cp*gamma))
+      th_int = th_inb*exp((gravity*(zint-zinb))/(cp*tinv))
+      write(6,*) ' zinb = ',zinb,' zint = ',zint,' tinv = ',tinv,'th_inb = ',th_inb,' th_int = ',th_int
 
-         do i=1,grid % nCells
+      do i=1,grid % nCells
 
-            pis  = 1.
+         pis  = 1.
 
-            do k=1,nz1
-               ztemp   = .5*(zgrid(k,i)+zgrid(k+1,i))
+         do k=1,nz1
+            ztemp   = .5*(zgrid(k,i)+zgrid(k+1,i))
 
-!               Isothermal reference sounding
+!            Isothermal reference sounding
 
-               tb(k,i) =  t0*exp(gravity*ztemp/(cp*t0))
+            tb(k,i) =  t0*exp(gravity*ztemp/(cp*t0))
 
-!              Low level inversion initial sounding
+!           Low level inversion initial sounding
  
-               if(ztemp.le.zinb)  then
-                  t (k,i) = t0*(1.-gamma*ztemp/t0)**(1.-gravity/(cp*gamma))
-               else if(ztemp.le.zint)  then
-                  t (k,i) = th_inb*exp((gravity*(ztemp-zinb))/(cp*tinv))
-               else
-                  t (k,i) = th_int*(1.-gamma*(ztemp-zint)/tinv)**(1.-gravity/(cp*gamma))
-               end if     
+            if(ztemp.le.zinb)  then
+               t (k,i) = t0*(1.-gamma*ztemp/t0)**(1.-gravity/(cp*gamma))
+            else if(ztemp.le.zint)  then
+               t (k,i) = th_inb*exp((gravity*(ztemp-zinb))/(cp*tinv))
+            else
+               t (k,i) = th_int*(1.-gamma*(ztemp-zint)/tinv)**(1.-gravity/(cp*gamma))
+            end if     
 
-               rh(k,i) = 0. 
-            end do
+            rh(k,i) = 0. 
          end do
+      end do
 
       !
       ! Initialize wind field
@@ -5712,8 +5684,6 @@ write(0,*) 'PROCESSING SEAICE'
             do k = 1, grid%nVertLevels
 
                if (config_theta_adv_order == 2) then
-!!         test for metric consistency - forces 2nd order metrics with 4th order advection
-!               if (config_theta_adv_order == 4) then
 
                   z_edge = (zgrid(k,cell1)+zgrid(k,cell2))/2.
 
@@ -5746,13 +5716,6 @@ write(0,*) 'PROCESSING SEAICE'
                   zb3(k,1,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell1) 
                   zb3(k,2,iEdge)=  z_edge3*dvEdge(iEdge)/AreaCell(cell2) 
   
-!                  if (k /= 1) then
-!                     zf(k,1,iEdge) = ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb(k,1,iEdge)
-!                     zf(k,2,iEdge) = ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb(k,2,iEdge)
-!                     zf3(k,1,iEdge)= ( fzm(k)*zz(k,cell1)+fzp(k)*zz(k-1,cell1) )*zb3(k,1,iEdge)
-!                     zf3(k,2,iEdge)= ( fzm(k)*zz(k,cell2)+fzp(k)*zz(k-1,cell2) )*zb3(k,2,iEdge)
-!                  end if
-
             end do
 
          end if
@@ -5820,10 +5783,6 @@ write(0,*) 'PROCESSING SEAICE'
             end if
          end do
       end do
-
-!      do k=1,grid%nVertLevels
-!        write(0,*) ' k,u_init, t_init, qv_init ',k,grid % u_init % array(k),grid % t_init% array(k),grid % qv_init % array(k)
-!      end do
 
       ! Compute rho and theta from rho_zz and theta_m
       do iCell=1,grid%nCells
