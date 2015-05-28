@@ -1,5 +1,5 @@
 &nhyd_model
-   config_dt = 450
+   config_dt = 180.0
    config_start_time = '2010-10-23_00:00:00'
    config_run_duration = '5_00:00:00'
    config_number_of_sub_steps = 6
@@ -27,12 +27,9 @@
    config_smdiv = 0.1
    config_newpx = .false.
    config_h_ScaleWithMesh = .true.
-   config_nQuasiNewton = 3
-   config_num_mgslevels = 3
-   config_mg_solve_npass = 1
-   config_time_integration = 'SI'
    config_scalar_advection = T
-   config_mg_solver = 'VCMG'
+   config_time_integration = 'SI'
+   config_num_mgslevels = 3
 /
 
 &damping
@@ -44,7 +41,7 @@
    config_input_name = 'mg.static.init.x1.10242.nc'
    config_mg_input_name = 'mg.grid.x1.10242.nc'
    config_output_name = 'x1.Real.10242.output.nc'
-   config_output_interval = '0:30:00'
+   config_output_interval = '1_0:00:00'
    config_restart_name = 'x1.10242.restart.nc'
    config_restart_interval = '1_00:00:00'
    config_sfc_update_name = 'x1.10242.sfc_update.nc'

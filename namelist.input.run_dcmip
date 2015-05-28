@@ -27,12 +27,8 @@
    config_smdiv               = 0.1
    config_h_ScaleWithMesh     = .true.
    config_newpx               = .false.
-   config_nQuasiNewton = 3
-   config_num_mgslevels = 3
-   config_mg_solve_npass = 1
    config_time_integration = 'SI'
-   config_mg_solver = 'VCMG'
-   config_alpha_si = 0.50
+   config_num_mgslevels = 3
 /
 
 &damping
