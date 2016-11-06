@@ -89,6 +89,11 @@
                      description="Length of model simulation"
                      possible_values="[DDD_]hh:mm:ss"/>
 
+                <nml_option name="config_dynamics_subcycles" type="integer" default_value="1"
+                     units="-"
+                     description="Number of dynamics (transport step) subcycles between calls to physics"
+                     possible_values="Positive integer values"/>
+
                 <nml_option name="config_split_dynamics_transport" type="logical" default_value="true"
                      units="-"
                      description="Whether to super-cycle scalar transport"

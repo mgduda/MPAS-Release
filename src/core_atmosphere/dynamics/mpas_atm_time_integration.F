@@ -16,7 +16,7 @@ module atm_time_integration
    use mpas_vector_reconstruction
    ! Added only clause to keep xlf90 from getting confused from the overloaded abs intrinsic in mpas_timekeeping
    use mpas_timekeeping, only: MPAS_Time_type, MPAS_TimeInterval_type, &
-                               mpas_set_time, mpas_set_timeInterval, mpas_get_time, operator(+), add_t_ti
+                               mpas_get_timeInterval, mpas_get_time, operator(+), add_t_ti
    use mpas_timer
 
 #ifdef DO_PHYSICS
@@ -62,7 +62,7 @@ module atm_time_integration
    contains
 
 
-   subroutine atm_timestep(domain, dt, timeStamp, itimestep)
+   subroutine atm_timestep(domain, dtDynamics, currTime, itimestep)
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
    ! Advance model state forward in time by the specified time step
    !
@@ -75,14 +75,14 @@ module atm_time_integration
       implicit none
 
       type (domain_type), intent(inout) :: domain
-      real (kind=RKIND), intent(in) :: dt
-      character(len=*), intent(in) :: timeStamp
+      type (MPAS_TimeInterval_type), intent(in) :: dtDynamics
+      type (MPAS_Time_type), intent(inout) :: currTime
       integer, intent(in) :: itimestep
 
 
       type (block_type), pointer :: block
-      type (MPAS_Time_type) :: currTime
-      type (MPAS_TimeInterval_type) :: dtInterval
+      integer :: s, s_n, s_d
+      real (kind=RKIND) :: dt
       character (len=StrKIND), pointer :: xtime
       character (len=StrKIND) :: xtime_new
       type (mpas_pool_type), pointer :: state
@@ -92,15 +92,16 @@ module atm_time_integration
       call mpas_pool_get_config(domain % blocklist % configs, 'config_time_integration', config_time_integration)
 
       if (trim(config_time_integration) == 'SRK3') then
+         call mpas_get_timeInterval(interval=dtDynamics, S=s, S_n=s_n, S_d=s_d)
+         dt = real(s, kind=RKIND) + real(s_n, kind=RKIND) / real(s_d, kind=RKIND)
+
          call atm_srk3(domain, dt, itimestep)
       else
          call mpas_log_write('Unknown time integration option '//trim(config_time_integration), messageType=MPAS_LOG_ERR)
          call mpas_log_write('Currently, only ''SRK3'' is supported.', messageType=MPAS_LOG_CRIT)
       end if
 
-      call mpas_set_time(currTime, dateTimeString=timeStamp)
-      call mpas_set_timeInterval(dtInterval, dt=dt)
-      currTime = currTime + dtInterval
+      currTime = currTime + dtDynamics
       call mpas_get_time(currTime, dateTimeString=xtime_new)
 
       block => domain % blocklist
@@ -164,7 +165,6 @@ module atm_time_integration
       logical, pointer :: config_scalar_advection
       logical, pointer :: config_positive_definite
       logical, pointer :: config_monotonic
-      real (kind=RKIND), pointer :: config_dt
       character (len=StrKIND), pointer :: config_microp_scheme
       character (len=StrKIND), pointer :: config_convection_scheme
 
@@ -211,7 +211,6 @@ module atm_time_integration
       call mpas_pool_get_config(domain % blocklist % configs, 'config_scalar_advection', config_scalar_advection)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_positive_definite', config_positive_definite)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_monotonic', config_monotonic)
-      call mpas_pool_get_config(domain % blocklist % configs, 'config_dt', config_dt)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_microp_scheme', config_microp_scheme)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_convection_scheme', config_convection_scheme)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_IAU_option', config_IAU_option)
@@ -1260,7 +1259,7 @@ module atm_time_integration
             !requires that the subroutine atm_advance_scalars_mono was called on the third Runge Kutta step, so that a halo
             !update for the scalars at time_levs(1) is applied. A halo update for the scalars at time_levs(2) is done above. 
             if (config_monotonic) then
-               rqvdynten(:,:) = ( scalars_2(index_qv,:,:) - scalars_1(index_qv,:,:) ) / config_dt
+               rqvdynten(:,:) = ( scalars_2(index_qv,:,:) - scalars_1(index_qv,:,:) ) / dt
             else
                rqvdynten(:,:) = 0._RKIND
             end if

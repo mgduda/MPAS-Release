@@ -33,7 +33,7 @@ module atm_core
       character(len=*), intent(out) :: startTimeStamp
       integer :: ierr
 
-      real (kind=RKIND), pointer :: dt
+      real (kind=RKIND), pointer :: config_dt
       type (block_type), pointer :: block
 
       character(len=StrKIND) :: timeStamp
@@ -79,7 +79,7 @@ module atm_core
 
 
       call mpas_pool_get_config(domain % blocklist % configs, 'config_do_restart', config_do_restart)
-      call mpas_pool_get_config(domain % blocklist % configs, 'config_dt', dt)
+      call mpas_pool_get_config(domain % blocklist % configs, 'config_dt', config_dt)
 
 
       !
@@ -149,7 +149,7 @@ module atm_core
          call mpas_pool_get_subpool(block % structs, 'mesh', mesh)
          call mpas_pool_get_subpool(block % structs, 'state', state)
 
-         call atm_mpas_init_block(domain % dminfo, domain % streamManager, block, mesh, dt)
+         call atm_mpas_init_block(domain % dminfo, domain % streamManager, block, mesh, config_dt)
 
          call mpas_pool_get_array(state, 'xtime', xtime, 1)
          xtime = startTimeStamp
@@ -244,7 +244,7 @@ module atm_core
    end subroutine atm_simulation_clock_init
 
 
-   subroutine atm_mpas_init_block(dminfo, stream_manager, block, mesh, dt)
+   subroutine atm_mpas_init_block(dminfo, stream_manager, block, mesh, dt_phys)
    
       use atm_time_integration
       use mpas_rbf_interpolation
@@ -263,7 +263,7 @@ module atm_core
       type (MPAS_streamManager_type), intent(inout) :: stream_manager
       type (block_type), intent(inout) :: block
       type (mpas_pool_type), intent(inout) :: mesh     !MGD does this need to be a pointer?
-      real (kind=RKIND), intent(in) :: dt
+      real (kind=RKIND), intent(in) :: dt_phys
 
       type (mpas_pool_type), pointer :: state
       type (mpas_pool_type), pointer :: diag
@@ -294,6 +294,7 @@ module atm_core
 
 
       logical, pointer :: config_do_restart, config_do_DAcycling
+      integer, pointer :: config_dynamics_subcycles
 
       call atm_compute_signs(mesh)
    
@@ -304,6 +305,7 @@ module atm_core
 
       call mpas_pool_get_config(block % configs, 'config_do_restart', config_do_restart)
       call mpas_pool_get_config(block % configs, 'config_do_DAcycling', config_do_DAcycling)
+      call mpas_pool_get_config(block % configs, 'config_dynamics_subcycles', config_dynamics_subcycles)
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       !!!! Compute inverses to avoid divides later
@@ -383,7 +385,8 @@ module atm_core
                                               edgeSolveThreadStart(thread), edgeSolveThreadEnd(thread))
          end if
 
-         call atm_compute_solve_diagnostics(dt, state, 1, diag, mesh, block % configs, &
+         call atm_compute_solve_diagnostics((dt_phys / real(config_dynamics_subcycles, kind=RKIND)), &
+                                            state, 1, diag, mesh, block % configs, &
                                             cellThreadStart(thread), cellThreadEnd(thread), &
                                             vertexThreadStart(thread), vertexThreadEnd(thread), &
                                             edgeThreadStart(thread), edgeThreadEnd(thread))
@@ -477,6 +480,7 @@ module atm_core
       type (MPAS_Time_Type) :: currTime
       character(len=StrKIND) :: timeStamp
       character (len=StrKIND), pointer :: config_restart_timestamp_name
+      integer, pointer :: config_dynamics_subcycles
       integer :: itimestep
 
       integer :: stream_dir
@@ -497,6 +501,7 @@ module atm_core
       
       ! Eventually, dt should be domain specific
       call mpas_pool_get_config(domain % blocklist % configs, 'config_dt', dt)
+      call mpas_pool_get_config(domain % blocklist % configs, 'config_dynamics_subcycles', config_dynamics_subcycles)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_do_restart', config_do_restart)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_restart_timestamp_name', config_restart_timestamp_name)
 
@@ -595,14 +600,10 @@ module atm_core
 
          call mpas_timer_start("time integration")
          call mpas_dmpar_get_time(integ_start_time)
-         call atm_do_timestep(domain, dt, itimestep)
+         call atm_do_timestep(domain, dt, config_dynamics_subcycles, itimestep)
          call mpas_dmpar_get_time(integ_stop_time)
          call mpas_timer_stop("time integration")   
          call mpas_log_write(' Timing for integration step: $r s', realArgs=(/real(integ_stop_time - integ_start_time, kind=RKIND)/))
-
-         ! Move time level 2 fields back into time level 1 for next time step
-         call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
-         call mpas_pool_shift_time_levels(state)
          
          ! Advance clock before writing output
          itimestep = itimestep + 1
@@ -826,7 +827,7 @@ module atm_core
    end subroutine atm_reset_diagnostics
 
 
-   subroutine atm_do_timestep(domain, dt, itimestep)
+   subroutine atm_do_timestep(domain, dt, dynamics_subcycles, itimestep)
    
       use mpas_timekeeping
       use mpas_kind_types
@@ -842,12 +843,15 @@ module atm_core
    
       type (domain_type), intent(inout) :: domain 
       real (kind=RKIND), intent(in) :: dt
+      integer, intent(in) :: dynamics_subcycles
       integer, intent(in) :: itimestep
       
       type (MPAS_Time_Type) :: startTime, currTime
       type (MPAS_TimeInterval_Type) :: xtimeTime
-      character(len=StrKIND) :: timeStamp
+      type (MPAS_TimeInterval_Type) :: dtDynamics
+      type (mpas_pool_type), pointer :: state
       integer :: s, s_n, s_d
+      integer :: icycle
       real (kind=RKIND) :: xtime_s
       integer :: ierr
 
@@ -858,9 +862,6 @@ module atm_core
       call mpas_get_timeInterval(interval=xtimeTime, S=s, S_n=s_n, S_d=s_d, ierr=ierr)         
       xtime_s = (s + s_n / s_d)
 
-      call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)         
-
-
 #ifdef DO_PHYSICS
       !proceed with physics if moist_physics is set to true:
       if(moist_physics) then
@@ -869,7 +870,16 @@ module atm_core
       endif
 #endif
 
-      call atm_timestep(domain, dt, timeStamp, itimestep)
+      dtDynamics = mpas_get_clock_timestep(clock, ierr=ierr)
+      dtDynamics = dtDynamics / dynamics_subcycles
+
+      do icycle=1,dynamics_subcycles
+         call atm_timestep(domain, dtDynamics, currTime, itimestep)
+
+         ! Move time level 2 fields back into time level 1 for next time step
+         call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
+         call mpas_pool_shift_time_levels(state)
+      end do
 
    end subroutine atm_do_timestep
    
