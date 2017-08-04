@@ -241,6 +241,8 @@ module init_atm_cases
                call physics_initialize_real(mesh, fg, domain % dminfo, block_ptr % dimensions, block_ptr % configs)
             end if
 
+            call init_atm_scalars(mesh, state)
+
             block_ptr => block_ptr % next
          end do
 
@@ -5185,5 +5187,68 @@ write(0,*) 'PROCESSING OMLD'
       end do
 
    end subroutine decouple_variables
+
+
+   !-----------------------------------------------------------------------
+   !  routine init_atm_scalars
+   !
+   !> \brief Initialize a passive tracer field
+   !> \author Michael Duda
+   !> \date   4 August 2017
+   !> \details
+   !>  Assuming a passive tracer, co2, has been defined in the Registry.xml
+   !>  file in the 'scalars' var_array, this routine provides an example
+   !>  of how to initialize that field based on the latitude of cells.
+   !>  in principle, any other information from fields defined in the Registry.xml
+   !>  file or based on new namelist options can be used when initializing
+   !>  the tracer.
+   !
+   !-----------------------------------------------------------------------
+   subroutine init_atm_scalars(mesh, state)
+
+      implicit none
+
+      type (mpas_pool_type), intent(inout) :: mesh
+      type (mpas_pool_type), intent(inout) :: state
+
+      integer, pointer :: nCells
+      integer, pointer :: nVertLevels
+      integer, pointer :: index_co2
+      real(kind=RKIND), dimension(:), pointer :: latCell
+      real(kind=RKIND), dimension(:,:,:), pointer :: scalars
+
+      integer :: i, k
+
+      !
+      ! Query dimensions
+      !
+      call mpas_pool_get_dimension(mesh, 'nCells', nCells)
+      call mpas_pool_get_dimension(mesh, 'nVertLevels', nVertLevels)
+
+      !
+      ! Obtain pointers to fields defined in the Registry.xml file
+      !
+      call mpas_pool_get_array(mesh, 'latCell', latCell)
+      call mpas_pool_get_array(state, 'scalars', scalars)
+
+      !
+      ! Query the index into the scalars array of the co2 constituent
+      !
+      call mpas_pool_get_dimension(state, 'index_co2', index_co2) 
+
+      !
+      ! Initialize co2 field to 400E-6 for all positive latitudes
+      ! All fields defined in the Registry are initialized to zero,
+      ! and the dimensions of the scalars array are (num_scalars,nVertLevels,nCells)
+      !
+      do i=1,nCells
+         if (latCell(i) > 0.0) then
+            do k=1,nVertLevels
+               scalars(index_co2,k,i) = 400.0e-6_RKIND
+            end do
+         end if
+      end do
+
+   end subroutine init_atm_scalars
 
 end module init_atm_cases

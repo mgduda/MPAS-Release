@@ -1357,6 +1357,9 @@
                         <var name="nr" array_group="number" units="nb kg^{-1}"
                              description="Rain number concentration"
                              packages="mp_thompson_in"/>
+
+                        <var name="co2" array_group="passive" units="kg kg^{-1}"
+                             description="CO2 concentration"/>
                 </var_array>
 
                 <var_array name="aerosols" type="real" dimensions="nAerLevels nCells Time">
@@ -1663,6 +1666,9 @@
                         <var name="tend_nr" name_in_code="nr" array_group="number" units="nb kg^{-1} s^{-1}" 
                              description="Tendency of rain number concentration"
                              packages="mp_thompson_in"/>
+
+                        <var name="tend_co2" array_group="passive" units="kg kg^{-1}"
+                             description="CO2 concentration"/>
                 </var_array>
         </var_struct>
 

@@ -663,6 +663,7 @@
                         <var name="qv"      array_group="moist"/>
                         <var name="qc"      array_group="moist"/>
                         <var name="qr"      array_group="moist"/>
+                        <var name="co2"     array_group="passive"/>
                 </var_array>
 
                 <!-- Climatology for ocean mixed-layer depth -->
