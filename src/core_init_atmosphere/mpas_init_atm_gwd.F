@@ -83,6 +83,7 @@ module mpas_init_atm_gwd
       real (kind=RKIND), dimension(:), pointer :: elvmax, htheta, hgamma, hsigma
       character(len=StrKIND), pointer :: config_geog_data_path
       character(len=StrKIND), pointer :: config_topo_data
+      character(len=StrKIND+1) :: geog_data_path      ! same as config_geog_data_path, but guaranteed to have a trailing slash
       character(len=StrKIND) :: geog_sub_path
 
 
@@ -95,6 +96,7 @@ module mpas_init_atm_gwd
       call mpas_pool_get_config(domain % configs, 'config_geog_data_path', config_geog_data_path)
       call mpas_pool_get_config(domain % configs, 'config_topo_data', config_topo_data)
       call mpas_pool_get_config(domain % configs, 'config_gwd_cell_scaling', config_gwd_cell_scaling)
+
 
       select case(trim(config_topo_data))
          case('GTOPO30')
@@ -143,7 +145,14 @@ module mpas_init_atm_gwd
 !      call mpas_pool_get_array(mesh, 'gamma', hgamma)
 !      call mpas_pool_get_array(mesh, 'sigma', hsigma)
 
-      iErr = read_global_30s_topo(config_geog_data_path, geog_sub_path)
+
+      write(geog_data_path, '(a)') config_geog_data_path
+      i = len_trim(geog_data_path)
+      if (geog_data_path(i:i) /= '/') then
+         geog_data_path(i+1:i+1) = '/'
+      end if
+
+      iErr = read_global_30s_topo(geog_data_path, geog_sub_path)
       if (iErr /= 0) then
          write(stderrUnit,*) 'Error reading global 30-arc-sec topography for GWD statistics'
          return
