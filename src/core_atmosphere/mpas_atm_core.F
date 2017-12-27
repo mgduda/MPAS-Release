@@ -264,6 +264,7 @@ module atm_core
       type (mpas_pool_type), pointer :: state
       type (mpas_pool_type), pointer :: diag
       type (mpas_pool_type), pointer :: tend
+      type (mpas_pool_type), pointer :: tend_physics
       type (mpas_pool_type), pointer :: sfc_input
       type (mpas_pool_type), pointer :: diag_physics
       type (mpas_pool_type), pointer :: atm_input
@@ -275,10 +276,14 @@ module atm_core
       real (kind=RKIND), dimension(:), pointer :: areaCell, invAreaCell
       real (kind=RKIND), dimension(:), pointer :: dvEdge, invDvEdge
       real (kind=RKIND), dimension(:), pointer :: dcEdge, invDcEdge
+      real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
+      real (kind=RKIND), dimension(:,:), pointer :: radonten
+      integer, dimension(:), pointer :: indexToCellID, ivgtyp
       real (kind=RKIND), dimension(:), pointer :: areaTriangle, invAreaTriangle
       integer, pointer :: nCells, nEdges, nVertices, nVertLevels, nEdgesSolve
       integer :: thread
       character(len=StrKIND), pointer :: mminlu
+      real (kind=RKIND), dimension(:,:), pointer :: zgrid, zz
 
       integer, pointer :: nThreads
       integer, dimension(:), pointer :: cellThreadStart, cellThreadEnd
@@ -437,6 +442,29 @@ module atm_core
       call atm_compute_mesh_scaling(mesh, block % configs)
 
       call atm_compute_damping_coefs(mesh, block % configs)
+
+      !
+      ! Set up production of radon gas
+      !
+      call mpas_pool_get_subpool(block % structs, 'tend_physics', tend_physics)
+      call mpas_pool_get_array(tend_physics, 'radonten', radonten)
+      call mpas_pool_get_array(mesh, 'latCell', latCell)
+      call mpas_pool_get_array(mesh, 'lonCell', lonCell)
+      call mpas_pool_get_array(mesh, 'indexToCellID', indexToCellID)
+      call mpas_pool_get_array(sfc_input, 'ivgtyp', ivgtyp)
+
+      ! As an example, let radon be produced at the surface at the rate of 2 g/m^2/day over land and destroyed
+      ! at the surface at the rate of 1 g/m^2/day over water. In general, sources and sinks can be initialized
+      ! based on lat/lon, or any other field available in the input file.
+      radonten(:,:) = 0.0_RKIND
+      do iCell=1,nCells
+         ! Assume that vegetation category 16 is water (true for USGS land use, not true for MODIS land use)
+         if (ivgtyp(iCell) == 16) then
+            radonten(1,iCell) = real((-0.001_R8KIND / 86400.0_R8KIND), kind=RKIND)  ! 1 g/m^2/day destruction over water, expressed in kg/m^2/s
+         else
+            radonten(1,iCell) = real((0.002_R8KIND / 86400.0_R8KIND), kind=RKIND)  ! 2 g/m^2/day production over land, expressed in kg/m^2/s
+         end if
+      end do
 
       call mpas_pool_get_dimension(mesh, 'nEdgesSolve', nEdgesSolve)
       call mpas_pool_get_array(mesh, 'meshScalingDel2', meshScalingDel2)

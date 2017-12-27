@@ -243,6 +243,7 @@
  integer:: i,iCell,k,n
  integer,pointer:: index_qv, index_qc, index_qr, index_qi, index_qs, index_qg
  integer,pointer:: index_ni
+ integer,pointer:: index_radon
  integer,pointer:: nCells,nCellsSolve,nEdges,nEdgesSolve
 
  real(kind=RKIND),dimension(:,:),pointer:: mass          ! time level 2 rho_zz
@@ -257,6 +258,8 @@
                                            rucuten,rvcuten
  real(kind=RKIND),dimension(:,:),pointer:: rthratenlw,rthratensw                                    
  real(kind=RKIND),dimension(:,:),pointer:: rthdynten
+ real(kind=RKIND),dimension(:,:),pointer:: radonten
+ real(kind=RKIND),dimension(:,:),pointer:: zgrid, zz
  
  real(kind=RKIND),dimension(:,:),pointer:: tend_rtheta_adv
  real(kind=RKIND),dimension(:,:),pointer:: tend_u_phys !nick
@@ -275,6 +278,9 @@
  call mpas_pool_get_dimension(mesh, 'nCellsSolve', nCellsSolve)
  call mpas_pool_get_dimension(mesh, 'nEdges', nEdges)
  call mpas_pool_get_dimension(mesh, 'nEdgesSolve', nEdgesSolve)
+
+ call mpas_pool_get_array(mesh, 'zgrid', zgrid)
+ call mpas_pool_get_array(mesh, 'zz', zz)
 
  call mpas_pool_get_config(configs, 'config_pbl_scheme', config_pbl_scheme)
  call mpas_pool_get_config(configs, 'config_convection_scheme', config_convection_scheme)
@@ -297,6 +303,7 @@
  call mpas_pool_get_dimension(state, 'index_qs', index_qs)
  call mpas_pool_get_dimension(state, 'index_qg', index_qg)
  call mpas_pool_get_dimension(state, 'index_ni', index_ni)
+ call mpas_pool_get_dimension(state, 'index_radon', index_radon)
 
  call mpas_pool_get_array(tend_physics, 'rublten', rublten)
  call mpas_pool_get_array(tend_physics, 'rvblten', rvblten)
@@ -306,6 +313,7 @@
  call mpas_pool_get_array(tend_physics, 'rqcblten', rqcblten)
  call mpas_pool_get_array(tend_physics, 'rqiblten', rqiblten)
  call mpas_pool_get_array(tend_physics, 'rniblten', rniblten)
+ call mpas_pool_get_array(tend_physics, 'radonten', radonten)
 
  call mpas_pool_get_array(tend_physics, 'rucuten', rucuten)
  call mpas_pool_get_array(tend_physics, 'rvcuten', rvcuten)
@@ -366,7 +374,7 @@
  call physics_get_tend_work(block, mesh, nCells, nEdges, nCellsSolve, nEdgesSolve, &
                            rk_step, dynamics_substep, &
                            config_pbl_scheme, config_convection_scheme, config_radt_lw_scheme, config_radt_sw_scheme, &
-                           index_qv, index_qc, index_qr, index_qi, index_qs, index_ni, &
+                           index_qv, index_qc, index_qr, index_qi, index_qs, index_ni, index_radon, &
                            rublten, rvblten, mass_edge, rublten_Edge, &
                            tend_ru_physics, &  ! change for addtend for u
                            rucuten, rvcuten, rucuten_Edge, &
@@ -376,7 +384,8 @@
                            tend_u_phys, tend_rtheta_adv, tend_diabatic, &
                            theta_m, scalars, &
                            tend_rtheta_physics, &  ! change for addtend for theta_m
-                           tend_theta_euler &
+                           tend_theta_euler, &
+                           radonten, zgrid, zz &
                            )
 
  !
@@ -630,14 +639,14 @@
  subroutine physics_get_tend_work(block, mesh, nCells, nEdges, nCellsSolve, nEdgesSolve, &
                                  rk_step, dynamics_substep, &
                                  config_pbl_scheme, config_convection_scheme, config_radt_lw_scheme, config_radt_sw_scheme, &
-                                 index_qv, index_qc, index_qr, index_qi, index_qs, index_ni, &
+                                 index_qv, index_qc, index_qr, index_qi, index_qs, index_ni, index_radon, &
                                  rublten, rvblten, mass_edge, rublten_Edge, tend_u, &
                                  rucuten, rvcuten, rucuten_Edge, &
                                  tend_th, tend_scalars, mass, rthblten, rqvblten, rqcblten, rqiblten, rniblten, &
                                  rthcuten, rqvcuten, rqccuten, rqrcuten, rqicuten, rqscuten, &
                                  rthratenlw, rthratensw, rthdynten, &
                                  tend_u_phys, tend_rtheta_adv, tend_diabatic, &
-                                 theta_m, scalars, tend_theta, tend_theta_euler &
+                                 theta_m, scalars, tend_theta, tend_theta_euler, radonten, zgrid, zz &
                                 )
 !==================================================================================================
 
@@ -653,7 +662,7 @@
     character(len=StrKIND), intent(in) :: config_convection_scheme
     character(len=StrKIND), intent(in) :: config_radt_lw_scheme
     character(len=StrKIND), intent(in) :: config_radt_sw_scheme
-    integer, intent(in) :: index_qv, index_qc, index_qr, index_qi, index_qs, index_ni
+    integer, intent(in) :: index_qv, index_qc, index_qr, index_qi, index_qs, index_ni, index_radon
     real (kind=RKIND), dimension(nVertLevels,nCells+1), intent(in) :: rublten
     real (kind=RKIND), dimension(nVertLevels,nCells+1), intent(in) :: rvblten
     real (kind=RKIND), dimension(nVertLevels,nEdges+1), intent(in) :: mass_edge
@@ -686,6 +695,9 @@
     real (kind=RKIND), dimension(num_scalars,nVertLevels,nCells+1), intent(in) :: scalars
     real (kind=RKIND), dimension(nVertLevels,nCells+1), intent(inout) :: tend_theta
     real (kind=RKIND), dimension(nVertLevels,nCells+1), intent(in) :: tend_theta_euler
+    real (kind=RKIND), dimension(nVertLevels,nCells+1), intent(in) :: radonten
+    real (kind=RKIND), dimension(nVertLevels+1,nCells+1), intent(in) :: zgrid
+    real (kind=RKIND), dimension(nVertLevels,nCells+1), intent(in) :: zz
 
     integer :: i, k
     real (kind=RKIND) :: coeff
@@ -728,6 +740,17 @@
 
         end select pbl_select
     endif
+
+    !
+    ! Account for sources and sinks for radon (in the radonten array) in the tendency for radon.
+    ! If radonten has units of kg/m^2/s, we need to divide by layer thickness and then by d(zeta)/dz
+    ! to get the proper units of kg/m^3/s divided by d(zeta)/dz for the tendency.
+    !
+    do i = 1, nCellsSolve
+       do k = 1, nVertLevels
+          tend_scalars(index_radon,k,i) = tend_scalars(index_radon,k,i) + radonten(k,i) / (zgrid(k+1,i) - zgrid(k,i)) / zz(k,i)
+       end do
+    end do
 
     !add coupled tendencies due to convection:
     if (config_convection_scheme .ne. 'off') then
