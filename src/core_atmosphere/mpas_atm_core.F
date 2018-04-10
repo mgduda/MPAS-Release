@@ -49,6 +49,8 @@ module atm_core
 
       integer, pointer :: nVertLevels, maxEdges, maxEdges2, num_scalars
 
+      type (MPAS_TimeInterval_type) :: alarmTimeInterval
+
       ierr = 0
 
 
@@ -76,6 +78,12 @@ module atm_core
       !
       clock => domain % clock
 
+      !
+      ! Create an alarm that rings every hour, beginning at the model start time
+      !
+      startTime = mpas_get_clock_time(clock, MPAS_START_TIME, ierr=ierr)
+      call mpas_set_timeInterval(alarmTimeInterval, timeString='1:00:00', ierr=ierr)
+      call mpas_add_clock_alarm(clock, 'foobar', startTime, alarmTimeInterval, ierr=ierr)
 
       call mpas_pool_get_config(domain % blocklist % configs, 'config_do_restart', config_do_restart)
       call mpas_pool_get_config(domain % blocklist % configs, 'config_dt', dt)
@@ -868,6 +876,10 @@ module atm_core
          call physics_driver(domain,itimestep,xtime_s)
       endif
 #endif
+      if ( mpas_is_alarm_ringing(clock, 'foobar', ierr=ierr) ) then
+         write(0,*) 'FOOBAR!!!'
+         call mpas_reset_clock_alarm(clock, 'foobar', ierr=ierr)
+      end if
 
       call atm_timestep(domain, dt, timeStamp, itimestep)
 
