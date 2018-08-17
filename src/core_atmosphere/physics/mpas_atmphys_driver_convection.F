@@ -831,7 +831,8 @@
              do k = kts,kte
              do i = its,ite
                 rqvften_p(i,k,j) = rqvdynten(k,i) + rqvblten(k,i)
-                rthften_p(i,k,j) = (rthdynten(k,i) + rthblten(k,i) &
+!               rthften_p(i,k,j) = (rthdynten(k,i) + rthblten(k,i) &
+                rthften_p(i,k,j) = (rthblten(k,i) &
                                  + rthratenlw(k,i) + rthratensw(k,i)) * pi_p(i,k,j) 
              enddo
              enddo
