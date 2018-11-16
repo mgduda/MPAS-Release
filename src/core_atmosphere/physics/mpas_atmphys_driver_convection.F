@@ -424,6 +424,7 @@
 
 !local pointers:
  logical,pointer:: config_do_restart
+ logical,pointer:: config_do_DAcycling   !SYH
  integer,pointer:: gfconv_closure_deep,gfconv_closure_shallow
  character(len=StrKIND),pointer:: convection_scheme
  real(kind=RKIND),pointer:: len_disp
@@ -443,6 +444,7 @@
  call mpas_pool_get_config(configs,'config_gfconv_closure_shallow',gfconv_closure_shallow)
  call mpas_pool_get_config(configs,'config_len_disp'         ,len_disp         )
  call mpas_pool_get_config(configs,'config_do_restart'       ,config_do_restart)
+ call mpas_pool_get_config(configs,'config_do_DAcycling'     ,config_do_DAcycling)  !SYH
  call mpas_pool_get_config(configs,'config_convection_scheme',convection_scheme)
 
 !initialize instantaneous precipitation, and copy convective tendencies from the dynamics to
@@ -464,7 +466,7 @@
 
 !... initialization of initflag needed in the calls cu_tiedtke and cu_ntiedtke:
  initflag = 1
- if(config_do_restart .or. itimestep > 1) initflag = 0
+ if(config_do_restart .or. config_do_DAcycling .or. itimestep > 1) initflag = 0   !SYH
 
  convection_select: select case(convection_scheme)
 

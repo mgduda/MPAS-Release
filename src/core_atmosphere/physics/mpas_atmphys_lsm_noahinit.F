@@ -81,7 +81,7 @@
  type(mpas_pool_type),intent(inout):: sfc_input
 
 !local pointers::
- logical,pointer:: input_sfc_albedo,restart
+ logical,pointer:: input_sfc_albedo,restart,DAcycling  ! SYH
 
  character(len=StrKIND),pointer:: mminlu,mminsl
 
@@ -108,6 +108,7 @@
  call mpas_pool_get_config(configs,'input_soil_data'      ,mminsl          )
  call mpas_pool_get_config(configs,'config_sfc_snowalbedo',input_sfc_albedo)
  call mpas_pool_get_config(configs,'config_do_restart'    ,restart         )
+ call mpas_pool_get_config(configs,'config_do_DAcycling'  ,DAcycling       ) ! SYH
 
  call mpas_pool_get_dimension(mesh,'nCells'     ,nCells     )
  call mpas_pool_get_dimension(mesh,'nSoilLevels',nSoilLevels)
@@ -128,7 +129,8 @@
  call physics_message('--- end initialize NOAH LSM tables' )
  call mpas_log_write('')
 
- if(.not.restart) then
+
+ if((.not.restart) .and. (.not.DAcycling)) then  !SYH
 
     errflag = 0
     do iCell = 1, nCells

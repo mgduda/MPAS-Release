@@ -92,6 +92,7 @@
 
 !local pointers:
  logical,pointer:: config_do_restart,       &
+                   config_do_DAcycling,     &    ! SYH
                    config_o3climatology
 
  character(len=StrKIND),pointer::            &
@@ -138,6 +139,7 @@
 ! call mpas_log_write('--- enter subroutine physics_init:')
 
  call mpas_pool_get_config(configs,'config_do_restart'       ,config_do_restart       )
+ call mpas_pool_get_config(configs,'config_do_DAcycling'     ,config_do_DAcycling     )  !SYH
  call mpas_pool_get_config(configs,'config_o3climatology'    ,config_o3climatology    )
  call mpas_pool_get_config(configs,'config_lsm_scheme'       ,config_lsm_scheme       )
  call mpas_pool_get_config(configs,'config_microp_scheme'    ,config_microp_scheme    )
@@ -283,7 +285,7 @@
 !initialization of the local sea-surface temperature when a diurnal cycle of the
 !sea-surface temperature is applied. This avoids having the array sstsk equal to
 !zero over land:
- if(.not. config_do_restart) then
+ if((.not. config_do_restart) .and. (.not. config_do_DAcycling)) then !SYH
 !    call mpas_log_write('--- initialization of sstsk:')
     do iCell = 1, nCellsSolve
        sstsk(iCell) = sst(iCell)
@@ -341,7 +343,8 @@
  endif
 
 !read the input files that contain the monthly-mean ozone climatology on fixed pressure levels:
- if(config_o3climatology .and. (.not. config_do_restart)) &
+ if(config_o3climatology .and. (.not. config_do_restart) .and. (.not. config_do_DAcycling)) &   ! SYH
+! if(config_o3climatology .and. (.not. config_do_restart)) &
     call init_o3climatology(mesh,atm_input)
 
 !initialization of global surface properties. set here for now, but may be moved when time

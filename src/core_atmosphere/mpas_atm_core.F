@@ -39,6 +39,7 @@ module atm_core
       character(len=StrKIND) :: timeStamp
       integer :: i
       logical, pointer :: config_do_restart
+      logical, pointer :: config_do_DAcycling    ! SYH
 
       type (mpas_pool_type), pointer :: state
       type (mpas_pool_type), pointer :: mesh
@@ -79,6 +80,7 @@ module atm_core
 
 
       call mpas_pool_get_config(domain % blocklist % configs, 'config_do_restart', config_do_restart)
+      call mpas_pool_get_config(domain % blocklist % configs, 'config_do_DAcycling', config_do_DAcycling)    ! SYH
       call mpas_pool_get_config(domain % blocklist % configs, 'config_dt', dt)
 
 
@@ -118,7 +120,7 @@ module atm_core
 !      call MPAS_stream_mgr_read(domain % streamManager, ierr=ierr)
 !      call MPAS_stream_mgr_reset_alarms(domain % streamManager, direction=MPAS_STREAM_INPUT, ierr=ierr) 
 
-      if (.not. config_do_restart) then
+      if ((.not. config_do_restart).and. (.not. config_do_DAcycling)) then   ! SYH
          block => domain % blocklist
          do while (associated(block))
             call mpas_pool_get_subpool(block % structs, 'state', state)

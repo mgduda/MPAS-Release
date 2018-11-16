@@ -826,6 +826,7 @@
 
 !local pointers:
  logical,pointer:: config_do_restart,config_frac_seaice
+ logical,pointer:: config_do_DAcycling   !SYH
  character(len=StrKIND),pointer:: sfclayer_scheme
  real(kind=RKIND),dimension(:),pointer:: areaCell
 
@@ -838,6 +839,7 @@
 !call mpas_log_write('--- enter subroutine driver_sfclayer:')
 
  call mpas_pool_get_config(configs,'config_do_restart'     ,config_do_restart )
+ call mpas_pool_get_config(configs,'config_do_DAcycling'   ,config_do_DAcycling)  !SYH
  call mpas_pool_get_config(configs,'config_frac_seaice'    ,config_frac_seaice)
  call mpas_pool_get_config(configs,'config_sfclayer_scheme',sfclayer_scheme   )
 
@@ -849,7 +851,7 @@
  dx = sqrt(maxval(areaCell))
 
  initflag = 1
- if(config_do_restart .or. itimestep > 1) initflag = 0
+ if(config_do_restart .or. config_do_DAcycling .or. itimestep > 1) initflag = 0    !SYH
 
  sfclayer_select: select case (trim(sfclayer_scheme))
 

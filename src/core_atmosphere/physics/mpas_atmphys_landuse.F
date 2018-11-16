@@ -92,6 +92,7 @@
 
 !local pointers:
  logical,pointer:: config_do_restart,  &
+                   config_do_DAcycling,&  !SYH
                    config_frac_seaice, &
                    config_sfc_albedo
 
@@ -128,6 +129,7 @@
 !call mpas_log_write('--- enter subroutine landuse_init_forMPAS:')
 
  call mpas_pool_get_config(configs,'config_do_restart' ,config_do_restart )
+ call mpas_pool_get_config(configs,'config_do_DAcycling',config_do_DAcycling)  !SYH
  call mpas_pool_get_config(configs,'config_frac_seaice',config_frac_seaice)
  call mpas_pool_get_config(configs,'config_sfc_albedo' ,config_sfc_albedo )
  call mpas_pool_get_array(sfc_input,'mminlu',mminlu)
@@ -245,7 +247,7 @@
 !call mpas_log_write('--- isice   =$i',intArgs=(/isice/))
 !call mpas_log_write('--- iswater =$i',intArgs=(/iswater/))
 !call mpas_log_write('--- isurban =$i',intArgs=(/isurban/))
- if(config_do_restart) then
+ if(config_do_restart .or. config_do_DAcycling) then   ! SYH
     call mpas_log_write('--- config_do_restart =$l', logicArgs=(/config_do_restart/))
     call mpas_log_write('--- skip the end of landuse_init_forMPAS')
     return
