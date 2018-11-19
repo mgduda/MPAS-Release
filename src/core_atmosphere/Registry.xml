@@ -524,6 +524,8 @@
 			<var name="sh2o"/>
 			<var name="smois"/>
 			<var name="tslb"/>
+                        <var name="pin"/>
+                        <var name="ozmixm"/>
 		</stream>
 
 		<stream name="restart" 
@@ -732,6 +734,8 @@
 			<var name="rniblten"/>
 			<var name="rthratensw"/>
 			<var name="rthratenlw"/>
+                        <var name="pin"/>
+                        <var name="ozmixm"/>
 			<var name="sfc_albbck"/>
 			<var name="skintemp"/>
 			<var name="snow"/>
@@ -1080,6 +1084,8 @@
 			<var name="sh2o"/>
 			<var name="smois"/>
 			<var name="tslb"/>
+                        <var name="pin"/>
+                        <var name="ozmixm"/>
 		</stream>
 	</streams>
 
