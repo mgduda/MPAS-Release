@@ -14,6 +14,11 @@ module atm_core
 
    type (MPAS_Clock_type), pointer :: clock
 
+   !
+   ! Declare a pointer to a new pool, foo_pool
+   !
+   type (MPAS_pool_type), pointer :: foo_pool
+
 
    contains
 
@@ -26,6 +31,7 @@ module atm_core
       use mpas_atm_dimensions, only : mpas_atm_set_dims
       use mpas_atm_diagnostics_manager, only : mpas_atm_diag_setup
       use mpas_atm_threading, only : mpas_atm_threading_init
+      use mpas_block_creator, only : mpas_block_creator_allocate_pool_fields
 
       implicit none
 
@@ -48,6 +54,12 @@ module atm_core
       type (MPAS_Time_Type) :: startTime
 
       integer, pointer :: nVertLevels, maxEdges, maxEdges2, num_scalars
+
+      !
+      ! Several new fields to be allocated and added to the pool
+      !
+      type (field2dReal), pointer :: test_field_2dr
+      type (field1dReal), pointer :: test_field_1dr
 
       ierr = 0
 
@@ -187,6 +199,68 @@ module atm_core
 
       call mpas_atm_diag_setup(domain % streamManager, domain % blocklist % configs, &
                                domain % blocklist % structs, domain % clock, domain % dminfo)
+
+       !
+       ! Allocate pool
+       !
+       call mpas_pool_create_pool(foo_pool)
+
+       !
+       ! Allocate field with two dimensions
+       !
+       allocate(test_field_2dr)
+       test_field_2dr % fieldName = 'temperature'
+       test_field_2dr % isVarArray = .false.
+       test_field_2dr % isDecomposed = .true.
+       test_field_2dr % hasTimeDimension = .false.
+       test_field_2dr % isPersistent = .true.
+       test_field_2dr % isActive = .true.
+       test_field_2dr % dimNames(1) = 'nVertLevels'
+       test_field_2dr % dimNames(2) = 'nCells'
+       test_field_2dr % defaultValue = 0.0
+       allocate(test_field_2dr % attLists(1))
+       allocate(test_field_2dr % attLists(1) % attList)
+       call mpas_add_att(test_field_2dr % attLists(1) % attList, 'units', 'K')
+       call mpas_add_att(test_field_2dr % attLists(1) % attList, 'long_name', 'air_temperature')
+       test_field_2dr % missingValue = -999.0_RKIND
+       test_field_2dr % block => domain % blocklist
+
+
+       !
+       ! Allocate field with one dimension
+       !
+       allocate(test_field_1dr)
+       test_field_1dr % fieldName = 'iso_levels'
+       test_field_1dr % isVarArray = .false.
+       test_field_1dr % isDecomposed = .false.
+       test_field_1dr % hasTimeDimension = .false.
+       test_field_1dr % isPersistent = .true.
+       test_field_1dr % isActive = .true.
+       test_field_1dr % dimNames(1) = 'nVertLevels'
+       test_field_1dr % defaultValue = 0.0
+       allocate(test_field_1dr % attLists(1))
+       allocate(test_field_1dr % attLists(1) % attList)
+       call mpas_add_att(test_field_1dr % attLists(1) % attList, 'units', 'Pa')
+       call mpas_add_att(test_field_1dr % attLists(1) % attList, 'long_name', 'isobaric_levels')
+       test_field_1dr % missingValue = -999.0_RKIND
+       test_field_1dr % block => domain % blocklist
+
+
+       !
+       ! Add fields to the pool
+       !
+       call mpas_pool_add_field(foo_pool, 'temperature', test_field_2dr)
+       call mpas_pool_add_field(foo_pool, 'iso_levels', test_field_1dr)
+
+       !
+       ! Allocate array storage for fields in pool
+       !
+       call mpas_block_creator_allocate_pool_fields(foo_pool, domain % blocklist % dimensions)
+
+       !
+       ! For any decomposed fields, set the sendList, recvList, and copyList pointers
+       !
+       call mpas_pool_link_parinfo(domain % blocklist, foo_pool)
 
    end function atm_core_init
 
@@ -512,11 +586,17 @@ module atm_core
       real (kind=R8KIND) :: diag_start_time, diag_stop_time
       real (kind=R8KIND) :: input_start_time, input_stop_time
       real (kind=R8KIND) :: output_start_time, output_stop_time
+
+      type (field2dReal), pointer :: test_field_2dr
       
       ierr = 0
 
       clock => domain % clock
       mpas_log_info => domain % logInfo
+
+      call mpas_pool_get_field(foo_pool, 'temperature', test_field_2dr)
+      test_field_2dr % array(:,:) = 3.1415_RKIND
+      call mpas_dmpar_exch_halo_field(test_field_2dr)
       
       ! Eventually, dt should be domain specific
       call mpas_pool_get_config(domain % blocklist % configs, 'config_dt', dt)
@@ -896,6 +976,12 @@ module atm_core
 
       clock => domain % clock
       mpas_log_info => domain % logInfo
+
+
+      !
+      ! Deallocate pool
+      !
+      call mpas_pool_destroy_pool(foo_pool)
 
       call mpas_atm_diag_cleanup()
 
