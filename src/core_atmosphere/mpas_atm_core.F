@@ -151,6 +151,9 @@ module atm_core
 
          call atm_mpas_init_block(domain % dminfo, domain % streamManager, block, mesh, dt)
 
+         ! Initialize passive tracers
+         call atm_init_tracers(mesh, state)
+
          call mpas_pool_get_array(state, 'xtime', xtime, 1)
          xtime = startTimeStamp
 
@@ -1262,6 +1265,50 @@ module atm_core
 
    end subroutine atm_couple_coef_3rd_order
 
+
+   !-----------------------------------------------------------------------
+   !  routine atm_init_tracers
+   !
+   !> \brief Initialize passive tracers with simple pattern
+   !> \author Michael Duda
+   !> \date   26 June 2019
+   !> \details
+   !>  This routine provides initial conditions for the tracers in the "passive"
+   !>  group based simply on the latitude and longitude of each cell center.
+   !
+   !-----------------------------------------------------------------------
+   subroutine atm_init_tracers(mesh, state)
+
+      implicit none
+
+      type (mpas_pool_type), pointer :: mesh
+      type (mpas_pool_type), pointer :: state
+
+      integer :: iCell
+      integer, pointer :: nCellsSolve
+      integer, pointer :: passive_start
+      integer, pointer :: passive_end
+      real (kind=RKIND), dimension(:), pointer :: latCell
+      real (kind=RKIND), dimension(:), pointer :: lonCell
+      real (kind=RKIND), dimension(:,:,:), pointer :: scalars
+
+      call mpas_pool_get_array(mesh, 'latCell', latCell)
+      call mpas_pool_get_array(mesh, 'lonCell', lonCell)
+      call mpas_pool_get_array(state, 'scalars', scalars, 1)
+
+      call mpas_pool_get_dimension(state, 'nCellsSolve', nCellsSolve)
+      call mpas_pool_get_dimension(state, 'passive_start', passive_start)
+      call mpas_pool_get_dimension(state, 'passive_end', passive_end)
+
+      ! Initialize any passive tracers
+      ! If all passive tracers are inactive, passive_start and passive_end should be -1
+      if (passive_start /= -1 .and. passive_end /= -1) then
+         do iCell=1,nCellsSolve
+            scalars(passive_start:passive_end,:,iCell) = 0.5 * (sin(10.0 * latCell(iCell)) * sin(10.0 * lonCell(iCell))) + 0.5
+         end do
+      end if
+
+   end subroutine atm_init_tracers
 
 end module atm_core
 

@@ -119,6 +119,18 @@ module atm_core_interface
 
       logical, pointer :: iauActive
       character(len=StrKIND), pointer :: config_iau_option
+      integer, pointer :: config_num_passive_tracers
+
+      logical, pointer :: tracer1Active
+      logical, pointer :: tracer2Active
+      logical, pointer :: tracer3Active
+      logical, pointer :: tracer4Active
+      logical, pointer :: tracer5Active
+      logical, pointer :: tracer6Active
+      logical, pointer :: tracer7Active
+      logical, pointer :: tracer8Active
+      logical, pointer :: tracer9Active
+      logical, pointer :: tracer10Active
 
       ierr = 0
 
@@ -133,6 +145,87 @@ module atm_core_interface
       else
          iauActive = .false.
       end if
+
+      !
+      ! Set up packages for passive tracers
+      !
+      nullify(config_num_passive_tracers)
+      call mpas_pool_get_config(configs, 'config_num_passive_tracers', config_num_passive_tracers)
+
+      nullify(tracer1Active)
+      nullify(tracer2Active)
+      nullify(tracer3Active)
+      nullify(tracer4Active)
+      nullify(tracer5Active)
+      nullify(tracer6Active)
+      nullify(tracer7Active)
+      nullify(tracer8Active)
+      nullify(tracer9Active)
+      nullify(tracer10Active)
+      call mpas_pool_get_package(packages, 'tracer1Active',  tracer1Active)
+      call mpas_pool_get_package(packages, 'tracer2Active',  tracer2Active)
+      call mpas_pool_get_package(packages, 'tracer3Active',  tracer3Active)
+      call mpas_pool_get_package(packages, 'tracer4Active',  tracer4Active)
+      call mpas_pool_get_package(packages, 'tracer5Active',  tracer5Active)
+      call mpas_pool_get_package(packages, 'tracer6Active',  tracer6Active)
+      call mpas_pool_get_package(packages, 'tracer7Active',  tracer7Active)
+      call mpas_pool_get_package(packages, 'tracer8Active',  tracer8Active)
+      call mpas_pool_get_package(packages, 'tracer9Active',  tracer9Active)
+      call mpas_pool_get_package(packages, 'tracer10Active', tracer10Active)
+
+      tracer1Active  = .false.
+      tracer2Active  = .false.
+      tracer3Active  = .false.
+      tracer4Active  = .false.
+      tracer5Active  = .false.
+      tracer6Active  = .false.
+      tracer7Active  = .false.
+      tracer8Active  = .false.
+      tracer9Active  = .false.
+      tracer10Active = .false.
+
+      if (config_num_passive_tracers >= 1) then
+         call mpas_log_write('----- Setting up packages for passive tracers -----')
+         call mpas_log_write('Activating tracer 1')
+         tracer1Active = .true.
+      if (config_num_passive_tracers >= 2) then
+         call mpas_log_write('Activating tracer 2')
+         tracer2Active = .true.
+      if (config_num_passive_tracers >= 3) then
+         call mpas_log_write('Activating tracer 3')
+         tracer3Active = .true.
+      if (config_num_passive_tracers >= 4) then
+         call mpas_log_write('Activating tracer 4')
+         tracer4Active = .true.
+      if (config_num_passive_tracers >= 5) then
+         call mpas_log_write('Activating tracer 5')
+         tracer5Active = .true.
+      if (config_num_passive_tracers >= 6) then
+         call mpas_log_write('Activating tracer 6')
+         tracer6Active = .true.
+      if (config_num_passive_tracers >= 7) then
+         call mpas_log_write('Activating tracer 7')
+         tracer7Active = .true.
+      if (config_num_passive_tracers >= 8) then
+         call mpas_log_write('Activating tracer 8')
+         tracer8Active = .true.
+      if (config_num_passive_tracers >= 9) then
+         call mpas_log_write('Activating tracer 9')
+         tracer9Active = .true.
+      if (config_num_passive_tracers >= 10) then
+         call mpas_log_write('Activating tracer 10')
+         tracer10Active = .true.
+      end if
+      end if
+      end if
+      end if
+      end if
+      end if
+      end if
+      end if
+      end if
+      end if
+
 
 #ifdef DO_PHYSICS
       !check that all the physics options are correctly defined and that at
