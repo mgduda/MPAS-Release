@@ -290,7 +290,9 @@ module mpas_subdriver
           call mpas_build_stream_filename(ref_time, start_time, filename_interval, mesh_filename_temp, blockID, mesh_filename, ierr)
       end if
       call mpas_log_write(' ** Attempting to bootstrap MPAS framework using stream: ' // trim(mesh_stream))
+      call mpas_timer_start('bootstrap_phase1')
       call mpas_bootstrap_framework_phase1(domain_ptr, mesh_filename, mesh_iotype)
+      call mpas_timer_stop('bootstrap_phase1')
 
       !
       ! Set up run-time streams
@@ -323,12 +325,16 @@ module mpas_subdriver
       !
       ! Finalize the setup of blocks and fields
       !
+      call mpas_timer_start('bootstrap_phase2')
       call mpas_bootstrap_framework_phase2(domain_ptr)
+      call mpas_timer_stop('bootstrap_phase2')
 
       !
       ! Initialize core
       !
+      call mpas_timer_start('core_init')
       iErr = domain_ptr % core % core_init(domain_ptr, timeStamp)
+      call mpas_timer_stop('core_init')
       if ( ierr /= 0 ) then
          call mpas_log_write('Core init failed for core '//trim(domain_ptr % core % coreName), messageType=MPAS_LOG_CRIT)
       end if

@@ -78,6 +78,8 @@ module mpas_bootstrapping
    !-----------------------------------------------------------------------
    subroutine mpas_bootstrap_framework_phase1(domain, mesh_filename, mesh_iotype) !{{{
 
+      use mpas_timer, only : mpas_timer_start, mpas_timer_stop
+
       implicit none
 
       type (domain_type), pointer :: domain
@@ -136,7 +138,6 @@ module mpas_bootstrapping
       logical, pointer :: config_explicit_proc_decomp
       character (len=StrKIND), pointer :: config_block_decomp_file_prefix, config_proc_decomp_file_prefix
       integer :: nHalos
-
 
       call mpas_pool_get_config(domain % configs, 'config_num_halos', config_num_halos)
       call mpas_pool_get_config(domain % configs, 'config_number_of_blocks', config_number_of_blocks)
@@ -224,14 +225,17 @@ module mpas_bootstrapping
       ! Determine which cells are owned by this process. Currently, this routine just reads a graph.info.part.*
       !    file, but in principle it could call some online, distributed mesh partitioning library.
       !
+      call mpas_timer_start('block_decomp')
       call mpas_block_decomp_cells_for_proc(domain % dminfo, partial_global_graph_info, local_cell_list, block_id, block_start, &
                                             block_count, config_number_of_blocks, config_explicit_proc_decomp, &
                                             config_block_decomp_file_prefix, config_proc_decomp_file_prefix)
+      call mpas_timer_stop('block_decomp')
 
       deallocate(partial_global_graph_info % vertexID)
       deallocate(partial_global_graph_info % nAdjacent)
       deallocate(partial_global_graph_info % adjacencyList)
 
+      call mpas_timer_start('create_blocks')
       !
       ! Transfer owned cells from local_cell_list into the indexToCellID_Block field (which may contain multiple blocks)
       !
@@ -269,6 +273,7 @@ module mpas_bootstrapping
       call mpas_block_creator_build_edge_halos(nHalos, indexToCellID_Block, nEdgesOnCell_Block, nCellsSolveField, &
                                                verticesOnCell_Block, indexToVertexID_Block, cellsOnVertex_Block, &
                                                nVerticesSolveField)
+      call mpas_timer_stop('create_blocks')
 
       !
       ! Before we can allocate blocks, we need the attributes on_a_sphere and sphere_radius so

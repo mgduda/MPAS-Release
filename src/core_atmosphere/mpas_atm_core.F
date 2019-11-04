@@ -26,6 +26,7 @@ module atm_core
       use mpas_atm_dimensions, only : mpas_atm_set_dims
       use mpas_atm_diagnostics_manager, only : mpas_atm_diag_setup
       use mpas_atm_threading, only : mpas_atm_threading_init
+      use mpas_timer, only : mpas_timer_start, mpas_timer_stop
 
       implicit none
 
@@ -89,11 +90,13 @@ module atm_core
       ! input alarms for both input and restart before reading any remaining
       ! input streams.
       !
+      call mpas_timer_start('read_ICs')
       if (config_do_restart) then
          call MPAS_stream_mgr_read(domain % streamManager, streamID='restart', ierr=ierr)
       else
          call MPAS_stream_mgr_read(domain % streamManager, streamID='input', ierr=ierr)
       end if
+      call mpas_timer_stop('read_ICs')
       if (ierr /= MPAS_STREAM_MGR_NOERR) then
          call mpas_log_write('********************************************************************************', messageType=MPAS_LOG_ERR)
          call mpas_log_write('Error reading initial conditions',                                                 messageType=MPAS_LOG_ERR)
