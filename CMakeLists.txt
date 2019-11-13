@@ -52,7 +52,7 @@ find_package(NetCDF REQUIRED)
 add_executable(${MPAS_EXE_NAME})
 
 include_directories(${NetCDF_INCLUDE_DIRS})
-target_link_libraries(${MPAS_EXE_NAME} ${NetCDF_LIBRARIES})
+target_link_libraries(${MPAS_EXE_NAME} ${NetCDF_LIBRARIES} ${CMAKE_DL_LIBS})
 
 set_property(TARGET ${MPAS_EXE_NAME} PROPERTY Fortran_FORMAT FREE)
 
