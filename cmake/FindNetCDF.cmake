@@ -32,13 +32,6 @@ else()
     message("ZLIB library not found...")
 endif()
 
-find_library(PNETCDF_LIBRARY libpnetcdf.a HINTS ENV NETCDF ENV NETCDF_PATH PATH_SUFFIXES lib)
-if(PNETCDF_LIBRARY)
-    set(NetCDF_LIBRARIES ${NetCDF_LIBRARIES} ${PNETCDF_LIBRARY})
-else()
-    message("PNETCDF library not found...")
-endif()
-
 include(FindPackageHandleStandardArgs)
 # handle the QUIETLY and REQUIRED arguments and set NETCDF_FOUND to TRUE
 # if all listed variables are TRUE

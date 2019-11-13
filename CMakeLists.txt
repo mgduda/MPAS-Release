@@ -44,15 +44,15 @@ endif()
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/" ${CMAKE_MODULE_PATH})
 
 find_package(NetCDF REQUIRED)
-
+find_package(PNETCDF REQUIRED)
 
 #
 # Define main target and dependencies
 #
 add_executable(${MPAS_EXE_NAME})
 
-include_directories(${NetCDF_INCLUDE_DIRS})
-target_link_libraries(${MPAS_EXE_NAME} ${NetCDF_LIBRARIES} ${CMAKE_DL_LIBS})
+include_directories(${PNETCDF_INCLUDE_DIRS} ${NetCDF_INCLUDE_DIRS})
+target_link_libraries(${MPAS_EXE_NAME} ${NetCDF_LIBRARIES} ${PNETCDF_LIBRARIES} ${CMAKE_DL_LIBS})
 
 set_property(TARGET ${MPAS_EXE_NAME} PROPERTY Fortran_FORMAT FREE)
 
