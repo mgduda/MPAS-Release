@@ -55,7 +55,7 @@ find_package(PIO REQUIRED)
 add_executable(${MPAS_EXE_NAME})
 
 include_directories(${PNETCDF_INCLUDE_DIRS} ${NetCDF_INCLUDE_DIRS} ${PIO_INCLUDE_DIR})
-target_link_libraries(${MPAS_EXE_NAME} ${NetCDF_LIBRARIES} ${PNETCDF_LIBRARIES} ${PIO_LIBRARIES} ${CMAKE_DL_LIBS})
+target_link_libraries(${MPAS_EXE_NAME} ${NetCDF_LIBRARIES} ${PNETCDF_LIBRARIES} ${PIO_LIBRARIES} ${CMAKE_DL_LIBS} esmf)
 
 set_property(TARGET ${MPAS_EXE_NAME} PROPERTY Fortran_FORMAT FREE)
 
