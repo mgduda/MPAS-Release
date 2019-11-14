@@ -17,8 +17,10 @@ program hello
 #endif
 
     call MPI_Init(ierr)
-    ierr = nf90_open('blah.nc', NF90_CLOBBER, ncid)
-
+    ! NetCDF
+    ierr = nf90_create('blah.nc', NCF90_CLOBBER, ncid)
+    ierr = nf90_def_dim(ncid, "Time", 1, dimid)
+    ierr = nf90_enddef(ncid)
     ierr = nf90_close(ncid)
     call MPI_Finalize(ierr)
 
