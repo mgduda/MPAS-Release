@@ -3,6 +3,11 @@ program hello
     use netcdf
     use mpi
 
+    interface
+       subroutine parse_xml_streams() bind(c)
+       end subroutine parse_xml_streams
+    end interface
+
     integer :: ierr, ncid
 #ifdef CORE_ATMOSPHERE
     write(0,*) 'This is MPAS-Atmosphere'
@@ -16,6 +21,8 @@ program hello
 
     ierr = nf90_close(ncid)
     call MPI_Finalize(ierr)
+
+    call parse_xml_streams()
 
     stop
 

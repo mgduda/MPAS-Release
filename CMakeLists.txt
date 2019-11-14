@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 cmake_policy(SET CMP0076 NEW)
+#cmake_policy(SET CMP0079 NEW)
 project(reg C Fortran)
 
 
@@ -47,6 +48,7 @@ find_package(NetCDF REQUIRED)
 find_package(PNETCDF REQUIRED)
 find_package(PIO REQUIRED)
 
+
 #
 # Define main target and dependencies
 #
@@ -57,4 +59,17 @@ target_link_libraries(${MPAS_EXE_NAME} ${NetCDF_LIBRARIES} ${PNETCDF_LIBRARIES} 
 
 set_property(TARGET ${MPAS_EXE_NAME} PROPERTY Fortran_FORMAT FREE)
 
+
+#
+# Process everything in the src/ subdirectory
+#
 add_subdirectory(src)
+
+
+#
+# Add include paths and libraries from packages that are internally built by MPAS
+#
+get_property(MPAS_INTERNAL_INCLUDE_DIRS GLOBAL PROPERTY MPAS_INTERNAL_INCLUDE_DIRS)
+get_property(MPAS_INTERNAL_LIBRARIESS GLOBAL PROPERTY MPAS_INTERNAL_LIBRARIES)
+include_directories(${MPAS_INTERNAL_INCLUDE_DIRS})
+target_link_libraries(${MPAS_EXE_NAME} ${MPAS_INTERNAL_LIBRARIESS})
