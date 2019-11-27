@@ -8,6 +8,10 @@ program hello
     use ESMF
     use ESMF_ClockMod
 
+#ifdef CORE_ATMOSPHERE
+    use atm_core
+#endif
+
 
     implicit none
 
@@ -24,6 +28,8 @@ program hello
 
 #ifdef CORE_ATMOSPHERE
     write(0,*) 'This is MPAS-Atmosphere'
+    call atm_setup_core()
+    call atm_setup_domain()
 #endif
 #ifdef CORE_OCEAN
     write(0,*) 'This is MPAS-Ocean'
