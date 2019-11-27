@@ -1,4 +1,11 @@
 add_custom_command(OUTPUT
+                      Registry_processed.xml
+                   COMMAND
+                      cpp -P -traditional ${CMAKE_SOURCE_DIR}/src/core_atmosphere/Registry.xml > Registry_processed.xml
+                   DEPENDS
+                      Registry.xml)
+
+add_custom_command(OUTPUT
                       block_dimension_routines.inc
                       core_variables.inc
                       define_packages.inc
@@ -8,9 +15,9 @@ add_custom_command(OUTPUT
                       setup_immutable_streams.inc
                       structs_and_variables.inc
                    COMMAND
-                      ${CMAKE_BINARY_DIR}/src/tools/registry/parse ${CMAKE_SOURCE_DIR}/src/core_atmosphere/Registry_temp.xml
+                      ${CMAKE_BINARY_DIR}/src/tools/registry/parse Registry_processed.xml
                    DEPENDS
-                      parse Registry_temp.xml)
+                      parse Registry_processed.xml)
 
 add_custom_target(atm_core
                   DEPENDS
