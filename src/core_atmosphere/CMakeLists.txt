@@ -1,3 +1,10 @@
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC DO_PHYSICS)
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC mpas)
+
+add_subdirectory(physics)
+add_subdirectory(diagnostics)
+add_subdirectory(dynamics)
+
 add_custom_command(OUTPUT
                       Registry_processed.xml
                    COMMAND
@@ -34,4 +41,9 @@ add_dependencies(${MPAS_EXE_NAME} atm_core)
 
 set_property(GLOBAL APPEND PROPERTY MPAS_INTERNAL_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR})
 
-target_sources(${MPAS_EXE_NAME} PUBLIC atm_core.F)
+target_sources(${MPAS_EXE_NAME}
+               PUBLIC
+                  mpas_atm_core.F
+                  mpas_atm_core_interface.F
+                  mpas_atm_dimensions.F
+                  mpas_atm_threading.F)

@@ -5,7 +5,7 @@
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
-program mpas
+program mpas_main
 
    use mpas_subdriver
 
@@ -19,4 +19,4 @@ program mpas
 
    stop
 
-end program mpas
+end program mpas_main

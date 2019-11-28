@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0)
 cmake_policy(SET CMP0076 NEW)
 project(reg C Fortran)
 
@@ -27,6 +27,13 @@ endif()
 
 add_executable(${MPAS_EXE_NAME})
 target_compile_definitions(${MPAS_EXE_NAME} PUBLIC ${MPAS_CORE_DEF})
+
+
+#
+# Set compilation macros that are invariant
+#
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC USE_PIO2)
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC _MPI)
 
 
 #
