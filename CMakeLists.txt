@@ -27,6 +27,16 @@ endif()
 add_executable(${MPAS_EXE_NAME})
 target_compile_definitions(${MPAS_EXE_NAME} PUBLIC ${MPAS_CORE_DEF})
 
+################################################################################
+##### Temporary
+################################################################################
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC USE_PIO2)
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC _MPI)
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC DO_PHYSICS)
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC mpas)
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC SINGLE_PRECISION)
+target_compile_definitions(${MPAS_EXE_NAME} PUBLIC MPAS_NAMELIST_SUFFIX=atmosphere)
+
 
 #
 # Set compiler and compiler options
@@ -34,6 +44,7 @@ target_compile_definitions(${MPAS_EXE_NAME} PUBLIC ${MPAS_CORE_DEF})
 if(MPAS_COMPILER STREQUAL gnu)
     set(CMAKE_C_COMPILER mpicc)
     set(CMAKE_Fortran_COMPILER mpifort)
+    set(CMAKE_Fortran_FLAGS "-ffree-line-length-none")
 elseif(MPAS_COMPILER STREQUAL intel)
     set(CMAKE_C_COMPILER icc)
     set(CMAKE_Fortran_COMPILER ifort)
