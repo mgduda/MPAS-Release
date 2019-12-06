@@ -1,4 +1,20 @@
+find_package(Git)
+if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} describe --dirty
+                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                    OUTPUT_VARIABLE MPAS_GIT_VERSION
+                    ERROR_QUIET
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                   )
+else()
+    set(MPAS_GIT_VERSION "Unknown")
+endif()
+
 add_executable(parse)
+
+target_compile_definitions(parse PUBLIC MPAS_NAMELIST_SUFFIX=${MPAS_CORE})
+target_compile_definitions(parse PUBLIC MPAS_GIT_VERSION=${MPAS_GIT_VERSION})
+target_compile_definitions(parse PUBLIC MPAS_EXE_NAME=${MPAS_EXE_NAME})
 
 target_sources(parse
                PUBLIC
