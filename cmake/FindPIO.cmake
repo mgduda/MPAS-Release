@@ -19,7 +19,16 @@ elseif(PIO2_C_LIBRARY)
 endif()
 
 set(PIO_INCLUDE_DIRS ${PIO_INCLUDE_DIR})
-set(PIO_LIBRARIES ${PIO_F_LIBRARY} ${PIO_C_LIBRARY})
+
+#
+# PIO 1.x may not have a separate Fortran and C library, in which case, we can just
+# use libpio.a as the only PIO library
+#
+if (${PIO_F_LIBRARY} STREQUAL "PIO_F_LIBRARY-NOTFOUND")
+    set(PIO_LIBRARIES ${PIO_C_LIBRARY})
+else()
+    set(PIO_LIBRARIES ${PIO_F_LIBRARY} ${PIO_C_LIBRARY})
+endif()
 
 include(FindPackageHandleStandardArgs)
 # handle the QUIETLY and REQUIRED arguments and set PIO_FOUND to TRUE
