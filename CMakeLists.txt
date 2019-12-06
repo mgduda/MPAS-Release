@@ -7,7 +7,7 @@ project(reg C Fortran)
 #
 # Define build options
 #
-set(MPAS_CORE "None" CACHE STRING "The MPAS core to build. Possible options: atmosphere ocean")
+set(MPAS_CORE "None" CACHE STRING "The MPAS core to build. Possible options: atmosphere init_atmosphere")
 set(MPAS_COMPILER "None" CACHE STRING "The MPAS core to build. Possible options: gnu intel")
 set(MPAS_PRECISION "double" CACHE STRING "The default precision for real values. Possible options: single double")
 
@@ -18,11 +18,11 @@ set(MPAS_PRECISION "double" CACHE STRING "The default precision for real values.
 if(MPAS_CORE STREQUAL "atmosphere")
     set(MPAS_EXE_NAME "atmosphere_model")
     set(MPAS_CORE_DEF "CORE_ATMOSPHERE")
-elseif(MPAS_CORE STREQUAL "ocean")
-    set(MPAS_EXE_NAME "ocean_model")
-    set(MPAS_CORE_DEF "CORE_OCEAN")
+elseif(MPAS_CORE STREQUAL "init_atmosphere")
+    set(MPAS_EXE_NAME "init_atmosphere_model")
+    set(MPAS_CORE_DEF "CORE_INIT_ATMOSPHERE")
 else()
-    message(FATAL_ERROR "Please define MPAS_CORE as one of: atmosphere ocean")
+    message(FATAL_ERROR "Please define MPAS_CORE as one of: atmosphere init_atmosphere")
 endif()
 
 add_executable(${MPAS_EXE_NAME})
