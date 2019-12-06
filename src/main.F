@@ -56,6 +56,8 @@ program hello
 
     call parse_xml_streams()
 
+    write(0,*) 'Here is a long source line to test whether the appropriate compiler flags have been added to permit source lines longer than 132 characters'
+
     stop
 
 end program hello
