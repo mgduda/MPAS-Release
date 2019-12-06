@@ -32,7 +32,6 @@ target_compile_definitions(${MPAS_EXE_NAME} PUBLIC ${MPAS_CORE_DEF})
 #
 # Set compilation macros that are invariant
 #
-target_compile_definitions(${MPAS_EXE_NAME} PUBLIC USE_PIO2)
 target_compile_definitions(${MPAS_EXE_NAME} PUBLIC _MPI)
 
 
@@ -71,6 +70,15 @@ set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/" ${CMAKE_MODULE_PATH})
 find_package(NetCDF REQUIRED)
 find_package(PNETCDF REQUIRED)
 find_package(PIO REQUIRED)
+
+
+#
+# Set compilation macros to select appropriate PIO API
+#
+get_property(PIO_VERSION GLOBAL PROPERTY PIO_VERSION)
+if(PIO_VERSION STREQUAL "2")
+    target_compile_definitions(${MPAS_EXE_NAME} PUBLIC USE_PIO2)
+endif()
 
 
 #
