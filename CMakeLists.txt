@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.11)
 cmake_policy(SET CMP0076 NEW)
 project(reg C Fortran)
 
@@ -40,12 +40,12 @@ target_compile_definitions(${MPAS_EXE_NAME} PUBLIC _MPI)
 #
 if(MPAS_COMPILER STREQUAL gnu)
     set(CMAKE_C_COMPILER mpicc)
-    set(CMAKE_Fortran_COMPILER mpifort)
+    set(CMAKE_Fortran_COMPILER mpif90)
     set(CMAKE_Fortran_FLAGS "-ffree-line-length-none")
     set(PROMOTION_FLAGS "-fdefault-real-8 -fdefault-double-8")
 elseif(MPAS_COMPILER STREQUAL intel)
-    set(CMAKE_C_COMPILER icc)
-    set(CMAKE_Fortran_COMPILER ifort)
+    set(CMAKE_C_COMPILER mpicc)
+    set(CMAKE_Fortran_COMPILER mpif90)
     set(PROMOTION_FLAGS "-real-size 64")
 else()
     message(FATAL_ERROR "Please define MPAS_COMPILER as one of: gnu intel")
@@ -87,15 +87,17 @@ endif()
 target_include_directories(${MPAS_EXE_NAME}
                            PUBLIC
                               ${PNETCDF_INCLUDE_DIRS}
+                              ${PIO_INCLUDE_DIR}
                               ${NETCDF_INCLUDE_DIRS}
-                              ${PIO_INCLUDE_DIR})
+                          )
 
 target_link_libraries(${MPAS_EXE_NAME}
                       PUBLIC
+                         ${PIO_LIBRARIES}
                          ${NetCDF_LIBRARIES}
                          ${PNETCDF_LIBRARIES}
-                         ${PIO_LIBRARIES}
-                         ${CMAKE_DL_LIBS})
+                         ${CMAKE_DL_LIBS}
+                     )
 
 set_property(TARGET ${MPAS_EXE_NAME} PROPERTY Fortran_FORMAT FREE)
 
