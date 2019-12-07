@@ -43,14 +43,17 @@ if(MPAS_COMPILER STREQUAL gnu)
     set(CMAKE_Fortran_COMPILER mpif90)
     set(CMAKE_Fortran_FLAGS "-ffree-line-length-none")
     set(PROMOTION_FLAGS "-fdefault-real-8 -fdefault-double-8")
+    set(BYTESWAP_FLAGS "-fconvert=big-endian")
 elseif(MPAS_COMPILER STREQUAL intel)
     set(CMAKE_C_COMPILER mpicc)
     set(CMAKE_Fortran_COMPILER mpif90)
     set(PROMOTION_FLAGS "-real-size 64")
+    set(BYTESWAP_FLAGS "-convert big_endian")
 elseif(MPAS_COMPILER STREQUAL pgi)
     set(CMAKE_C_COMPILER mpicc)
     set(CMAKE_Fortran_COMPILER mpif90)
     set(PROMOTION_FLAGS "-r8")
+    set(BYTESWAP_FLAGS "-byteswapio")
 else()
     message(FATAL_ERROR "Please define MPAS_COMPILER as one of: gnu intel pgi")
 endif()
@@ -64,6 +67,12 @@ if(MPAS_PRECISION STREQUAL "single")
 else()
     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${PROMOTION_FLAGS}")
 endif()
+
+
+#
+# Set flags to handle endianness of binary files
+#
+set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${BYTESWAP_FLAGS}")
 
 
 #
