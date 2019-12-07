@@ -8,7 +8,7 @@ project(reg C Fortran)
 # Define build options
 #
 set(MPAS_CORE "None" CACHE STRING "The MPAS core to build. Possible options: atmosphere init_atmosphere")
-set(MPAS_COMPILER "None" CACHE STRING "The MPAS core to build. Possible options: gnu intel")
+set(MPAS_COMPILER "None" CACHE STRING "The MPAS core to build. Possible options: gnu intel pgi")
 set(MPAS_PRECISION "double" CACHE STRING "The default precision for real values. Possible options: single double")
 
 
@@ -47,8 +47,12 @@ elseif(MPAS_COMPILER STREQUAL intel)
     set(CMAKE_C_COMPILER mpicc)
     set(CMAKE_Fortran_COMPILER mpif90)
     set(PROMOTION_FLAGS "-real-size 64")
+elseif(MPAS_COMPILER STREQUAL pgi)
+    set(CMAKE_C_COMPILER mpicc)
+    set(CMAKE_Fortran_COMPILER mpif90)
+    set(PROMOTION_FLAGS "-r8")
 else()
-    message(FATAL_ERROR "Please define MPAS_COMPILER as one of: gnu intel")
+    message(FATAL_ERROR "Please define MPAS_COMPILER as one of: gnu intel pgi")
 endif()
 
 
