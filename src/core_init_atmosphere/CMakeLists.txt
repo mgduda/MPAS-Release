@@ -30,7 +30,31 @@ add_custom_target(init_atm_core
                      setup_immutable_streams.inc
                      structs_and_variables.inc)
 
+add_custom_command(OUTPUT
+                      namelist.init_atmosphere
+                   COMMAND
+                      ${CMAKE_BINARY_DIR}/src/tools/input_gen/namelist_gen Registry_processed.xml ${CMAKE_BINARY_DIR}/namelist.init_atmosphere in_defaults=true
+                   DEPENDS
+                      namelist_gen Registry_processed.xml)
+
+add_custom_target(init_atm_namelist
+                  DEPENDS
+                     namelist.init_atmosphere)
+
+add_custom_command(OUTPUT
+                      streams.init_atmosphere
+                   COMMAND
+                      ${CMAKE_BINARY_DIR}/src/tools/input_gen/streams_gen Registry_processed.xml ${CMAKE_BINARY_DIR}/streams.init_atmosphere ${CMAKE_BINARY_DIR}/stream_list.init_atmosphere. listed
+                   DEPENDS
+                      streams_gen Registry_processed.xml)
+
+add_custom_target(init_atm_streams
+                  DEPENDS
+                     streams.init_atmosphere)
+
 add_dependencies(${MPAS_EXE_NAME} init_atm_core)
+add_dependencies(${MPAS_EXE_NAME} init_atm_namelist)
+add_dependencies(${MPAS_EXE_NAME} init_atm_streams)
 
 set_property(GLOBAL APPEND PROPERTY MPAS_INTERNAL_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR})
 
