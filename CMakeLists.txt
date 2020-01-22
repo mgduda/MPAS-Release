@@ -80,7 +80,9 @@ set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${BYTESWAP_FLAGS}")
 #
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/" ${CMAKE_MODULE_PATH})
 
+
 find_package(NetCDF REQUIRED)
+find_package(HDF5 REQUIRED)
 find_package(PNETCDF REQUIRED)
 find_package(PIO REQUIRED)
 
@@ -100,6 +102,7 @@ endif()
 target_include_directories(${MPAS_EXE_NAME}
                            PUBLIC
                               ${PNETCDF_INCLUDE_DIRS}
+                              ${HDF5_INCLUDE_DIRS}
                               ${PIO_INCLUDE_DIR}
                               ${NETCDF_INCLUDE_DIRS}
                           )
@@ -108,6 +111,7 @@ target_link_libraries(${MPAS_EXE_NAME}
                       PUBLIC
                          ${PIO_LIBRARIES}
                          ${NetCDF_LIBRARIES}
+                         ${HDF5_LIBRARIES}
                          ${PNETCDF_LIBRARIES}
                          ${CMAKE_DL_LIBS}
                      )
