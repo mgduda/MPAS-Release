@@ -11,6 +11,19 @@ set(MPAS_CORE "None" CACHE STRING "The MPAS core to build. Possible options: atm
 set(MPAS_COMPILER "None" CACHE STRING "The MPAS core to build. Possible options: gnu intel pgi")
 set(MPAS_PRECISION "double" CACHE STRING "The default precision for real values. Possible options: single double")
 
+# This is added temporary to set default behavior for ecbuild_bundle in  mpas-bundle
+message("MPAS_CORE:${MPAS_CORE}")
+message("MPAS_COMPILER:${MPAS_COMPILER}")
+
+if( MPAS_CORE STREQUAL "None" )
+  set (MPAS_CORE "atmosphere")
+  message("MPAS_CORE is not defined and set to default:${MPAS_CORE}")
+endif()
+
+if( MPAS_COMPILER STREQUAL "None")
+  set (MPAS_COMPILER "gnu")
+  message("MPAS_COMPILER is not defined and set to default:${MPAS_COMPILER}")
+endif()
 
 #
 # Set core to build and associated preprocessing definitions
