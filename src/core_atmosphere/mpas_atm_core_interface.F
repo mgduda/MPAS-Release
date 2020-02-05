@@ -313,7 +313,7 @@ module atm_core_interface
       else if (config_do_restart) then
          write(stream,'(a)') 'restart'
       else
-         write(stream,'(a)') 'input'
+         write(stream,'(a)') 'static'
       end if
 
    end function atm_get_mesh_stream
