@@ -181,30 +181,30 @@ module dummy_core_interface
       type (MPAS_TimeInterval_type) :: runDuration, timeStep
       integer :: local_err
 
-      character (len=StrKIND), pointer :: config_start_time, config_run_duration, config_stop_time
+      character (len=StrKIND), pointer :: config_start_time, config_run_duration, config_stop_time, config_time_step
 
       ierr = 0
 
       call mpas_pool_get_config(configs, 'config_start_time', config_start_time)
       call mpas_pool_get_config(configs, 'config_run_duration', config_run_duration)
       call mpas_pool_get_config(configs, 'config_stop_time', config_stop_time)
+      call mpas_pool_get_config(configs, 'config_time_step', config_time_step)
 
       call mpas_set_time(curr_time=startTime, dateTimeString=config_start_time, ierr=local_err)
+      call mpas_set_timeInterval(timeStep, timeString=config_time_step, ierr=local_err)
 
-      if (trim(config_run_duration) /= "none") then
+      if (trim(config_run_duration) /= 'none') then
          call mpas_set_timeInterval(runDuration, timeString=config_run_duration, ierr=local_err)
-         call mpas_set_timeInterval(timeStep, timeString=config_run_duration, ierr=local_err)
          call mpas_create_clock(core_clock, startTime=startTime, timeStep=timeStep, runDuration=runDuration, ierr=local_err)
 
-         if (trim(config_stop_time) /= "none") then
+         if (trim(config_stop_time) /= 'none') then
             call mpas_set_time(curr_time=stopTime, dateTimeString=config_stop_time, ierr=local_err)
-            if(startTime + runduration /= stopTime) then
+            if (startTime + runDuration /= stopTime) then
                call mpas_log_write('config_run_duration and config_stop_time are inconsitent: using config_run_duration.', MPAS_LOG_WARN)
             end if
          end if
-      else if (trim(config_stop_time) /= "none") then
+      else if (trim(config_stop_time) /= 'none') then
          call mpas_set_time(curr_time=stopTime, dateTimeString=config_stop_time, ierr=local_err)
-         timeStep = stopTime - startTime
          call mpas_create_clock(core_clock, startTime=startTime, timeStep=timeStep, stopTime=stopTime, ierr=local_err)
       else
           call mpas_log_write('Neither config_run_duration nor config_stop_time were specified.', MPAS_LOG_ERR)

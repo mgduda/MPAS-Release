@@ -14,6 +14,7 @@
 		<nml_option name="config_start_time"                 type="character"     default_value="0000-01-01_00:00:00"/>
 		<nml_option name="config_stop_time"                  type="character"     default_value="0000-01-01_00:00:00"/>
 		<nml_option name="config_run_duration"               type="character"     default_value="none"/>
+		<nml_option name="config_time_step"                  type="character"     default_value="0_00:00:01"/>
 	</nml_record>
 	<nml_record name="io" in_defaults="true">
 		<nml_option name="config_pio_num_iotasks"            type="integer"       default_value="0"/>

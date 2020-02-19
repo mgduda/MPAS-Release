@@ -95,10 +95,25 @@ module dummy_core
       type (domain_type), intent(inout) :: domain
       integer :: iErr
 
-
-      call mpas_stream_mgr_write(domain % streamManager, forceWriteNow=.true.)
+      type (MPAS_Time_Type) :: currTime
+      character(len=StrKIND) :: timeStamp
 
       iErr = 0
+
+      do while (.not. mpas_is_clock_stop_time(clock))
+         currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
+         call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)         
+
+         call mpas_log_write('Current time = '//trim(timeStamp))
+
+         call mpas_advance_clock(clock)
+      end do
+
+      currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
+      call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)         
+      call mpas_log_write('Final time = '//trim(timeStamp))
+
+      call mpas_stream_mgr_write(domain % streamManager, forceWriteNow=.true.)
 
    end function dummy_core_run
 
