@@ -14,6 +14,14 @@ module atm_core
 
    type (MPAS_Clock_type), pointer :: clock
 
+#ifdef HELD_SUAREZ_FORCING
+   real(kind=RKIND), parameter :: SHR_CONST_AVOGAD  = 6.02214e26_RKIND
+   real(kind=RKIND), parameter :: SHR_CONST_BOLTZ   = 1.38065e-23_RKIND
+   real(kind=RKIND), parameter :: SHR_CONST_RGAS = SHR_CONST_AVOGAD*SHR_CONST_BOLTZ
+   real(kind=RKIND), parameter :: SHR_CONST_MWDAIR  = 28.966_RKIND
+   real(kind=RKIND), parameter :: SHR_CONST_CPDAIR  = 1.00464e3_RKIND
+#endif
+
 
    contains
 
@@ -26,6 +34,10 @@ module atm_core
       use mpas_atm_dimensions, only : mpas_atm_set_dims
       use mpas_atm_diagnostics_manager, only : mpas_atm_diag_setup
       use mpas_atm_threading, only : mpas_atm_threading_init
+#ifdef HELD_SUAREZ_FORCING
+      use ref_pres, only : std_atm_pres, ref_pres_init
+      use held_suarez, only : held_suarez_1994_init
+#endif
 
       implicit none
 
@@ -47,6 +59,16 @@ module atm_core
       character (len=StrKIND), pointer :: xtime
       character (len=StrKIND), pointer :: initial_time1, initial_time2
       type (MPAS_Time_Type) :: startTime
+
+#ifdef HELD_SUAREZ_FORCING
+      integer :: k
+      integer :: num_pr_lev
+      real(kind=RKIND), dimension(:), allocatable :: zw, zw_mid
+      real(kind=RKIND), dimension(:), allocatable :: pref_edge, pref_mid
+      real(kind=RKIND), dimension(:), pointer :: rdzw
+
+      real(kind=RKIND), parameter :: psurf_ref = 101325.0_RKIND
+#endif
 
       integer, pointer :: nVertLevels, maxEdges, maxEdges2, num_scalars
 
@@ -163,6 +185,40 @@ module atm_core
 
          block => block % next
       end do
+
+#ifdef HELD_SUAREZ_FORCING
+      call mpas_pool_get_array(mesh, 'rdzw', rdzw)
+      allocate(zw(nVertLevels+1))
+      allocate(pref_edge(nVertLevels+1))
+      allocate(zw_mid(nVertLevels))
+      allocate(pref_mid(nVertLevels))
+
+      zw(1) = 0.0_RKIND
+      do k=2,nVertLevels+1
+         zw(k) = zw(k-1) + 1.0_RKIND / rdzw(k-1)
+         zw_mid(k-1) = 0.5_RKIND * (zw(k-1) + zw(k))
+      end do
+
+      call std_atm_pres(zw, pref_edge)
+
+      pref_mid(1:nVertLevels) = 0.5_RKIND * (pref_edge(1:nVertLevels) + pref_edge(2:nVertLevels+1))
+
+      do k=1,nVertLevels+1
+      end do
+
+      num_pr_lev = 0
+      call ref_pres_init(pref_edge, pref_mid, num_pr_lev)
+
+      call held_suarez_1994_init((shr_const_rgas/shr_const_mwdair)/shr_const_cpdair, shr_const_cpdair, &
+                                 psurf_ref, pref_mid / psurf_ref)
+
+      deallocate(zw)
+      deallocate(pref_edge)
+      deallocate(zw_mid)
+      deallocate(pref_mid)
+
+      call cam_mpas_compute_unit_vectors(domain)
+#endif
 
       call mpas_pool_get_subpool(domain % blocklist % structs, 'diag', diag)
       call mpas_pool_get_field(diag, 'pv_edge', pv_edge_field)
@@ -836,12 +892,21 @@ module atm_core
    
       use mpas_timekeeping
       use mpas_kind_types
-      use atm_time_integration
+      use atm_time_integration, only : atm_timestep
 #ifdef DO_PHYSICS
       use mpas_atmphys_control
       use mpas_atmphys_driver
       use mpas_atmphys_manager
       use mpas_atmphys_update
+#endif
+#ifdef HELD_SUAREZ_FORCING
+      use mpas_dmpar, only : mpas_dmpar_exch_halo_field
+      use mpas_derived_types, only : field2DReal
+      use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
+      use mpas_field_routines, only : mpas_allocate_scratch_field
+      use held_suarez, only : held_suarez_1994
+
+      use mpas_constants, only : R_v => rv, R_d => rgas
 #endif
    
       implicit none
@@ -857,9 +922,43 @@ module atm_core
       real (kind=RKIND) :: xtime_s
       integer :: ierr
 
+#ifdef HELD_SUAREZ_FORCING
+      type (mpas_pool_type), pointer :: mesh
+      type (mpas_pool_type), pointer :: state
+      type (mpas_pool_type), pointer :: diag
+      type (mpas_pool_type), pointer :: tend_physics
+
+      integer :: i, k
+      integer, pointer :: nCellsSolve
+      integer, pointer :: nVertLevels
+      integer, pointer :: nEdges
+      integer, pointer :: index_qv
+      real(kind=RKIND), dimension(:), pointer :: latCell
+      real(kind=RKIND), dimension(:,:), pointer :: zz, zgrid, rho_zz, theta_m
+      real(kind=RKIND), dimension(:,:), pointer :: pmiddry, pintdry
+      real(kind=RKIND), dimension(:,:), pointer :: uReconstructZonal, uReconstructMeridional
+      real(kind=RKIND), dimension(:,:), pointer :: exner
+      real(kind=RKIND), dimension(:,:), pointer :: tend_ru_physics, tend_rtheta_physics, tend_rho_physics
+      real(kind=RKIND), dimension(:,:,:), pointer :: scalars
+      real(kind=RKIND), dimension(:,:), pointer :: east, north, edgeNormalVectors
+      integer, dimension(:,:), pointer :: cellsOnEdge
+
+      real(kind=RKIND), dimension(:,:), pointer :: pmid, u, v, t
+      real(kind=RKIND), dimension(:,:), pointer :: du, dv, q
+      real(kind=RKIND), dimension(:,:), pointer :: tend_uzonal, tend_umerid
+
+      type (field2DReal), pointer :: tend_uzonal_field
+      type (field2DReal), pointer :: tend_umerid_field
+      type (field2DReal), pointer :: tend_ru_physics_field
+      type (field2DReal), pointer :: tend_rtheta_physics_field
+      type (field2DReal), pointer :: tend_rho_physics_field
+
+      real(kind=RKIND), parameter :: Rv_over_Rd = R_v / R_d
+#endif
+
       startTime = mpas_get_clock_time(clock, MPAS_START_TIME, ierr)
       currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
-         
+
       xtimeTime = currTime - startTime
       call mpas_get_timeInterval(interval=xtimeTime, S=s, S_n=s_n, S_d=s_d, ierr=ierr)         
       xtime_s = (s + s_n / s_d)
@@ -873,6 +972,110 @@ module atm_core
          call physics_timetracker(domain,dt,clock,itimestep,xtime_s)
          call physics_driver(domain,itimestep,xtime_s)
       endif
+#endif
+
+#ifdef HELD_SUAREZ_FORCING
+      call mpas_pool_get_subpool(domain % blocklist % structs, 'mesh', mesh)
+      call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
+      call mpas_pool_get_subpool(domain % blocklist % structs, 'diag', diag)
+      call mpas_pool_get_subpool(domain % blocklist % structs, 'tend_physics', tend_physics)
+
+      call mpas_pool_get_dimension(mesh, 'nCellsSolve', nCellsSolve)
+      call mpas_pool_get_dimension(mesh, 'nVertLevels', nVertLevels)
+      call mpas_pool_get_dimension(mesh, 'nEdges', nEdges)
+      call mpas_pool_get_dimension(state, 'index_qv', index_qv)
+
+      call mpas_pool_get_array(mesh, 'latCell', latCell)
+      call mpas_pool_get_array(mesh, 'zgrid', zgrid)
+      call mpas_pool_get_array(mesh, 'zz', zz)
+      call mpas_pool_get_array(mesh, 'cellsOnEdge', cellsOnEdge)
+      call mpas_pool_get_array(mesh, 'east', east)
+      call mpas_pool_get_array(mesh, 'north', north)
+      call mpas_pool_get_array(mesh, 'edgeNormalVectors', edgeNormalVectors)
+      call mpas_pool_get_array(state, 'theta_m', theta_m, timeLevel=1)
+      call mpas_pool_get_array(state, 'rho_zz', rho_zz, timeLevel=1)
+      call mpas_pool_get_array(state, 'scalars', scalars, timeLevel=1)
+
+      call mpas_pool_get_array(diag, 'uReconstructZonal', uReconstructZonal)
+      call mpas_pool_get_array(diag, 'uReconstructMeridional', uReconstructMeridional)
+      call mpas_pool_get_array(diag, 'exner', exner)
+
+      call mpas_pool_get_field(tend_physics, 'tend_ru_physics', tend_ru_physics_field)
+      call mpas_pool_get_field(tend_physics, 'tend_rtheta_physics', tend_rtheta_physics_field)
+      call mpas_pool_get_field(tend_physics, 'tend_rho_physics', tend_rho_physics_field)
+
+      call mpas_pool_get_array(tend_physics, 'tend_ru_physics', tend_ru_physics)
+      call mpas_pool_get_array(tend_physics, 'tend_rtheta_physics', tend_rtheta_physics)
+      call mpas_pool_get_array(tend_physics, 'tend_rho_physics', tend_rho_physics)
+
+      call mpas_pool_get_field(tend_physics, 'tend_uzonal', tend_uzonal_field)
+      call mpas_pool_get_field(tend_physics, 'tend_umerid', tend_umerid_field)
+
+      call mpas_allocate_scratch_field(tend_uzonal_field)
+      call mpas_allocate_scratch_field(tend_umerid_field)
+
+      call mpas_pool_get_array(tend_physics, 'tend_uzonal', tend_uzonal)
+      call mpas_pool_get_array(tend_physics, 'tend_umerid', tend_umerid)
+
+      allocate(pmid(nCellsSolve,nVertLevels))
+      allocate(u(nCellsSolve,nVertLevels))
+      allocate(v(nCellsSolve,nVertLevels))
+      allocate(t(nCellsSolve,nVertLevels))
+      allocate(du(nCellsSolve,nVertLevels))
+      allocate(dv(nCellsSolve,nVertLevels))
+      allocate(q(nCellsSolve,nVertLevels))
+
+      allocate(pmiddry(nVertLevels,nCellsSolve))
+      allocate(pintdry(nVertLevels+1,nCellsSolve))
+
+      call dry_hydrostatic_pressure(nCellsSolve, nVertLevels, zz, zgrid, rho_zz, theta_m, pmiddry, pintdry)
+
+      do i=1,nCellsSolve
+      do k=1,nVertLevels
+          pmid(i,k) = pmiddry(k,i)
+          u(i,k) = uReconstructZonal(k,i)
+          v(i,k) = uReconstructMeridional(k,i)
+          t(i,k) = theta_m(k,i) / (1.0_RKIND + Rv_over_Rd * scalars(index_qv,k,i)) * exner(k,i)
+      end do
+      end do
+
+      call held_suarez_1994(nCellsSolve, nCellsSolve, latCell, pmid, u, v, t, du, dv, q)
+
+      do i=1,nCellsSolve
+      do k=1,nVertLevels
+          tend_uzonal(k,i) = du(i,k)
+          tend_umerid(k,i) = dv(i,k)
+          tend_rtheta_physics(k,i) = (q(i,k) / shr_const_cpdair) / exner(k,i)
+      end do
+      end do
+
+      tend_rtheta_physics(:,1:nCellsSolve) = tend_rtheta_physics(:,1:nCellsSolve) * rho_zz(:,1:nCellsSolve)
+      ! ... other terms that depend on moisture, and which we can omit for this test case ...
+
+      tend_uzonal(:,1:nCellsSolve) = tend_uzonal(:,1:nCellsSolve) * rho_zz(:,1:nCellsSolve)
+      tend_umerid(:,1:nCellsSolve) = tend_umerid(:,1:nCellsSolve) * rho_zz(:,1:nCellsSolve)
+
+      call mpas_dmpar_exch_halo_field(tend_uzonal_field)
+      call mpas_dmpar_exch_halo_field(tend_umerid_field)
+
+      call cam_mpas_cell_to_edge_winds(nEdges, tend_uzonal, tend_umerid, east, north, edgeNormalVectors, &
+                                           cellsOnEdge, tend_ru_physics)
+
+      tend_rho_physics(:,:) = 0.0_RKIND
+
+      call mpas_dmpar_exch_halo_field(tend_ru_physics_field)
+      call mpas_dmpar_exch_halo_field(tend_rtheta_physics_field)
+
+      deallocate(pmiddry)
+      deallocate(pintdry)
+
+      deallocate(pmid)
+      deallocate(u)
+      deallocate(v)
+      deallocate(t)
+      deallocate(du)
+      deallocate(dv)
+      deallocate(q)
 #endif
 
       call atm_timestep(domain, dt, timeStamp, itimestep)
@@ -1268,6 +1471,205 @@ module atm_core
 
    end subroutine atm_couple_coef_3rd_order
 
+
+#ifdef HELD_SUAREZ_FORCING
+subroutine dry_hydrostatic_pressure(nCells, nVertLevels, zz, zgrid, rho_zz, theta_m, pmiddry, pintdry)
+
+   ! Compute dry hydrostatic pressure at layer interfaces and midpoints
+   !
+   ! Given arrays of zz, zgrid, rho_zz, and theta_m from the MPAS-A prognostic
+   ! state, compute dry hydrostatic pressure at layer interfaces and midpoints.
+   ! The vertical dimension for 3-d arrays is innermost, and k=1 represents
+   ! the lowest layer or level in the fields.
+   !
+   ! IMPORTANT NOTE: At present, this routine is probably not correct when there
+   !                 is moisture in the atmosphere.
+
+   use mpas_kind_types, only : r8 => RKIND
+
+   ! Arguments
+   integer, intent(in) :: nCells
+   integer, intent(in) :: nVertLevels
+   real(r8), dimension(nVertLevels, nCells), intent(in) :: zz         ! d(zeta)/dz [-]
+   real(r8), dimension(nVertLevels+1, nCells), intent(in) :: zgrid    ! geometric heights of layer interfaces [m]
+   real(r8), dimension(nVertLevels, nCells), intent(in) :: rho_zz     ! dry density / zz [kg m^-3]
+   real(r8), dimension(nVertLevels, nCells), intent(in) :: theta_m    ! potential temperature * (1 + Rv/Rd * qv)
+   real(r8), dimension(nVertLevels, nCells), intent(out) :: pmiddry   ! layer midpoint dry hydrostatic pressure [Pa]
+   real(r8), dimension(nVertLevels+1, nCells), intent(out) :: pintdry ! layer interface dry hydrostatic pressure [Pa]
+
+   ! Constants (which should probably come from elsewhere?)
+   real(r8), parameter :: cp = 1004.5_r8
+   real(r8), parameter :: rgas = 287.0_r8
+   real(r8), parameter :: cv = 717.5_r8
+   real(r8), parameter :: p0 = 1.0e5_r8
+   real(r8), parameter :: g = 9.806_r8
+
+   ! Local variables
+   integer :: iCell, k
+   real(r8), dimension(nCells) :: ptop_int   ! Extrapolated pressure at top of the model
+   real(r8), dimension(nCells) :: ptop_mid   ! Full non-hydrostatic pressure at top layer midpoint
+   real(r8), dimension(nCells) :: ttop_mid   ! Temperature at top layer midpoint
+   real(r8), dimension(nVertLevels) :: dz    ! Geometric layer thickness in column
+   real(r8) :: pi, t
+
+   !
+   ! Compute full non-hydrostatic pressure and temperature at top layer midpoint
+   !
+   ptop_mid(:) = p0 * (rgas * rho_zz(nVertLevels,:) * zz(nVertLevels,:) * theta_m(nVertLevels,:) / p0)**(cp/cv)
+   ttop_mid(:) = theta_m(nVertLevels,:) * &
+                 (zz(nVertLevels,:) * rgas * rho_zz(nVertLevels,:) * theta_m(nVertLevels,:) / p0)**(rgas/(cp-rgas))
+
+
+   !
+   ! Extrapolate upward from top layer midpoint to top of the model
+   ! The formula used here results from combination of the hypsometric equation with the equation
+   ! for the layer mid-point pressure (i.e., (pint_top + pint_bot)/2 = pmid)
+   !
+   ! TODO: Should temperature here be virtual temperature?
+   !
+   ptop_int(:) = 2.0 * ptop_mid(:) / (1.0 + exp( (zgrid(nVertLevels+1,:) - zgrid(nVertLevels,:)) * g / rgas / ttop_mid(:)))
+
+
+   !
+   ! For each column, integrate downward from model top to compute dry hydrostatic pressure at layer
+   ! midpoints and interfaces. The pressure averaged to layer midpoints should be consistent with
+   ! the ideal gas law using the rho_zz and theta_m values prognosed by MPAS at layer midpoints.
+   !
+   ! TODO: Should temperature here be virtual temperature?
+   ! TODO: Is it problematic that the computed temperature is consistent with the non-hydrostatic pressure?
+   !
+   do iCell = 1, nCells
+
+      dz(:) = zgrid(2:nVertLevels+1,iCell) - zgrid(1:nVertLevels,iCell)
+
+      pintdry(nVertLevels+1,iCell) = ptop_int(iCell)
+      do k = nVertLevels, 1, -1
+         pintdry(k,iCell) = pintdry(k+1,iCell) + g * zz(k,iCell) * rho_zz(k,iCell) * dz(k)
+         pmiddry(k,iCell) = 0.5 * (pintdry(k+1,iCell) + pintdry(k,iCell))
+      end do
+   end do
+
+end subroutine dry_hydrostatic_pressure
+
+
+    !-----------------------------------------------------------------------
+    !  routine cam_mpas_cell_to_edge_winds
+    !
+    !> \brief  Projects cell-centered winds to the normal component of velocity on edges
+    !> \author Michael Duda
+    !> \date   16 January 2020
+    !> \details
+    !>  Given zonal and meridional winds at cell centers, unit vectors in the east
+    !>  and north directions at cell centers, and unit vectors in the normal
+    !>  direction at edges, this routine projects the cell-centered winds onto
+    !>  the normal vectors.
+    !>
+    !>  Prior to calling this routine, the halos for the zonal and meridional
+    !>  components of cell-centered winds should be updated. It is also critical
+    !>  that the east, north, uZonal, and uMerid field are all allocated with
+    !>  a "garbage" element; this is handled automatically for fields allocated
+    !>  by the MPAS infrastructure.
+    !
+    !-----------------------------------------------------------------------
+    subroutine cam_mpas_cell_to_edge_winds(nEdges, uZonal, uMerid, east, north, edgeNormalVectors, &
+                                           cellsOnEdge, uNormal)
+
+       use mpas_kind_types, only : RKIND
+
+       implicit none
+
+       integer, intent(in) :: nEdges
+       real(kind=RKIND), dimension(:,:), intent(in) :: uZonal, uMerid
+       real(kind=RKIND), dimension(:,:), intent(in) :: east, north, edgeNormalVectors
+       integer, dimension(:,:), intent(in) :: cellsOnEdge
+       real(kind=RKIND), dimension(:,:), intent(out) :: uNormal
+
+       integer :: iEdge, cell1, cell2
+
+
+       do iEdge = 1, nEdges
+          cell1 = cellsOnEdge(1,iEdge)
+          cell2 = cellsOnEdge(2,iEdge)
+
+          uNormal(:,iEdge) =  uZonal(:,cell1) * 0.5 * (edgeNormalVectors(1,iEdge) * east(1,cell1)   &
+                                                    +  edgeNormalVectors(2,iEdge) * east(2,cell1)   &
+                                                    +  edgeNormalVectors(3,iEdge) * east(3,cell1))  &
+                            + uMerid(:,cell1) * 0.5 * (edgeNormalVectors(1,iEdge) * north(1,cell1)   &
+                                                    +  edgeNormalVectors(2,iEdge) * north(2,cell1)   &
+                                                    +  edgeNormalVectors(3,iEdge) * north(3,cell1))  &
+                            + uZonal(:,cell2) * 0.5 * (edgeNormalVectors(1,iEdge) * east(1,cell2)   &
+                                                    +  edgeNormalVectors(2,iEdge) * east(2,cell2)   &
+                                                    +  edgeNormalVectors(3,iEdge) * east(3,cell2))  &
+                            + uMerid(:,cell2) * 0.5 * (edgeNormalVectors(1,iEdge) * north(1,cell2)   &
+                                                    +  edgeNormalVectors(2,iEdge) * north(2,cell2)   &
+                                                    +  edgeNormalVectors(3,iEdge) * north(3,cell2))
+       end do
+
+    end subroutine cam_mpas_cell_to_edge_winds
+
+
+    !-----------------------------------------------------------------------
+    !  routine cam_mpas_compute_unit_vectors
+    !
+    !> \brief  Computes local unit north, east, and edge-normal vectors
+    !> \author Michael Duda
+    !> \date   15 January 2020
+    !> \details
+    !>  This routine computes the local unit north and east vectors at all cell
+    !>  centers, storing the resulting fields in the mesh pool as 'north' and
+    !>  'east'. It also computes the edge-normal unit vectors by calling
+    !>  the mpas_initialize_vectors routine. Before this routine is called,
+    !>  the mesh pool must contain 'latCell' and 'lonCell' fields that are valid
+    !>  for all cells (not just solve cells), plus any fields that are required
+    !>  by the mpas_initialize_vectors routine.
+    !
+    !-----------------------------------------------------------------------
+    subroutine cam_mpas_compute_unit_vectors(domain)
+
+       use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
+       use mpas_derived_types, only : mpas_pool_type
+       use mpas_kind_types, only : RKIND
+       use mpas_vector_operations, only : mpas_initialize_vectors
+
+       implicit none
+
+       type (domain_type), intent(inout) :: domain
+
+       type (mpas_pool_type), pointer :: meshPool
+       real(kind=RKIND), dimension(:), pointer :: latCell, lonCell
+       real(kind=RKIND), dimension(:,:), pointer :: east, north
+       integer, pointer :: nCells
+       integer :: iCell
+
+       call mpas_pool_get_subpool(domain % blocklist % structs, 'mesh', meshPool)
+       call mpas_pool_get_dimension(meshPool, 'nCells', nCells)
+       call mpas_pool_get_array(meshPool, 'latCell', latCell)
+       call mpas_pool_get_array(meshPool, 'lonCell', lonCell)
+       call mpas_pool_get_array(meshPool, 'east', east)
+       call mpas_pool_get_array(meshPool, 'north', north)
+
+       do iCell = 1, nCells
+
+          east(1,iCell) = -sin(lonCell(iCell))
+          east(2,iCell) =  cos(lonCell(iCell))
+          east(3,iCell) =  0.0
+
+          ! Normalize
+          east(1:3,iCell) = east(1:3,iCell) / sqrt(sum(east(1:3,iCell) * east(1:3,iCell)))
+
+          north(1,iCell) = -cos(lonCell(iCell))*sin(latCell(iCell))
+          north(2,iCell) = -sin(lonCell(iCell))*sin(latCell(iCell))
+          north(3,iCell) =  cos(latCell(iCell))
+
+          ! Normalize
+          north(1:3,iCell) = north(1:3,iCell) / sqrt(sum(north(1:3,iCell) * north(1:3,iCell)))
+
+       end do
+
+       call mpas_initialize_vectors(meshPool)
+
+    end subroutine cam_mpas_compute_unit_vectors
+#endif
 
 end module atm_core
 

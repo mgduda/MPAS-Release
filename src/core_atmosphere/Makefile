@@ -1,12 +1,14 @@
 .SUFFIXES: .F .o
 
-PHYSICS=-DDO_PHYSICS
-#PHYSICS=
+#PHYSICS=-DDO_PHYSICS
+PHYSICS=-DMPAS_CAM_DYCORE -DHELD_SUAREZ_FORCING
 
 OBJS = mpas_atm_core.o \
        mpas_atm_core_interface.o \
        mpas_atm_dimensions.o \
-       mpas_atm_threading.o
+       mpas_atm_threading.o \
+       ref_pres.o \
+       held_suarez.o
 
 all: physcore dycore diagcore atmcore utilities
 
@@ -47,7 +49,7 @@ atmcore: physcore dycore diagcore $(OBJS)
 
 mpas_atm_core_interface.o: mpas_atm_core.o
 
-mpas_atm_core.o: dycore diagcore mpas_atm_threading.o
+mpas_atm_core.o: dycore diagcore mpas_atm_threading.o ref_pres.o held_suarez.o
 
 mpas_atm_dimensions.o:
 
