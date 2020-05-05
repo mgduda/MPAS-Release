@@ -141,13 +141,13 @@ module mpas_timekeeping
    !>
    !-----------------------------------------------------------------------
    subroutine mpas_timekeeping_set_year_width(yearWidthIn)!{{{
+
       integer, intent(in) :: yearWidthIn
 
       yearWidth = yearWidthIn
 
       if (yearWidthIn <= 0) then
           call mpas_log_write('mpas_set_year_width: yearWidth cannot be less than or equal to zero.', MPAS_LOG_ERR)
-          ierr = 1
           return
       end if
 

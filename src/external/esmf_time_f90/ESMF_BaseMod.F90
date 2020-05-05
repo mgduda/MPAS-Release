@@ -72,7 +72,7 @@
 !
       type ESMF_Pointer
       private
-          integer*8 :: ptr
+          integer(kind=8) :: ptr
       end type
 
       type(ESMF_Pointer), parameter :: ESMF_NULL_POINTER = ESMF_Pointer(0), &
@@ -160,7 +160,7 @@
 !
       type ESMF_BasePointer
       private
-          integer*8 :: base_ptr
+          integer(kind=8) :: base_ptr
       end type
 
       integer :: global_count = 0
@@ -950,7 +950,7 @@ end function
 !
 ! !ARGUMENTS:
       type(ESMF_Pointer) :: ptype
-      integer*8, intent(in) :: contents
+      integer(kind=8), intent(in) :: contents
       integer, intent(out), optional :: rc
 
 !
@@ -985,7 +985,7 @@ end function
 !
 !EOP
 ! !REQUIREMENTS:
-      integer*8, parameter :: nullp = 0
+      integer(kind=8), parameter :: nullp = 0
 
       ptype%ptr = nullp
       if (present(rc)) rc = ESMF_SUCCESS
@@ -999,7 +999,7 @@ end function
       function ESMF_GetPointer(ptype, rc)
 !
 ! !RETURN VALUE:
-      integer*8 :: ESMF_GetPointer
+      integer(kind=8) :: ESMF_GetPointer
 
 ! !ARGUMENTS:
       type(ESMF_Pointer), intent(in) :: ptype

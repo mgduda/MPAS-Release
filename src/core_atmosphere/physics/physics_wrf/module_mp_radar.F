@@ -49,7 +49,7 @@ MODULE module_mp_radar
       DOUBLE PRECISION, DIMENSION(nrbins), PUBLIC:: xxDs,xdts,xxDg,xdtg
       DOUBLE PRECISION, PARAMETER, PUBLIC:: lamda_radar = 0.10           ! in meters
       DOUBLE PRECISION, PUBLIC:: K_w, PI5, lamda4
-      COMPLEX*16, PUBLIC:: m_w_0, m_i_0
+      COMPLEX(KIND=8), PUBLIC:: m_w_0, m_i_0
       DOUBLE PRECISION, DIMENSION(nrbins+1), PUBLIC:: simpson
       DOUBLE PRECISION, DIMENSION(3), PARAMETER, PUBLIC:: basis =       &
                            (/1.d0/3.d0, 4.d0/3.d0, 1.d0/3.d0/)
@@ -130,7 +130,7 @@ CONTAINS
       xxDx(1) = 100.D-6
       xxDx(nrbins+1) = 0.02d0
       do n = 2, nrbins
-         xxDx(n) = DEXP(DFLOAT(n-1)/DFLOAT(nrbins) &
+         xxDx(n) = DEXP(REAL(n-1,KIND=8)/REAL(nrbins,KIND=8) &
                   *DLOG(xxDx(nrbins+1)/xxDx(1)) +DLOG(xxDx(1)))
       enddo
       do n = 1, nrbins
@@ -142,7 +142,7 @@ CONTAINS
       xxDx(1) = 100.D-6
       xxDx(nrbins+1) = 0.05d0
       do n = 2, nrbins
-         xxDx(n) = DEXP(DFLOAT(n-1)/DFLOAT(nrbins) &
+         xxDx(n) = DEXP(REAL(n-1,KIND=8)/REAL(nrbins,KIND=8) &
                   *DLOG(xxDx(nrbins+1)/xxDx(1)) +DLOG(xxDx(1)))
       enddo
       do n = 1, nrbins
@@ -197,7 +197,7 @@ CONTAINS
 !+---+-----------------------------------------------------------------+
 !+---+-----------------------------------------------------------------+
 
-      COMPLEX*16 FUNCTION m_complex_water_ray(lambda,T)
+      COMPLEX(KIND=8) FUNCTION m_complex_water_ray(lambda,T)
 
 !      Complex refractive Index of Water as function of Temperature T
 !      [deg C] and radar wavelength lambda [m]; valid for
@@ -208,7 +208,7 @@ CONTAINS
       DOUBLE PRECISION, INTENT(IN):: T,lambda
       DOUBLE PRECISION:: epsinf,epss,epsr,epsi
       DOUBLE PRECISION:: alpha,lambdas,sigma,nenner
-      COMPLEX*16, PARAMETER:: i = (0d0,1d0)
+      COMPLEX(KIND=8), PARAMETER:: i = (0d0,1d0)
       DOUBLE PRECISION, PARAMETER:: PIx=3.1415926535897932384626434d0
 
       epsinf  = 5.27137d0 + 0.02164740d0 * T - 0.00131198d0 * T*T
@@ -232,7 +232,7 @@ CONTAINS
 
 !+---+-----------------------------------------------------------------+
       
-      COMPLEX*16 FUNCTION m_complex_ice_maetzler(lambda,T)
+      COMPLEX(KIND=8) FUNCTION m_complex_ice_maetzler(lambda,T)
       
 !      complex refractive index of ice as function of Temperature T
 !      [deg C] and radar wavelength lambda [m]; valid for
@@ -281,11 +281,11 @@ CONTAINS
       DOUBLE PRECISION, INTENT(in):: x_g, a_geo, b_geo, fmelt, lambda,  &
                                      meltratio_outside
       DOUBLE PRECISION, INTENT(out):: C_back
-      COMPLEX*16, INTENT(in):: m_w, m_i
+      COMPLEX(KIND=8), INTENT(in):: m_w, m_i
       CHARACTER(len=*), INTENT(in):: mixingrule, matrix, inclusion,     &
                                      host, hostmatrix, hostinclusion
 
-      COMPLEX*16:: m_core, m_air
+      COMPLEX(KIND=8):: m_core, m_air
       DOUBLE PRECISION:: D_large, D_g, rhog, x_w, xw_a, fm, fmgrenz,    &
                          volg, vg, volair, volice, volwater,            &
                          meltratio_outside_grenz, mra
@@ -368,20 +368,20 @@ CONTAINS
 
 !+---+-----------------------------------------------------------------+
 
-      complex*16 function get_m_mix_nested (m_a, m_i, m_w, volair,      &
+      complex(kind=8) function get_m_mix_nested (m_a, m_i, m_w, volair,      &
                      volice, volwater, mixingrule, host, matrix,        &
                      inclusion, hostmatrix, hostinclusion, cumulerror)
 
       IMPLICIT NONE
 
       DOUBLE PRECISION, INTENT(in):: volice, volair, volwater
-      COMPLEX*16, INTENT(in):: m_a, m_i, m_w
+      COMPLEX(KIND=8), INTENT(in):: m_a, m_i, m_w
       CHARACTER(len=*), INTENT(in):: mixingrule, host, matrix,          &
                      inclusion, hostmatrix, hostinclusion
       INTEGER, INTENT(out):: cumulerror
 
       DOUBLE PRECISION:: vol1, vol2
-      COMPLEX*16:: mtmp
+      COMPLEX(KIND=8):: mtmp
       INTEGER:: error
 
       !..Folded: ( (m1 + m2) + m3), where m1,m2,m3 could each be
@@ -538,13 +538,13 @@ CONTAINS
 
 !+---+-----------------------------------------------------------------+
 
-      COMPLEX*16 FUNCTION get_m_mix (m_a, m_i, m_w, volair, volice,     &
+      COMPLEX(KIND=8) FUNCTION get_m_mix (m_a, m_i, m_w, volair, volice,     &
                      volwater, mixingrule, matrix, inclusion, error)
 
       IMPLICIT NONE
 
       DOUBLE PRECISION, INTENT(in):: volice, volair, volwater
-      COMPLEX*16, INTENT(in):: m_a, m_i, m_w
+      COMPLEX(KIND=8), INTENT(in):: m_a, m_i, m_w
       CHARACTER(len=*), INTENT(in):: mixingrule, matrix, inclusion
       INTEGER, INTENT(out):: error
 
@@ -594,16 +594,16 @@ CONTAINS
 
 !+---+-----------------------------------------------------------------+
 
-      COMPLEX*16 FUNCTION m_complex_maxwellgarnett(vol1, vol2, vol3,    &
+      COMPLEX(KIND=8) FUNCTION m_complex_maxwellgarnett(vol1, vol2, vol3,    &
                      m1, m2, m3, inclusion, error)
 
       IMPLICIT NONE
 
-      COMPLEX*16 :: m1, m2, m3
+      COMPLEX(KIND=8) :: m1, m2, m3
       DOUBLE PRECISION :: vol1, vol2, vol3
       CHARACTER(len=*) :: inclusion
 
-      COMPLEX*16 :: beta2, beta3, m1t, m2t, m3t
+      COMPLEX(KIND=8) :: beta2, beta3, m1t, m2t, m3t
       INTEGER, INTENT(out) :: error
 
       error = 0
@@ -639,7 +639,7 @@ CONTAINS
 #else
        CALL wrf_debug(150, radar_debug)
 #endif
-       m_complex_maxwellgarnett=DCMPLX(-999.99d0,-999.99d0)
+       m_complex_maxwellgarnett=CMPLX(-999.99d0,-999.99d0)
        error = 1
        return
       endif

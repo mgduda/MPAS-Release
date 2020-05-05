@@ -961,6 +961,9 @@ module mpas_block_creator
                                                        nEdgesSolve, nVerticesSolve, vertexDegree, maxEdges, &
                                                        indexToCellID, indexToEdgeID, &
                                                        indexToVertexID)
+
+     implicit none
+
      integer, intent(in) :: nHalos !< Input: Number of halos for cell fields
      type (block_type), pointer :: blocklist !< Input/Output: Linked List of blocks
      type (field1dInteger), pointer :: nCellsSolve !< Input: nCellsSolve field information
@@ -983,6 +986,7 @@ module mpas_block_creator
 
      integer :: nCellsSolve_0Halo, nVerticesSolve_0Halo, nEdgesSolve_0Halo
      integer :: blockID, localBlockID, err_level, iErr
+     integer :: nCells, nEdges, nVertices
 
      domain => blocklist % domain
 
