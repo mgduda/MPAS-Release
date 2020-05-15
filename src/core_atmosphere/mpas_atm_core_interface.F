@@ -376,14 +376,89 @@ module atm_core_interface
 
       use mpas_derived_types, only : block_type
 
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      use mpas_derived_types, only : mpas_pool_type, field2dReal
+      use mpas_pool_routines, only : mpas_pool_get_subpool
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
       implicit none
 
       type (block_type), pointer :: block
       integer :: ierr
 
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      type (mpas_pool_type), pointer :: diagPool
+      type (field2dReal), dimension(:), pointer :: fooField
+      type (field3dReal), dimension(:), pointer :: aeroField
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
       ierr = 0
 
       call atm_generate_structs(block, block % structs, block % dimensions, block % packages)
+
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      call mpas_pool_get_subpool(block % structs, 'diag', diagPool)
+
+      allocate(fooField(1))
+
+      fooField(1) % block => block
+      fooField(1) % fieldName = 'foo'
+      fooField(1) % dimNames(1) = 'nVertLevels'
+      fooField(1) % dimNames(2) = 'nCells'
+      fooField(1) % defaultValue = -999.0
+      fooField(1) % missingValue = 0.0
+      fooField(1) % isDecomposed = .true.
+      fooField(1) % hasTimeDimension = .false.
+      fooField(1) % isActive = .true.
+      fooField(1) % isVarArray = .false.
+      fooField(1) % isPersistent = .true.
+
+      allocate(fooField(1) % attLists(1))
+      allocate(fooField(1) % attLists(1) % attList)
+      call mpas_add_att(fooField(1) % attLists(1) % attList, 'units', 'bleep')
+      call mpas_add_att(fooField(1) % attLists(1) % attList, 'long_name', 'field generated completely at runtime')
+
+
+      call mpas_pool_add_field(diagPool, 'foo', fooField)
+      call mpas_pool_add_field(block % allFields, 'foo', fooField)
+
+
+      allocate(aeroField(1))
+
+      aeroField(1) % block => block
+      aeroField(1) % fieldName = 'aero'
+      aeroField(1) % dimNames(1) = 'num_aero'      ! Does not actually need to be defined in a pool?
+      aeroField(1) % dimNames(2) = 'nVertLevels'
+      aeroField(1) % dimNames(3) = 'nCells'
+      aeroField(1) % defaultValue = 0.0
+      aeroField(1) % missingValue = -1.0
+      aeroField(1) % isDecomposed = .true.
+      aeroField(1) % hasTimeDimension = .true.
+      aeroField(1) % isActive = .true.
+      aeroField(1) % isVarArray = .true.
+      aeroField(1) % isPersistent = .true.
+
+      allocate(aeroField(1) % constituentNames(3))
+      aeroField(1) % constituentNames(1) = 'black_carbon'
+      aeroField(1) % constituentNames(2) = 'wfaero'
+      aeroField(1) % constituentNames(3) = 'ifaero'
+
+
+      allocate(aeroField(1) % attLists(3))
+      allocate(aeroField(1) % attLists(3) % attList)
+      call mpas_add_att(aeroField(1) % attLists(1) % attList, 'units', 'kg/kg')
+      call mpas_add_att(aeroField(1) % attLists(1) % attList, 'long_name', 'Black carbon')
+      call mpas_add_att(aeroField(1) % attLists(2) % attList, 'units', 'kg^{-1}')
+      call mpas_add_att(aeroField(1) % attLists(2) % attList, 'long_name', 'Water-friendly number concentration')
+      call mpas_add_att(aeroField(1) % attLists(3) % attList, 'units', 'kg^{-1}')
+      call mpas_add_att(aeroField(1) % attLists(3) % attList, 'long_name', 'Ice-friendly number concentration')
+
+      call mpas_pool_add_dimension(diagPool, 'num_aero', 3)
+
+      call mpas_pool_add_field(diagPool, 'aero', aeroField)
+      call mpas_pool_add_field(block % allFields, 'aero', aeroField)
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
    end function atm_setup_block
 
