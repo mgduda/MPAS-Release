@@ -376,14 +376,94 @@ module atm_core_interface
 
       use mpas_derived_types, only : block_type
 
+      use mpas_derived_types, only : mpas_pool_type, field2dReal
+      use mpas_pool_routines, only : mpas_pool_get_subpool
+
       implicit none
 
       type (block_type), pointer :: block
       integer :: ierr
 
+      integer :: i, j, timeLevs, num_scalars
+      type (mpas_pool_type), pointer :: statePool
+      type (field3dReal), dimension(:), pointer :: scalarsField
+
+
       ierr = 0
 
       call atm_generate_structs(block, block % structs, block % dimensions, block % packages)
+
+
+      call mpas_pool_get_subpool(block % structs, 'state', statePool)
+
+      timeLevs = 2
+      num_scalars = 6
+
+      allocate(scalarsField(timeLevs))
+
+      do i = 1, timeLevs
+         scalarsField(i) % block => block
+         scalarsField(i) % fieldName = 'scalars'
+         scalarsField(i) % dimNames(1) = 'num_scalars'      ! Does not actually need to be defined in a pool?
+         scalarsField(i) % dimNames(2) = 'nVertLevels'
+         scalarsField(i) % dimNames(3) = 'nCells'
+         scalarsField(i) % defaultValue = 0.0
+         scalarsField(i) % missingValue = -1.0
+         scalarsField(i) % isDecomposed = .true.
+         scalarsField(i) % hasTimeDimension = .true.
+         scalarsField(i) % isActive = .true.
+         scalarsField(i) % isVarArray = .true.
+         scalarsField(i) % isPersistent = .true.
+
+         allocate(scalarsField(i) % constituentNames(num_scalars))
+         scalarsField(i) % constituentNames(1) = 'qv'
+         scalarsField(i) % constituentNames(2) = 'qc'
+         scalarsField(i) % constituentNames(3) = 'qr'
+         scalarsField(i) % constituentNames(4) = 'qi'
+         scalarsField(i) % constituentNames(5) = 'qs'
+         scalarsField(i) % constituentNames(6) = 'qg'
+
+
+         allocate(scalarsField(i) % attLists(num_scalars))
+         do j = 1, num_scalars
+            allocate(scalarsField(i) % attLists(j) % attList)
+         end do
+
+         call mpas_add_att(scalarsField(i) % attLists(1) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField(i) % attLists(1) % attList, 'long_name', 'Water vapor mixing ratio')
+         call mpas_add_att(scalarsField(i) % attLists(2) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField(i) % attLists(2) % attList, 'long_name', 'Cloud water mixing ratio')
+         call mpas_add_att(scalarsField(i) % attLists(3) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField(i) % attLists(3) % attList, 'long_name', 'Rain water mixing ratio')
+         call mpas_add_att(scalarsField(i) % attLists(4) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField(i) % attLists(4) % attList, 'long_name', 'Ice mixing ratio')
+         call mpas_add_att(scalarsField(i) % attLists(5) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField(i) % attLists(5) % attList, 'long_name', 'Snow mixing ratio')
+         call mpas_add_att(scalarsField(i) % attLists(6) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField(i) % attLists(6) % attList, 'long_name', 'Graupel mixing ratio')
+      end do
+
+      call mpas_pool_add_dimension(statePool, 'num_scalars', num_scalars)
+      call mpas_pool_add_dimension(statePool, 'moist_start', 1)
+      call mpas_pool_add_dimension(statePool, 'moist_end', 6)
+      call mpas_pool_add_dimension(statePool, 'index_qv', 1)
+      call mpas_pool_add_dimension(statePool, 'index_qc', 2)
+      call mpas_pool_add_dimension(statePool, 'index_qr', 3)
+      call mpas_pool_add_dimension(statePool, 'index_qi', 4)
+      call mpas_pool_add_dimension(statePool, 'index_qs', 5)
+      call mpas_pool_add_dimension(statePool, 'index_qg', 6)
+
+! We apparently need to define indices for scalars that are inactive due to packages, else
+! errors like the following will occur:
+!
+!    At line 210 of file mpas_atmphys_todynamics.F
+!    Fortran runtime error: Pointer actual argument 'index_ni' is not associated
+!
+      call mpas_pool_add_dimension(statePool, 'index_ni', -1)
+      call mpas_pool_add_dimension(statePool, 'index_nr', -1)
+
+      call mpas_pool_add_field(statePool, 'scalars', scalarsField)
+      call mpas_pool_add_field(block % allFields, 'scalars', scalarsField)
 
    end function atm_setup_block
 

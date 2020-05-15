@@ -1430,6 +1430,7 @@
                 <var name="theta_m" type="real" dimensions="nVertLevels nCells Time" units="K"
                      description="Moist potential temperature: theta*(1+q_v*R_v/R_d)"/>
 
+#if 0
                 <var_array name="scalars" type="real" dimensions="nVertLevels nCells Time">
                         <var name="qv" array_group="moist" units="kg kg^{-1}"
                              description="Water vapor mixing ratio"/>
@@ -1462,6 +1463,7 @@
                              description="Rain number concentration"
                              packages="mp_thompson_in"/>
                 </var_array>
+#endif
 
                 <var_array name="aerosols" type="real" dimensions="nAerLevels nCells Time">
                         <var name="sul"     array_group="aer_cam" units="kg m^{-3}"
