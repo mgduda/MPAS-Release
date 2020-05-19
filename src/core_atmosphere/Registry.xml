@@ -1431,6 +1431,10 @@
                      description="Moist potential temperature: theta*(1+q_v*R_v/R_d)"/>
 
 #if 0
+                <!-- When MPAS-A is used as a dycore in CAM, scalars are defined at runtime via -->
+                <!-- code in ...some_routine... -->
+                <!-- The definitions of scalars, below, apply only for stand-alone MPAS-A -->
+
                 <var_array name="scalars" type="real" dimensions="nVertLevels nCells Time">
                         <var name="qv" array_group="moist" units="kg kg^{-1}"
                              description="Water vapor mixing ratio"/>
@@ -1745,6 +1749,11 @@
                 <var name="tend_sfc_pressure" type="real" dimensions="nCells Time" units="Pa s^{-1}"
                      description="Tendency of surface pressure"/>
 
+#if 0
+                <!-- When MPAS-A is used as a dycore in CAM, scalars are defined at runtime via -->
+                <!-- code in ...some_routine... -->
+                <!-- The definitions of scalars_tend, below, apply only for stand-alone MPAS-A -->
+
                 <!-- scalar tendencies -->
                 <var_array name="scalars_tend" type="real" dimensions="nVertLevels nCells Time">
                         <var name="tend_qv" name_in_code="qv" array_group="moist" units="kg m^{-3} s^{-1}"
@@ -1778,6 +1787,7 @@
                              description="Tendency of rain number concentration multiplied by dry air density divided by d(zeta)/dz"
                              packages="mp_thompson_in"/>
                 </var_array>
+#endif
         </var_struct>
 
         <!-- ===================================================================================== -->
