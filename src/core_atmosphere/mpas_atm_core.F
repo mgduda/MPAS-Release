@@ -50,6 +50,7 @@ module atm_core
 
       ierr = 0
 
+      ierr = atm_setup_scalars(domain % blocklist)
 
       !
       ! Setup threading
@@ -188,6 +189,127 @@ module atm_core
                                domain % blocklist % structs, domain % clock, domain % dminfo)
 
    end function atm_core_init
+
+
+   function atm_setup_scalars(block) result(ierr)
+
+      use mpas_derived_types, only : block_type
+
+      use mpas_derived_types, only : mpas_pool_type, field3dReal
+      use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_field
+
+      implicit none
+
+      type (block_type), pointer :: block
+      integer :: ierr
+
+      integer :: i, timeLevs
+      type (mpas_pool_type), pointer :: statePool
+      type (mpas_pool_type), pointer :: tendPool
+      type (field3dReal), pointer :: scalarsField
+
+
+      ierr = 0
+
+      !
+      ! scalars
+      !
+
+      call mpas_pool_get_subpool(block % structs, 'state', statePool)
+
+      timeLevs = 2
+
+      do i = 1, timeLevs
+         call mpas_pool_get_field(statePool, 'scalars', scalarsField, timeLevel=i)
+
+         if (i == 1) call mpas_pool_add_dimension(statePool, 'index_qv', 1)
+         scalarsField % constituentNames(1) = 'qv'
+         call mpas_add_att(scalarsField % attLists(1) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField % attLists(1) % attList, 'long_name', 'Water vapor mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(statePool, 'index_qc', 2)
+         scalarsField % constituentNames(2) = 'qc'
+         call mpas_add_att(scalarsField % attLists(2) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField % attLists(2) % attList, 'long_name', 'Cloud water mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(statePool, 'index_qr', 3)
+         scalarsField % constituentNames(3) = 'qr'
+         call mpas_add_att(scalarsField % attLists(3) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField % attLists(3) % attList, 'long_name', 'Rain water mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(statePool, 'index_qi', 4)
+         scalarsField % constituentNames(4) = 'qi'
+         call mpas_add_att(scalarsField % attLists(4) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField % attLists(4) % attList, 'long_name', 'Ice mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(statePool, 'index_qs', 5)
+         scalarsField % constituentNames(5) = 'qs'
+         call mpas_add_att(scalarsField % attLists(5) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField % attLists(5) % attList, 'long_name', 'Snow mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(statePool, 'index_qg', 6)
+         scalarsField % constituentNames(6) = 'qg'
+         call mpas_add_att(scalarsField % attLists(6) % attList, 'units', 'kg kg^{-1}')
+         call mpas_add_att(scalarsField % attLists(6) % attList, 'long_name', 'Graupel mixing ratio')
+      end do
+
+      call mpas_pool_add_dimension(statePool, 'moist_start', 1)
+      call mpas_pool_add_dimension(statePool, 'moist_end', 6)
+
+      call mpas_pool_add_dimension(statePool, 'index_ni', -1)
+      call mpas_pool_add_dimension(statePool, 'index_nr', -1)
+
+
+
+      !
+      ! scalars_tend
+      !
+
+      call mpas_pool_get_subpool(block % structs, 'tend', tendPool)
+
+      timeLevs = 1
+
+      do i = 1, timeLevs
+         call mpas_pool_get_field(tendPool, 'scalars_tend', scalarsField, timeLevel=i)
+
+         if (i == 1) call mpas_pool_add_dimension(tendPool, 'index_qv', 1)
+         scalarsField % constituentNames(1) = 'qv'
+         call mpas_add_att(scalarsField % attLists(1) % attList, 'units', 'kg m^{-3} s^{-1}')
+         call mpas_add_att(scalarsField % attLists(1) % attList, 'long_name', 'Tendency of Water vapor mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(tendPool, 'index_qc', 2)
+         scalarsField % constituentNames(2) = 'qc'
+         call mpas_add_att(scalarsField % attLists(2) % attList, 'units', 'kg m^{-3} s^{-1}')
+         call mpas_add_att(scalarsField % attLists(2) % attList, 'long_name', 'Tendency of Cloud water mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(tendPool, 'index_qr', 3)
+         scalarsField % constituentNames(3) = 'qr'
+         call mpas_add_att(scalarsField % attLists(3) % attList, 'units', 'kg m^{-3} s^{-1}')
+         call mpas_add_att(scalarsField % attLists(3) % attList, 'long_name', 'Tendency of Rain water mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(tendPool, 'index_qi', 4)
+         scalarsField % constituentNames(4) = 'qi'
+         call mpas_add_att(scalarsField % attLists(4) % attList, 'units', 'kg m^{-3} s^{-1}')
+         call mpas_add_att(scalarsField % attLists(4) % attList, 'long_name', 'Tendency of Ice mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(tendPool, 'index_qs', 5)
+         scalarsField % constituentNames(5) = 'qs'
+         call mpas_add_att(scalarsField % attLists(5) % attList, 'units', 'kg m^{-3} s^{-1}')
+         call mpas_add_att(scalarsField % attLists(5) % attList, 'long_name', 'Tendency of Snow mixing ratio')
+
+         if (i == 1) call mpas_pool_add_dimension(tendPool, 'index_qg', 6)
+         scalarsField % constituentNames(6) = 'qg'
+         call mpas_add_att(scalarsField % attLists(6) % attList, 'units', 'kg m^{-3} s^{-1}')
+         call mpas_add_att(scalarsField % attLists(6) % attList, 'long_name', 'Tendency of Graupel mixing ratio')
+      end do
+
+      call mpas_pool_add_dimension(tendPool, 'moist_start', 1)
+      call mpas_pool_add_dimension(tendPool, 'moist_end', 6)
+
+      call mpas_pool_add_dimension(tendPool, 'index_ni', -1)
+      call mpas_pool_add_dimension(tendPool, 'index_nr', -1)
+
+   end function atm_setup_scalars
 
 
    subroutine atm_simulation_clock_init(core_clock, configs, ierr)
