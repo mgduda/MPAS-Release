@@ -495,6 +495,13 @@ ifneq "$(PNETCDF)" ""
 	LIBS += -L$(PNETCDF)/lib -lpnetcdf
 endif
 
+
+ifneq "$(SMIOL)" ""
+	CPPINCLUDES += -I$(SMIOL)
+	FCINCLUDES += -I$(SMIOL)
+	LIBS += -L$(SMIOL) -lsmiolf -lsmiol
+endif
+
 RM = rm -f
 CPP = cpp -P -traditional
 RANLIB = ranlib
