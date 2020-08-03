@@ -16,6 +16,9 @@ module mpas_io
    use piolib_mod
    use pionfatt_mod
    use pio_types
+   use SMIOLf
+
+#include "smiol_codes.inc"
 
 #ifdef USE_PIO2
    integer, parameter :: MPAS_INT_FILLVAL = PIO_FILL_INT
@@ -142,6 +145,13 @@ module mpas_io
                        io_task_stride,            &     ! stride
                        PIO_rearr_box,             &     ! rearr
                        ioContext % pio_iosystem)           ! iosystem
+
+         allocate(ioContext % smiol_context)
+         local_ierr = SMIOLf_init(ioContext % dminfo % comm, &
+                                  iocontext % smiol_context)
+         if (local_ierr /= SMIOL_SUCCESS) then
+            call mpas_log_write('SMIOLf_init failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_CRIT)
+         end if
   
       end if
 
@@ -219,8 +229,10 @@ module mpas_io
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr, pio_iotype, pio_mode
+      integer :: local_ierr
       logical :: local_clobber, local_truncate
       logical :: exists
+      integer(kind=SMIOL_offset_kind) :: preexisting_records
 
 !      call mpas_log_write('Called MPAS_io_open()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
@@ -299,9 +311,20 @@ module mpas_io
  
          if (exists .and. (.not. local_truncate)) then
             pio_ierr = PIO_openfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), PIO_write)
+            local_ierr = SMIOLf_open_file(ioContext % smiol_context, 'smiol_'//trim(filename), &
+                                          SMIOL_FILE_WRITE, MPAS_io_open % smiol_file)
+            if (local_ierr /= SMIOL_SUCCESS) then
+               call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+            end if
+
             MPAS_io_open % preexisting_file = .true.
          else
             pio_ierr = PIO_createfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), pio_mode)
+            local_ierr = SMIOLf_open_file(ioContext % smiol_context, 'smiol_'//trim(filename), &
+                                          SMIOL_FILE_CREATE, MPAS_io_open % smiol_file)
+            if (local_ierr /= SMIOL_SUCCESS) then
+               call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+            end if
 #ifdef MPAS_DEBUG
             if (exists) then
                call mpas_log_write('MPAS I/O: Truncating existing data in output file '//trim(filename), MPAS_LOG_WARN)
@@ -317,6 +340,11 @@ module mpas_io
          end if
 !call mpas_log_write('MGD PIO_openfile')
          pio_ierr = PIO_openfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), PIO_nowrite)
+         local_ierr = SMIOLf_open_file(ioContext % smiol_context, trim(filename), &
+                                       SMIOL_FILE_READ, MPAS_io_open % smiol_file)
+         if (local_ierr /= SMIOL_SUCCESS) then
+            call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+         end if
       endif
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
@@ -338,6 +366,12 @@ module mpas_io
          ! shouldn't break for files with unlimited dimensions.
          if ( MPAS_io_open % pio_unlimited_dimid >= 0 ) then
             pio_ierr = PIO_inq_dimlen(MPAS_io_open % pio_file, MPAS_io_open % pio_unlimited_dimid, MPAS_io_open % preexisting_records)
+!MGD TODO: need a way to determine which dimension is the unlimited dimension
+            local_ierr = SMIOLf_inquire_dim(MPAS_io_open % smiol_file, 'Time', dimsize=preexisting_records)
+!MGD TODO:            MPAS_io_open % preexisting_records = preexisting_records
+            if (local_ierr /= SMIOL_SUCCESS) then
+               call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+            end if
             if (pio_ierr /= PIO_noerr) then
                if (present(ierr)) ierr = MPAS_IO_ERR_PIO
                return
@@ -348,8 +382,6 @@ module mpas_io
       end if
 
       MPAS_io_open % initialized = .true.
-
-      return
 
    end function MPAS_io_open
 
@@ -4820,6 +4852,8 @@ module mpas_io
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       integer, intent(out), optional :: ierr
 
+      integer :: local_ierr
+
       type (dimlist_type), pointer :: dimlist_ptr, dimlist_del
       type (fieldlist_type), pointer :: fieldlist_ptr, fieldlist_del
       type (attlist_type), pointer :: attlist_ptr, attlist_del
@@ -4882,6 +4916,11 @@ module mpas_io
 !call mpas_log_write('MGD PIO_closefile')
       call PIO_closefile(handle % pio_file)
 
+      local_ierr = SMIOLf_close_file(handle % smiol_file)
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_close_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+      end if
+
    end subroutine MPAS_io_close
 
 
@@ -4894,6 +4933,7 @@ module mpas_io
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       type (decomplist_type), pointer :: decomp_cursor, decomp_del
 
 !      call mpas_log_write('Called MPAS_io_finalize()')
@@ -4908,6 +4948,10 @@ module mpas_io
          deallocate(decomp_del % decomphandle % dims)
          deallocate(decomp_del % decomphandle % indices)
          call PIO_freedecomp(ioContext % pio_iosystem, decomp_del % decomphandle % pio_iodesc)
+         local_ierr = SMIOLf_free_decomp(decomp_del % decomphandle % smiol_decomp)
+         if (local_ierr /= SMIOL_SUCCESS) then
+             call mpas_log_write('SMIOLf_free_decomp failed with code $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+         end if
          deallocate(decomp_del % decomphandle)
          deallocate(decomp_del)
       end do
@@ -4915,12 +4959,16 @@ module mpas_io
 !call mpas_log_write('MGD PIO_finalize')
       if (present(finalize_iosystem)) then
          if ( finalize_iosystem ) then
-           call PIO_finalize(ioContext % pio_iosystem, pio_ierr)
-           if (pio_ierr /= PIO_noerr) then
-              if (present(ierr)) ierr = MPAS_IO_ERR_PIO
-              return
-           end if
-           deallocate(ioContext % pio_iosystem)
+            call PIO_finalize(ioContext % pio_iosystem, pio_ierr)
+            if (pio_ierr /= PIO_noerr) then
+               if (present(ierr)) ierr = MPAS_IO_ERR_PIO
+               return
+            end if
+            deallocate(ioContext % pio_iosystem)
+            local_ierr = SMIOLf_finalize(ioContext % smiol_context)
+            if (local_ierr /= SMIOL_SUCCESS) then
+               call mpas_log_write('SMIOLf_free_decomp failed with code $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+            end if
          end if
       end if
 
