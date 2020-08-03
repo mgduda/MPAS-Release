@@ -62,6 +62,7 @@
       logical :: preexisting_file = .false.
       logical :: data_mode = .false.
       type (file_desc_t) :: pio_file
+      type (SMIOLf_file), pointer :: smiol_file => null()
       character (len=StrKIND) :: filename
       integer :: iomode
       integer :: ioformat
@@ -82,6 +83,7 @@
       integer, dimension(:), pointer :: dims
       integer, dimension(:), pointer :: indices
       type (io_desc_t) :: pio_iodesc
+      type (SMIOLf_decomp), pointer :: smiol_decomp => null()
    end type decomphandle_type
 
    type atthandle_type
@@ -139,6 +141,7 @@
    type mpas_io_context_type
       type (decomplist_type), pointer :: decomp_list => null()
       type (iosystem_desc_t), pointer :: pio_iosystem => null()
+      type (SMIOLf_context), pointer :: smiol_context => null()
       integer :: master_pio_iotype = -999
       type (dm_info), pointer :: dminfo => null()
    end type mpas_io_context_type
