@@ -17,12 +17,6 @@ module mpas_io
    use pionfatt_mod
    use pio_types
 
-#ifdef SINGLE_PRECISION
-   integer, parameter :: PIO_REALKIND = PIO_REAL
-#else
-   integer, parameter :: PIO_REALKIND = PIO_DOUBLE
-#endif
-
 #ifdef USE_PIO2
    integer, parameter :: MPAS_INT_FILLVAL = PIO_FILL_INT
    character, parameter :: MPAS_CHAR_FILLVAL = achar(0)  ! TODO: To be replaced with PIO_FILL_CHAR once PIO2 provides this variable
