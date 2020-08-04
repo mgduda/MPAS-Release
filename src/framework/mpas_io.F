@@ -1454,22 +1454,23 @@ module mpas_io
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
-      integer, intent(out), optional :: intVal
-      integer, dimension(:), intent(out), optional :: intArray1d
-      integer, dimension(:,:), intent(out), optional :: intArray2d
-      integer, dimension(:,:,:), intent(out), optional :: intArray3d
-      integer, dimension(:,:,:,:), intent(out), optional :: intArray4d
-      real (kind=RKIND), intent(out), optional :: realVal
-      real (kind=RKIND), dimension(:), intent(out), optional :: realArray1d
-      real (kind=RKIND), dimension(:,:), intent(out), optional :: realArray2d
-      real (kind=RKIND), dimension(:,:,:), intent(out), optional :: realArray3d
-      real (kind=RKIND), dimension(:,:,:,:), intent(out), optional :: realArray4d
-      real (kind=RKIND), dimension(:,:,:,:,:), intent(out), optional :: realArray5d
-      character (len=*), intent(out), optional :: charVal
-      character (len=*), dimension(:), intent(out), optional :: charArray1d
+      integer, intent(out), target, optional :: intVal
+      integer, dimension(:), intent(out), target, optional :: intArray1d
+      integer, dimension(:,:), intent(out), target, optional :: intArray2d
+      integer, dimension(:,:,:), intent(out), target, optional :: intArray3d
+      integer, dimension(:,:,:,:), intent(out), target, optional :: intArray4d
+      real (kind=RKIND), intent(out), target, optional :: realVal
+      real (kind=RKIND), dimension(:), intent(out), target, optional :: realArray1d
+      real (kind=RKIND), dimension(:,:), intent(out), target, optional :: realArray2d
+      real (kind=RKIND), dimension(:,:,:), intent(out), target, optional :: realArray3d
+      real (kind=RKIND), dimension(:,:,:,:), intent(out), target, optional :: realArray4d
+      real (kind=RKIND), dimension(:,:,:,:,:), intent(out), target, optional :: realArray5d
+      character (len=*), intent(out), target, optional :: charVal
+      character (len=*), dimension(:), intent(out), target, optional :: charArray1d
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer, dimension(1) :: start1
       integer, dimension(1) :: count1
       integer, dimension(2) :: start2
@@ -1487,19 +1488,42 @@ module mpas_io
 
       integer i, j
 
-      real (kind=R4KIND) :: singleVal
-      real (kind=R4KIND), dimension(:), allocatable :: singleArray1d
-      real (kind=R4KIND), dimension(:,:), allocatable :: singleArray2d
-      real (kind=R4KIND), dimension(:,:,:), allocatable :: singleArray3d
-      real (kind=R4KIND), dimension(:,:,:,:), allocatable :: singleArray4d
-      real (kind=R4KIND), dimension(:,:,:,:,:), allocatable :: singleArray5d
+      real (kind=R4KIND), pointer :: singleVal
+      real (kind=R4KIND), target :: singleVal_target
+      real (kind=R4KIND), dimension(:), pointer :: singleArray1d
+      real (kind=R4KIND), dimension(:,:), pointer :: singleArray2d
+      real (kind=R4KIND), dimension(:,:,:), pointer :: singleArray3d
+      real (kind=R4KIND), dimension(:,:,:,:), pointer :: singleArray4d
+      real (kind=R4KIND), dimension(:,:,:,:,:), pointer :: singleArray5d
 
-      real (kind=R8KIND) :: doubleVal
-      real (kind=R8KIND), dimension(:), allocatable :: doubleArray1d
-      real (kind=R8KIND), dimension(:,:), allocatable :: doubleArray2d
-      real (kind=R8KIND), dimension(:,:,:), allocatable :: doubleArray3d
-      real (kind=R8KIND), dimension(:,:,:,:), allocatable :: doubleArray4d
-      real (kind=R8KIND), dimension(:,:,:,:,:), allocatable :: doubleArray5d
+      real (kind=R8KIND), pointer :: doubleVal
+      real (kind=R8KIND), target :: doubleVal_target
+      real (kind=R8KIND), dimension(:), pointer :: doubleArray1d
+      real (kind=R8KIND), dimension(:,:), pointer :: doubleArray2d
+      real (kind=R8KIND), dimension(:,:,:), pointer :: doubleArray3d
+      real (kind=R8KIND), dimension(:,:,:,:), pointer :: doubleArray4d
+      real (kind=R8KIND), dimension(:,:,:,:,:), pointer :: doubleArray5d
+
+      integer, pointer :: intVal_p
+      integer, dimension(:), pointer :: intArray1d_p
+      integer, dimension(:,:), pointer :: intArray2d_p
+      integer, dimension(:,:,:), pointer :: intArray3d_p
+      integer, dimension(:,:,:,:), pointer :: intArray4d_p
+      real (kind=RKIND), pointer :: realVal_p
+      real (kind=RKIND), dimension(:), pointer :: realArray1d_p
+      real (kind=RKIND), dimension(:,:), pointer :: realArray2d_p
+      real (kind=RKIND), dimension(:,:,:), pointer :: realArray3d_p
+      real (kind=RKIND), dimension(:,:,:,:), pointer :: realArray4d_p
+      real (kind=RKIND), dimension(:,:,:,:,:), pointer :: realArray5d_p
+      character (len=:), pointer :: charVal_p
+      character (len=:), dimension(:), pointer :: charArray1d_p
+
+      type (SMIOLf_decomp), pointer :: null_decomp
+
+      singleVal => singleVal_target
+      doubleVal => doubleVal_target
+
+      nullify(null_decomp)
 
       ! Sanity checks
       if (.not. handle % initialized) then
@@ -1534,6 +1558,12 @@ module mpas_io
 #else
          call PIO_setframe(field_cursor % fieldhandle % field_desc, handle % frame_number)
 #endif
+
+         local_ierr = SMIOLf_set_frame(handle % smiol_file, int(handle % frame_number - 1, kind=SMIOL_offset_kind))
+         if (local_ierr /= SMIOL_SUCCESS) then
+            call mpas_log_write('SMIOLf_set_frame failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+         end if
+
          start1(1) = handle % frame_number
          count1(1) = 1
      
@@ -1547,14 +1577,21 @@ module mpas_io
 !         call mpas_log_write('  value is real')
          if ((field_cursor % fieldhandle % precision == MPAS_IO_SINGLE_PRECISION) .and. &
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
+
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleVal)
+
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, singleVal)
             else
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, singleVal)
             end if
+
             realVal = real(singleVal,RKIND)
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
+
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleVal)
+
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, doubleVal)
             else
@@ -1562,6 +1599,9 @@ module mpas_io
             end if
             realVal = real(doubleVal,RKIND)
          else
+            realVal_p => realVal
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realVal_p)
+
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, realVal)
             else
@@ -1570,6 +1610,10 @@ module mpas_io
          end if
       else if (present(intVal)) then
 !         call mpas_log_write('  value is int')
+
+         intVal_p => intVal
+         local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intVal_p)
+
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, intVal)
          else
@@ -1577,6 +1621,10 @@ module mpas_io
          end if
       else if (present(charVal)) then
 !         call mpas_log_write('  value is char')
+
+         charVal_p => charVal
+         local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, charVal_p)
+
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             count2(1) = field_cursor % fieldhandle % dims(1) % dimsize
             pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % fieldid, start2, count2, tempchar)
@@ -1632,15 +1680,23 @@ module mpas_io
                end do
             end do
          end if
+
+call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fieldname), messageType=MPAS_LOG_ERR)
+
       else if (present(realArray1d)) then
 !         call mpas_log_write('  value is real1')
          if ((field_cursor % fieldhandle % precision == MPAS_IO_SINGLE_PRECISION) .and. &
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray1d(size(realArray1d,1)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray1d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray1d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray1d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
                   start2(2) = handle % frame_number
@@ -1659,9 +1715,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray1d(size(realArray1d,1)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray1d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray1d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray1d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
                   start2(2) = handle % frame_number
@@ -1677,10 +1738,16 @@ module mpas_io
             realArray1d(:) = real(doubleArray1d(:),RKIND)
             deallocate(doubleArray1d)
          else
+            realArray1d_p => realArray1d
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray1d_p)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray1d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray1d_p)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
                   start2(2) = handle % frame_number
@@ -1700,9 +1767,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray2d(size(realArray2d,1), size(realArray2d,2)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray2d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray2d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(:) = 1
                   start3(3) = handle % frame_number
@@ -1723,9 +1795,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray2d(size(realArray2d,1), size(realArray2d,2)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray2d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray2d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(:) = 1
                   start3(3) = handle % frame_number
@@ -1743,10 +1820,16 @@ module mpas_io
             realArray2d(:,:) = real(doubleArray2d(:,:),RKIND)
             deallocate(doubleArray2d)
          else
+            realArray2d_p => realArray2d
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray2d_p)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray2d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray2d_p)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(:) = 1
                   start3(3) = handle % frame_number
@@ -1768,9 +1851,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray3d(size(realArray3d,1),size(realArray3d,2),size(realArray3d,3)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray3d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray3d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(:) = 1
                   start4(4) = handle % frame_number
@@ -1793,9 +1881,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray3d(size(realArray3d,1),size(realArray3d,2),size(realArray3d,3)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray3d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray3d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(:) = 1
                   start4(4) = handle % frame_number
@@ -1815,10 +1908,16 @@ module mpas_io
             realArray3d(:,:,:) = real(doubleArray3d(:,:,:),RKIND)
             deallocate(doubleArray3d)
          else
+            realArray3d_p => realArray3d
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray3d_p)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray3d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray3d_p)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(:) = 1
                   start4(4) = handle % frame_number
@@ -1842,9 +1941,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray4d(size(realArray4d,1),size(realArray4d,2),size(realArray4d,3),size(realArray4d,4)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray4d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray4d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray4d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(:) = 1
                   start5(5) = handle % frame_number
@@ -1869,9 +1973,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray4d(size(realArray4d,1),size(realArray4d,2),size(realArray4d,3),size(realArray4d,4)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray4d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray4d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray4d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(:) = 1
                   start5(5) = handle % frame_number
@@ -1893,10 +2002,16 @@ module mpas_io
             realArray4d(:,:,:,:) = real(doubleArray4d(:,:,:,:),RKIND)
             deallocate(doubleArray4d)
          else
+            realArray4d_p => realArray4d
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray4d_p)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray4d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray4d_p)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(:) = 1
                   start5(5) = handle % frame_number
@@ -1922,9 +2037,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray5d(size(realArray5d,1),size(realArray5d,2),size(realArray5d,3),size(realArray5d,4),size(realArray5d,5)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray5d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                    singleArray5d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray5d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(:) = 1
                   start6(6) = handle % frame_number
@@ -1951,9 +2071,14 @@ module mpas_io
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray5d(size(realArray5d,1),size(realArray5d,2),size(realArray5d,3),size(realArray5d,4),size(realArray5d,5)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray5d)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                    doubleArray5d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray5d)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(:) = 1
                   start6(6) = handle % frame_number
@@ -1977,10 +2102,16 @@ module mpas_io
             realArray5d(:,:,:,:,:) = real(doubleArray5d(:,:,:,:,:),RKIND)
             deallocate(doubleArray5d)
          else
+            realArray5d_p => realArray5d
             if (associated(field_cursor % fieldhandle % decomp)) then
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray5d_p)
+
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                    realArray5d, pio_ierr)
             else
+               local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray5d_p)
+
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(:) = 1
                   start6(6) = handle % frame_number
@@ -2004,10 +2135,16 @@ module mpas_io
          end if
       else if (present(intArray1d)) then
 !         call mpas_log_write('  value is int1')
+         intArray1d_p => intArray1d
          if (associated(field_cursor % fieldhandle % decomp)) then
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, intArray1d_p)
+
             call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                  intArray1d, pio_ierr)
          else
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intArray1d_p)
+
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start2(1) = 1
                start2(2) = handle % frame_number
@@ -2022,10 +2159,16 @@ module mpas_io
          end if
       else if (present(intArray2d)) then
 !         call mpas_log_write('  value is int2')
+         intArray2d_p => intArray2d
          if (associated(field_cursor % fieldhandle % decomp)) then
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, intArray2d_p)
+
             call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                  intArray2d, pio_ierr)
          else
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intArray2d_p)
+
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start3(:) = 1
                start3(3) = handle % frame_number
@@ -2042,10 +2185,16 @@ module mpas_io
          end if
       else if (present(intArray3d)) then
 !         call mpas_log_write('  value is int3')
+         intArray3d_p => intArray3d
          if (associated(field_cursor % fieldhandle % decomp)) then
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, intArray3d_p)
+
             call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                  intArray3d, pio_ierr)
          else
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intArray3d_p)
+
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start4(:) = 1
                start4(4) = handle % frame_number
@@ -2086,12 +2235,19 @@ module mpas_io
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % fieldid, start4, count4, intArray4d)
             end if
          end if
+
+call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fieldname), messageType=MPAS_LOG_ERR)
+
       end if
 
 !      call mpas_log_write('Checking for error')
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
+      end if
+
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_get_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
 
    end subroutine MPAS_io_get_var_generic
