@@ -416,6 +416,8 @@ module mpas_io
          return
       end if
 
+!MGD TODO: Do this for SMIOL once we have a way to inquire about unlimited dim by name
+
    end subroutine MPAS_io_inq_unlimited_dim
 
 
@@ -431,6 +433,8 @@ module mpas_io
       type (dimlist_type), pointer :: new_dimlist_node
       type (dimlist_type), pointer :: dim_cursor
       integer :: pio_ierr
+      integer :: local_ierr
+      integer(kind=SMIOL_offset_kind) :: local_dimsize
 
 !      call mpas_log_write('Called MPAS_io_inq_dim()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
@@ -483,6 +487,11 @@ module mpas_io
          dimsize = -1
          return
       end if
+
+      local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(dimname), local_dimsize)
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+      end if
    
       ! Keep dimension information for future reference
       if (.not. associated(handle % dimlist_head)) then
@@ -510,7 +519,9 @@ module mpas_io
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer :: inq_dimsize
+      integer(kind=SMIOL_offset_kind) :: local_dimsize
       type (dimlist_type), pointer :: new_dimlist_node
       type (dimlist_type), pointer :: dim_cursor
 
@@ -590,8 +601,14 @@ module mpas_io
       if (dimsize == MPAS_IO_UNLIMITED_DIM) then
          new_dimlist_node % dimhandle % is_unlimited_dim = .true.
          pio_ierr = PIO_def_dim(handle % pio_file, trim(dimname), PIO_unlimited, new_dimlist_node % dimhandle % dimid)
+         local_dimsize = -1_SMIOL_offset_kind
       else
          pio_ierr = PIO_def_dim(handle % pio_file, trim(dimname), dimsize, new_dimlist_node % dimhandle % dimid)
+         local_dimsize = int(dimsize,kind=SMIOL_offset_kind)
+      end if
+      local_ierr = SMIOLf_define_dim(handle % smiol_file, trim(dimname), local_dimsize)
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_define_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
