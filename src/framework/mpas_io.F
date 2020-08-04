@@ -1186,6 +1186,9 @@ module mpas_io
       integer, dimension(:), pointer :: dimlist
       integer (kind=MPAS_IO_OFFSET_KIND), dimension(:), pointer :: compdof
       type (decomplist_type), pointer :: decomp_cursor, new_decomp
+      integer(kind=SMIOL_offset_kind), dimension(:), pointer :: smiol_indices
+      integer :: local_ierr
+      integer(kind=SMIOL_offset_kind) :: smiol_n_compute_elements
 
 !      call mpas_log_write('Called MPAS_io_set_var_indices()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
@@ -1231,6 +1234,7 @@ module mpas_io
 !if (.not. associated(decomp_cursor)) call mpas_log_write('No existing decompositions to check...')
       early_return = 0
       DECOMP_LOOP: do while (associated(decomp_cursor))
+!MGD TODO: decomps in SMIOL are independent of field type, so this check can be skipped
          if (decomp_cursor % decomphandle % field_type == field_cursor % fieldhandle % field_type) then
          if (size(decomp_cursor % decomphandle % dims) == field_cursor % fieldhandle % ndims) then
 !call mpas_log_write('Number of dimensions matches...')
@@ -1410,6 +1414,17 @@ module mpas_io
 
       dimlist(ndims) = field_cursor % fieldhandle % dims(ndims) % dimsize
       call PIO_initdecomp(handle % ioContext % pio_iosystem, pio_type, dimlist, compdof, new_decomp % decomphandle % pio_iodesc)
+
+      allocate(smiol_indices(size(indices)))
+      smiol_indices(:) = int(indices(:), kind=SMIOL_offset_kind) - 1_SMIOL_offset_kind   ! SMIOL indices are 0-based
+      smiol_n_compute_elements = size(indices,kind=c_size_t)
+!MGD TODO: find a way to get num_io_tasks and io_stride
+      local_ierr = SMIOLf_create_decomp(handle % ioContext % smiol_context, smiol_n_compute_elements, smiol_indices, &
+                                        2, 2, new_decomp % decomphandle % smiol_decomp)
+      deallocate(smiol_indices)
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_create_decomp failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+      end if
 
       ! Add new decomposition to the list
       if (.not. associated(handle % ioContext % decomp_list)) then
