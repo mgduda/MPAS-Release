@@ -3552,6 +3552,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer :: varid
       integer :: xtype
 #ifdef USE_PIO2
@@ -3641,6 +3642,22 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return
       end if
 
+      if (present(fieldname)) then
+         local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), attValue)
+      else
+         local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), attValue)
+      end if
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_inquire_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+         if (local_ierr == SMIOL_WRONG_ARG_TYPE) then
+            if (present(ierr)) ierr=MPAS_IO_ERR_WRONG_ATT_TYPE
+            return
+         else
+            if (present(ierr)) ierr = MPAS_IO_ERR_PIO
+            return
+         end if
+      end if
+
       ! Keep attribute for future reference
       allocate(new_att_node)
       nullify(new_att_node % next)
@@ -3710,6 +3727,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return 
       end if
 
+call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//trim(attName), messageType=MPAS_LOG_ERR)
 
       !
       ! For variable attributes, find the structure for fieldname
@@ -3842,6 +3860,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer :: varid
       integer :: local_precision
       real (kind=R4KIND) :: singleVal
@@ -3938,6 +3957,13 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
             return
          end if
          pio_ierr = PIO_get_att(handle % pio_file, varid, attName, singleVal)
+
+         if (present(fieldname)) then
+            local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), singleVal)
+         else
+            local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), singleVal)
+         end if
+
          attValue = real(singleVal,RKIND)
 
       else if ((local_precision == MPAS_IO_DOUBLE_PRECISION) .and. &
@@ -3948,6 +3974,13 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
             return
          end if
          pio_ierr = PIO_get_att(handle % pio_file, varid, attName, doubleVal)
+
+         if (present(fieldname)) then
+            local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), doubleVal)
+         else
+            local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), doubleVal)
+         end if
+
          attValue = real(doubleVal,RKIND)
 
       else
@@ -3958,10 +3991,27 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          end if
          pio_ierr = PIO_get_att(handle % pio_file, varid, attName, attValue)
 
+         if (present(fieldname)) then
+            local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), attValue)
+         else
+            local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), attValue)
+         end if
+
       end if
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
+      end if
+
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_inquire_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+         if (local_ierr == SMIOL_WRONG_ARG_TYPE) then
+            if (present(ierr)) ierr=MPAS_IO_ERR_WRONG_ATT_TYPE
+            return
+         else
+            if (present(ierr)) ierr = MPAS_IO_ERR_PIO
+            return
+         end if
       end if
 
       ! Keep attribute for future reference
@@ -4038,6 +4088,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return 
       end if
 
+call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(attName), messageType=MPAS_LOG_ERR)
 
       !
       ! For variable attributes, find the structure for fieldname
@@ -4205,6 +4256,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer :: varid
       integer :: xtype
 #ifdef USE_PIO2
@@ -4294,6 +4346,22 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return
       end if
 
+      if (present(fieldname)) then
+         local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), attValue)
+      else
+         local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), attValue)
+      end if
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_inquire_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+         if (local_ierr == SMIOL_WRONG_ARG_TYPE) then
+            if (present(ierr)) ierr=MPAS_IO_ERR_WRONG_ATT_TYPE
+            return
+         else
+            if (present(ierr)) ierr = MPAS_IO_ERR_PIO
+            return
+         end if
+      end if
+
       ! Keep attribute for future reference
       allocate(new_att_node)
       nullify(new_att_node % next)
@@ -4345,6 +4413,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer :: varid
       integer :: attValueLocal
       type (fieldlist_type), pointer :: field_cursor
@@ -4475,6 +4544,15 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return
       end if
 
+      if (present(fieldname)) then
+         local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), attValueLocal)
+      else
+         local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), attValueLocal)
+      end if
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_define_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+      end if
+
       ! Maybe we should add attribute to list only after a successfull call to PIO?
 
    end subroutine MPAS_io_put_att_int0d
@@ -4517,6 +4595,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return 
       end if
 
+call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//trim(attName), messageType=MPAS_LOG_ERR)
 
       allocate(new_attlist_node) 
       nullify(new_attlist_node % next)
@@ -4652,6 +4731,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer :: varid
       real (kind=RKIND) :: attValueLocal
       real (kind=R4KIND) :: singleVal
@@ -4787,17 +4867,38 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
           (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
          singleVal = real(attValueLocal,R4KIND)
          pio_ierr = PIO_put_att(handle % pio_file, varid, attName, singleVal) 
+
+         if (present(fieldname)) then
+            local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), singleVal)
+         else
+            local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), singleVal)
+         end if
       else if ((new_attlist_node % attHandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
           (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
          doubleVal = real(attValueLocal,R8KIND)
          pio_ierr = PIO_put_att(handle % pio_file, varid, attName, doubleVal) 
+
+         if (present(fieldname)) then
+            local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), doubleVal)
+         else
+            local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), doubleVal)
+         end if
       else
          pio_ierr = PIO_put_att(handle % pio_file, varid, attName, attValueLocal) 
+
+         if (present(fieldname)) then
+            local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), attValueLocal)
+         else
+            local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), attValueLocal)
+         end if
       end if
 
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
+      end if
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_define_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
 
       ! Maybe we should add attribute to list only after a successfull call to PIO?
@@ -4846,6 +4947,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return 
       end if
 
+call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(attName), messageType=MPAS_LOG_ERR)
 
       allocate(new_attlist_node) 
       nullify(new_attlist_node % next)
@@ -4999,6 +5101,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
+      integer :: local_ierr
       integer :: varid
       integer :: valLen
       character (len=StrKind) :: attValueLocal, trimmedVal
@@ -5167,6 +5270,15 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return
       end if
 
+      if (present(fieldname)) then
+         local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), trim(attValueLocal))
+      else
+         local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), trim(attValueLocal))
+      end if
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_define_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+      end if
+
       ! Maybe we should add attribute to list only after a successfull call to PIO?
 
    end subroutine MPAS_io_put_att_text
@@ -5210,6 +5322,8 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       integer, intent(out), optional :: ierr
 
+      integer :: local_ierr
+
 !      call mpas_log_write('Called MPAS_io_sync()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
@@ -5220,6 +5334,11 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       end if
 
       call PIO_syncfile(handle % pio_file)
+
+      local_ierr = SMIOLf_sync_file(handle % smiol_file)
+      if (local_ierr /= SMIOL_SUCCESS) then
+         call mpas_log_write('SMIOLf_sync_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+      end if
 
    end subroutine MPAS_io_sync
 
