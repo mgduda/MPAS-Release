@@ -7,6 +7,9 @@
 !
 module mpas_io
 
+#define MPAS_PIO_SUPPORT
+#define MPAS_SMIOL_SUPPORT
+
    use mpas_derived_types
    use mpas_attlist
    use mpas_dmpar
@@ -16,9 +19,11 @@ module mpas_io
    use piolib_mod
    use pionfatt_mod
    use pio_types
+#ifdef MPAS_SMIOL_SUPPORT
    use SMIOLf
 
 #include "smiol_codes.inc"
+#endif
 
 #ifdef USE_PIO2
    integer, parameter :: MPAS_INT_FILLVAL = PIO_FILL_INT
@@ -146,12 +151,14 @@ module mpas_io
                        PIO_rearr_box,             &     ! rearr
                        ioContext % pio_iosystem)           ! iosystem
 
+#ifdef MPAS_SMIOL_SUPPORT
          allocate(ioContext % smiol_context)
          local_ierr = SMIOLf_init(ioContext % dminfo % comm, &
                                   iocontext % smiol_context)
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_init failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_CRIT)
          end if
+#endif
   
       end if
 
@@ -311,20 +318,24 @@ module mpas_io
  
          if (exists .and. (.not. local_truncate)) then
             pio_ierr = PIO_openfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), PIO_write)
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_open_file(ioContext % smiol_context, 'smiol_'//trim(filename), &
                                           SMIOL_FILE_WRITE, MPAS_io_open % smiol_file)
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             end if
+#endif
 
             MPAS_io_open % preexisting_file = .true.
          else
             pio_ierr = PIO_createfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), pio_mode)
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_open_file(ioContext % smiol_context, 'smiol_'//trim(filename), &
                                           SMIOL_FILE_CREATE, MPAS_io_open % smiol_file)
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             end if
+#endif
 #ifdef MPAS_DEBUG
             if (exists) then
                call mpas_log_write('MPAS I/O: Truncating existing data in output file '//trim(filename), MPAS_LOG_WARN)
@@ -340,11 +351,13 @@ module mpas_io
          end if
 !call mpas_log_write('MGD PIO_openfile')
          pio_ierr = PIO_openfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), PIO_nowrite)
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_open_file(ioContext % smiol_context, trim(filename), &
                                        SMIOL_FILE_READ, MPAS_io_open % smiol_file)
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
+#endif
       endif
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
@@ -366,12 +379,14 @@ module mpas_io
          ! shouldn't break for files with unlimited dimensions.
          if ( MPAS_io_open % pio_unlimited_dimid >= 0 ) then
             pio_ierr = PIO_inq_dimlen(MPAS_io_open % pio_file, MPAS_io_open % pio_unlimited_dimid, MPAS_io_open % preexisting_records)
+#ifdef MPAS_SMIOL_SUPPORT
 !MGD TODO: need a way to determine which dimension is the unlimited dimension
             local_ierr = SMIOLf_inquire_dim(MPAS_io_open % smiol_file, 'Time', dimsize=preexisting_records)
 !MGD TODO:            MPAS_io_open % preexisting_records = preexisting_records
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             end if
+#endif
             if (pio_ierr /= PIO_noerr) then
                if (present(ierr)) ierr = MPAS_IO_ERR_PIO
                return
@@ -488,10 +503,12 @@ module mpas_io
          return
       end if
 
+#ifdef MPAS_SMIOL_SUPPORT
       local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(dimname), local_dimsize)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
    
       ! Keep dimension information for future reference
       if (.not. associated(handle % dimlist_head)) then
@@ -606,10 +623,12 @@ module mpas_io
          pio_ierr = PIO_def_dim(handle % pio_file, trim(dimname), dimsize, new_dimlist_node % dimhandle % dimid)
          local_dimsize = int(dimsize,kind=SMIOL_offset_kind)
       end if
+#ifdef MPAS_SMIOL_SUPPORT
       local_ierr = SMIOLf_define_dim(handle % smiol_file, trim(dimname), local_dimsize)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_define_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          deallocate(new_dimlist_node % dimhandle)
@@ -717,10 +736,12 @@ module mpas_io
             return
          end if
 
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), vartype=smiol_type)
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
+#endif
 !call mpas_log_write('Inquired about variable type $i.', intArgs=(/new_fieldlist_node % fieldhandle % field_type/) )
 
          ! Convert to MPAS type
@@ -748,10 +769,12 @@ module mpas_io
          end if
 !call mpas_log_write('Inquired about number of dimensions $i', intArgs=(/new_fieldlist_node % fieldhandle % ndims/) )
 
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), ndims=smiol_ndims)
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
+#endif
 
          allocate(dimids(new_fieldlist_node % fieldhandle % ndims))
 
@@ -800,6 +823,7 @@ module mpas_io
 
          end do
 
+#ifdef MPAS_SMIOL_SUPPORT
          allocate(smiol_dimnames(smiol_ndims))
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), dimnames=smiol_dimnames)
          if (local_ierr /= SMIOL_SUCCESS) then
@@ -813,6 +837,7 @@ module mpas_io
             end if
          end do
          deallocate(smiol_dimnames)
+#endif
 
          deallocate(dimids)
 
@@ -1055,27 +1080,39 @@ module mpas_io
       if (new_fieldlist_node % fieldhandle % field_type == MPAS_IO_DOUBLE) then
          if (local_precision == MPAS_IO_SINGLE_PRECISION) then
             pio_type = PIO_real
+#ifdef MPAS_SMIOL_SUPPORT
             smiol_type = SMIOL_REAL32
+#endif
             new_fieldlist_node % fieldhandle % field_type = MPAS_IO_REAL
          else
             pio_type = PIO_double
+#ifdef MPAS_SMIOL_SUPPORT
             smiol_type = SMIOL_REAL64
+#endif
          end if
       else if (new_fieldlist_node % fieldhandle % field_type == MPAS_IO_REAL) then
          if (local_precision == MPAS_IO_DOUBLE_PRECISION) then
             pio_type = PIO_double
+#ifdef MPAS_SMIOL_SUPPORT
             smiol_type = SMIOL_REAL64
+#endif
             new_fieldlist_node % fieldhandle % field_type = MPAS_IO_DOUBLE
          else
             pio_type = PIO_real
+#ifdef MPAS_SMIOL_SUPPORT
             smiol_type = SMIOL_REAL32
+#endif
          end if
       else if (new_fieldlist_node % fieldhandle % field_type == MPAS_IO_INT) then
          pio_type = PIO_int
+#ifdef MPAS_SMIOL_SUPPORT
          smiol_type = SMIOL_INT32
+#endif
       else if (new_fieldlist_node % fieldhandle % field_type == MPAS_IO_CHAR) then
          pio_type = PIO_char
+#ifdef MPAS_SMIOL_SUPPORT
          smiol_type = SMIOL_CHAR
+#endif
 !!!!!!!! PIO DOES NOT SUPPORT LOGICAL !!!!!!!!
       end if
 
@@ -1084,10 +1121,12 @@ module mpas_io
       else
          pio_ierr = PIO_def_var(handle % pio_file, trim(fieldname), pio_type, dimids, new_fieldlist_node % fieldhandle % field_desc)
       end if
+#ifdef MPAS_SMIOL_SUPPORT
       local_ierr = SMIOLf_define_var(handle % smiol_file, trim(fieldname), smiol_type, size(dimnames), dimnames)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_define_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
@@ -1415,6 +1454,7 @@ module mpas_io
       dimlist(ndims) = field_cursor % fieldhandle % dims(ndims) % dimsize
       call PIO_initdecomp(handle % ioContext % pio_iosystem, pio_type, dimlist, compdof, new_decomp % decomphandle % pio_iodesc)
 
+#ifdef MPAS_SMIOL_SUPPORT
       allocate(smiol_indices(size(indices)))
       smiol_indices(:) = int(indices(:), kind=SMIOL_offset_kind) - 1_SMIOL_offset_kind   ! SMIOL indices are 0-based
       smiol_n_compute_elements = size(indices,kind=c_size_t)
@@ -1425,6 +1465,7 @@ module mpas_io
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_create_decomp failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
       ! Add new decomposition to the list
       if (.not. associated(handle % ioContext % decomp_list)) then
@@ -1518,12 +1559,14 @@ module mpas_io
       character (len=:), pointer :: charVal_p
       character (len=:), dimension(:), pointer :: charArray1d_p
 
+#ifdef MPAS_SMIOL_SUPPORT
       type (SMIOLf_decomp), pointer :: null_decomp
+
+      nullify(null_decomp)
+#endif
 
       singleVal => singleVal_target
       doubleVal => doubleVal_target
-
-      nullify(null_decomp)
 
       ! Sanity checks
       if (.not. handle % initialized) then
@@ -1559,10 +1602,12 @@ module mpas_io
          call PIO_setframe(field_cursor % fieldhandle % field_desc, handle % frame_number)
 #endif
 
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_set_frame(handle % smiol_file, int(handle % frame_number - 1, kind=SMIOL_offset_kind))
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_set_frame failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
+#endif
 
          start1(1) = handle % frame_number
          count1(1) = 1
@@ -1578,7 +1623,9 @@ module mpas_io
          if ((field_cursor % fieldhandle % precision == MPAS_IO_SINGLE_PRECISION) .and. &
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleVal)
+#endif
 
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, singleVal)
@@ -1590,7 +1637,9 @@ module mpas_io
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleVal)
+#endif
 
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, doubleVal)
@@ -1600,7 +1649,9 @@ module mpas_io
             realVal = real(doubleVal,RKIND)
          else
             realVal_p => realVal
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realVal_p)
+#endif
 
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, realVal)
@@ -1612,7 +1663,9 @@ module mpas_io
 !         call mpas_log_write('  value is int')
 
          intVal_p => intVal
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intVal_p)
+#endif
 
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             pio_ierr = PIO_get_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, intVal)
@@ -1623,7 +1676,9 @@ module mpas_io
 !         call mpas_log_write('  value is char')
 
          charVal_p => charVal
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, charVal_p)
+#endif
 
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             count2(1) = field_cursor % fieldhandle % dims(1) % dimsize
@@ -1689,13 +1744,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray1d(size(realArray1d,1)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray1d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray1d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray1d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
@@ -1715,13 +1774,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray1d(size(realArray1d,1)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray1d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray1d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray1d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
@@ -1740,13 +1803,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
          else
             realArray1d_p => realArray1d
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray1d_p)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray1d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray1d_p)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
@@ -1767,13 +1834,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray2d(size(realArray2d,1), size(realArray2d,2)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray2d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray2d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(:) = 1
@@ -1795,13 +1866,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray2d(size(realArray2d,1), size(realArray2d,2)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray2d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray2d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(:) = 1
@@ -1822,13 +1897,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
          else
             realArray2d_p => realArray2d
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray2d_p)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray2d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray2d_p)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(:) = 1
@@ -1851,13 +1930,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray3d(size(realArray3d,1),size(realArray3d,2),size(realArray3d,3)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray3d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray3d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(:) = 1
@@ -1881,13 +1964,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray3d(size(realArray3d,1),size(realArray3d,2),size(realArray3d,3)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray3d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray3d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(:) = 1
@@ -1910,13 +1997,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
          else
             realArray3d_p => realArray3d
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray3d_p)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray3d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray3d_p)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(:) = 1
@@ -1941,13 +2032,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray4d(size(realArray4d,1),size(realArray4d,2),size(realArray4d,3),size(realArray4d,4)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray4d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     singleArray4d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray4d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(:) = 1
@@ -1973,13 +2068,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray4d(size(realArray4d,1),size(realArray4d,2),size(realArray4d,3),size(realArray4d,4)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray4d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     doubleArray4d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray4d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(:) = 1
@@ -2004,13 +2103,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
          else
             realArray4d_p => realArray4d
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray4d_p)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                     realArray4d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray4d_p)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(:) = 1
@@ -2037,13 +2140,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_SINGLE_PRECISION)) then
             allocate(singleArray5d(size(realArray5d,1),size(realArray5d,2),size(realArray5d,3),size(realArray5d,4),size(realArray5d,5)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray5d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                    singleArray5d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray5d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(:) = 1
@@ -2071,13 +2178,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             allocate(doubleArray5d(size(realArray5d,1),size(realArray5d,2),size(realArray5d,3),size(realArray5d,4),size(realArray5d,5)))
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray5d)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                    doubleArray5d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray5d)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(:) = 1
@@ -2104,13 +2215,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
          else
             realArray5d_p => realArray5d
             if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray5d_p)
+#endif
 
                call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                    realArray5d, pio_ierr)
             else
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, realArray5d_p)
+#endif
 
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(:) = 1
@@ -2137,13 +2252,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
 !         call mpas_log_write('  value is int1')
          intArray1d_p => intArray1d
          if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, intArray1d_p)
+#endif
 
             call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                  intArray1d, pio_ierr)
          else
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intArray1d_p)
+#endif
 
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start2(1) = 1
@@ -2161,13 +2280,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
 !         call mpas_log_write('  value is int2')
          intArray2d_p => intArray2d
          if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, intArray2d_p)
+#endif
 
             call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                  intArray2d, pio_ierr)
          else
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intArray2d_p)
+#endif
 
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start3(:) = 1
@@ -2187,13 +2310,17 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
 !         call mpas_log_write('  value is int3')
          intArray3d_p => intArray3d
          if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, intArray3d_p)
+#endif
 
             call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                  intArray3d, pio_ierr)
          else
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intArray3d_p)
+#endif
 
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start4(:) = 1
@@ -2246,9 +2373,11 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return
       end if
 
+#ifdef MPAS_SMIOL_SUPPORT
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_get_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
    end subroutine MPAS_io_get_var_generic
 
@@ -2581,12 +2710,14 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
       character (len=:), pointer :: charVal_p
       character (len=:), dimension(:), pointer :: charArray1d_p
 
+#ifdef MPAS_SMIOL_SUPPORT
       type (SMIOLf_decomp), pointer :: null_decomp
+
+      nullify(null_decomp)
+#endif
 
       singleVal => singleVal_target
       doubleVal => doubleVal_target
-
-      nullify(null_decomp)
 
       ! Sanity checks
       if (.not. handle % initialized) then
@@ -2633,10 +2764,12 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          call PIO_setframe(field_cursor % fieldhandle % field_desc, handle % frame_number)
 #endif
 
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_set_frame(handle % smiol_file, int(handle % frame_number - 1, kind=SMIOL_offset_kind))
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_set_frame failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
+#endif
 
          start1(1) = handle % frame_number
          count1(1) = 1
@@ -2659,7 +2792,9 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
                pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, singleVal)
             end if
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleVal)
+#endif
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
             doubleVal = real(realVal,R8KIND)
@@ -2669,7 +2804,9 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
                pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, doubleVal)
             end if
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleVal)
+#endif
          else
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, realVal)
@@ -2678,7 +2815,9 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
             end if
 
             realVal_p => realVal
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realVal_p)
+#endif
          end if
       else if (present(intVal)) then
          if (field_cursor % fieldhandle % has_unlimited_dim) then
@@ -2688,7 +2827,9 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          end if
 
          intVal_p => intVal
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intVal_p)
+#endif
       else if (present(charVal)) then
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             count2(1) = field_cursor % fieldhandle % dims(1) % dimsize
@@ -2700,7 +2841,9 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          end if
 
          charVal_p => charVal
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, charVal_p)
+#endif
       else if (present(charArray1d)) then
          if (field_cursor % fieldhandle % has_unlimited_dim) then
             ! Write one string at a time because the sizes differ so much (i.e. StrLen != StrKIND)
@@ -2735,8 +2878,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      singleArray1d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray1d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
@@ -2750,7 +2895,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, count1, singleArray1d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray1d)
+#endif
             end if
             deallocate(singleArray1d)
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
@@ -2761,8 +2908,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      doubleArray1d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray1d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
@@ -2776,7 +2925,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, count1, doubleArray1d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray1d)
+#endif
             end if
             deallocate(doubleArray1d)
          else
@@ -2785,8 +2936,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      realArray1d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray1d_p)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start2(1) = 1
@@ -2800,7 +2953,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, count1, realArray1d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray1d_p)
+#endif
             end if
          end if
       else if (present(realArray2d)) then
@@ -2812,8 +2967,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      singleArray2d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(1) = 1
@@ -2830,7 +2987,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start2, count2, singleArray2d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray2d)
+#endif
             end if
             deallocate(singleArray2d)
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
@@ -2841,8 +3000,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      doubleArray2d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(1) = 1
@@ -2859,7 +3020,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start2, count2, doubleArray2d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray2d)
+#endif
             end if
             deallocate(doubleArray2d)
          else
@@ -2868,8 +3031,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      realArray2d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray2d_p)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start3(1) = 1
@@ -2886,7 +3051,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start2, count2, realArray2d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray2d_p)
+#endif
             end if
          end if
       else if (present(realArray3d)) then
@@ -2898,8 +3065,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      singleArray3d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray3d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(1) = 1
@@ -2919,7 +3088,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start3, count3, singleArray3d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray3d)
+#endif
             end if
             deallocate(singleArray3d)
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
@@ -2930,8 +3101,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      doubleArray3d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray3d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(1) = 1
@@ -2951,7 +3124,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start3, count3, doubleArray3d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray3d)
+#endif
             end if
             deallocate(doubleArray3d)
          else
@@ -2960,8 +3135,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      realArray3d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray3d_p)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start4(1) = 1
@@ -2981,7 +3158,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start3, count3, realArray3d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray3d_p)
+#endif
             end if
          end if
       else if (present(realArray4d)) then
@@ -2993,8 +3172,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      singleArray4d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray4d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(1) = 1
@@ -3017,7 +3198,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start4, count4, singleArray4d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray4d)
+#endif
             end if
             deallocate(singleArray4d)
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
@@ -3028,8 +3211,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      doubleArray4d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray4d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(1) = 1
@@ -3052,7 +3237,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start4, count4, doubleArray4d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray4d)
+#endif
             end if
             deallocate(doubleArray4d)
          else
@@ -3061,8 +3248,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      realArray4d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray4d_p)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start5(1) = 1
@@ -3085,7 +3274,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start4, count4, realArray4d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray4d_p)
+#endif
             end if
          end if
       else if (present(realArray5d)) then
@@ -3097,8 +3288,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      singleArray5d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, singleArray5d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(1) = 1
@@ -3124,7 +3317,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start5, count5, singleArray5d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray4d)
+#endif
             end if
             deallocate(singleArray5d)
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
@@ -3135,8 +3330,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      doubleArray5d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray5d)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(1) = 1
@@ -3162,7 +3359,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start5, count5, doubleArray5d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray4d)
+#endif
             end if
             deallocate(doubleArray5d)
          else
@@ -3171,8 +3370,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                      realArray5d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                            field_cursor % fieldhandle % decomp % smiol_decomp, realArray5d_p)
+#endif
             else
                if (field_cursor % fieldhandle % has_unlimited_dim) then
                   start6(1) = 1
@@ -3198,7 +3399,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                   pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start5, count5, realArray5d)
                end if
 
+#ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray5d_p)
+#endif
             end if
          end if
       else if (present(intArray1d)) then
@@ -3207,8 +3410,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
             call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                   intArray1d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                         field_cursor % fieldhandle % decomp % smiol_decomp, intArray1d_p)
+#endif
          else
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start2(1) = 1
@@ -3222,7 +3427,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start1, count1, intArray1d)
             end if
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray1d_p)
+#endif
          end if
       else if (present(intArray2d)) then
          intArray2d_p => intArray2d
@@ -3230,8 +3437,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
             call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                   intArray2d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                         field_cursor % fieldhandle % decomp % smiol_decomp, intArray2d_p)
+#endif
          else
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start3(1) = 1
@@ -3248,7 +3457,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start2, count2, intArray2d)
             end if
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray2d_p)
+#endif
          end if
       else if (present(intArray3d)) then
          intArray3d_p => intArray3d
@@ -3256,8 +3467,10 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
             call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                   intArray3d, pio_ierr)
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
                                         field_cursor % fieldhandle % decomp % smiol_decomp, intArray3d_p)
+#endif
          else
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start4(1) = 1
@@ -3277,7 +3490,9 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start3, count3, intArray3d)
             end if
 
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray3d_p)
+#endif
          end if
       else if (present(intArray4d)) then
          if (associated(field_cursor % fieldhandle % decomp)) then
@@ -3313,9 +3528,11 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
       end if
+#ifdef MPAS_SMIOL_SUPPORT
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_put_var failed with error $i : '//trim(fieldname), intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
    end subroutine MPAS_io_put_var_generic
 
@@ -3642,6 +3859,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
          return
       end if
 
+#ifdef MPAS_SMIOL_SUPPORT
       if (present(fieldname)) then
          local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), attValue)
       else
@@ -3657,6 +3875,7 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
             return
          end if
       end if
+#endif
 
       ! Keep attribute for future reference
       allocate(new_att_node)
@@ -3958,11 +4177,13 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
          end if
          pio_ierr = PIO_get_att(handle % pio_file, varid, attName, singleVal)
 
+#ifdef MPAS_SMIOL_SUPPORT
          if (present(fieldname)) then
             local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), singleVal)
          else
             local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), singleVal)
          end if
+#endif
 
          attValue = real(singleVal,RKIND)
 
@@ -3975,11 +4196,13 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
          end if
          pio_ierr = PIO_get_att(handle % pio_file, varid, attName, doubleVal)
 
+#ifdef MPAS_SMIOL_SUPPORT
          if (present(fieldname)) then
             local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), doubleVal)
          else
             local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), doubleVal)
          end if
+#endif
 
          attValue = real(doubleVal,RKIND)
 
@@ -3991,11 +4214,13 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
          end if
          pio_ierr = PIO_get_att(handle % pio_file, varid, attName, attValue)
 
+#ifdef MPAS_SMIOL_SUPPORT
          if (present(fieldname)) then
             local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), attValue)
          else
             local_ierr = SMIOLf_inquire_att(handle % smiol_file, '', trim(attName), attValue)
          end if
+#endif
 
       end if
       if (pio_ierr /= PIO_noerr) then
@@ -4003,6 +4228,7 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
          return
       end if
 
+#ifdef MPAS_SMIOL_SUPPORT
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_inquire_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          if (local_ierr == SMIOL_WRONG_ARG_TYPE) then
@@ -4013,6 +4239,7 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
             return
          end if
       end if
+#endif
 
       ! Keep attribute for future reference
       allocate(new_att_node)
@@ -4346,6 +4573,7 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
          return
       end if
 
+#ifdef MPAS_SMIOL_SUPPORT
       if (present(fieldname)) then
          local_ierr = SMIOLf_inquire_att(handle % smiol_file, trim(fieldname), trim(attName), attValue)
       else
@@ -4361,6 +4589,7 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
             return
          end if
       end if
+#endif
 
       ! Keep attribute for future reference
       allocate(new_att_node)
@@ -4544,6 +4773,7 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
          return
       end if
 
+#ifdef MPAS_SMIOL_SUPPORT
       if (present(fieldname)) then
          local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), attValueLocal)
       else
@@ -4552,6 +4782,7 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_define_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
       ! Maybe we should add attribute to list only after a successfull call to PIO?
 
@@ -4868,38 +5099,46 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
          singleVal = real(attValueLocal,R4KIND)
          pio_ierr = PIO_put_att(handle % pio_file, varid, attName, singleVal) 
 
+#ifdef MPAS_SMIOL_SUPPORT
          if (present(fieldname)) then
             local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), singleVal)
          else
             local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), singleVal)
          end if
+#endif
       else if ((new_attlist_node % attHandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
           (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
          doubleVal = real(attValueLocal,R8KIND)
          pio_ierr = PIO_put_att(handle % pio_file, varid, attName, doubleVal) 
 
+#ifdef MPAS_SMIOL_SUPPORT
          if (present(fieldname)) then
             local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), doubleVal)
          else
             local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), doubleVal)
          end if
+#endif
       else
          pio_ierr = PIO_put_att(handle % pio_file, varid, attName, attValueLocal) 
 
+#ifdef MPAS_SMIOL_SUPPORT
          if (present(fieldname)) then
             local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), attValueLocal)
          else
             local_ierr = SMIOLf_define_att(handle % smiol_file, '', trim(attName), attValueLocal)
          end if
+#endif
       end if
 
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
          return
       end if
+#ifdef MPAS_SMIOL_SUPPORT
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_define_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
       ! Maybe we should add attribute to list only after a successfull call to PIO?
 
@@ -5270,6 +5509,7 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
          return
       end if
 
+#ifdef MPAS_SMIOL_SUPPORT
       if (present(fieldname)) then
          local_ierr = SMIOLf_define_att(handle % smiol_file, trim(fieldname), trim(attName), trim(attValueLocal))
       else
@@ -5278,6 +5518,7 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_define_att failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
       ! Maybe we should add attribute to list only after a successfull call to PIO?
 
@@ -5335,10 +5576,12 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
 
       call PIO_syncfile(handle % pio_file)
 
+#ifdef MPAS_SMIOL_SUPPORT
       local_ierr = SMIOLf_sync_file(handle % smiol_file)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_sync_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
    end subroutine MPAS_io_sync
 
@@ -5414,10 +5657,12 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
 !call mpas_log_write('MGD PIO_closefile')
       call PIO_closefile(handle % pio_file)
 
+#ifdef MPAS_SMIOL_SUPPORT
       local_ierr = SMIOLf_close_file(handle % smiol_file)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_close_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
       end if
+#endif
 
    end subroutine MPAS_io_close
 
@@ -5446,10 +5691,12 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
          deallocate(decomp_del % decomphandle % dims)
          deallocate(decomp_del % decomphandle % indices)
          call PIO_freedecomp(ioContext % pio_iosystem, decomp_del % decomphandle % pio_iodesc)
+#ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_free_decomp(decomp_del % decomphandle % smiol_decomp)
          if (local_ierr /= SMIOL_SUCCESS) then
              call mpas_log_write('SMIOLf_free_decomp failed with code $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
+#endif
          deallocate(decomp_del % decomphandle)
          deallocate(decomp_del)
       end do
@@ -5463,10 +5710,12 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
                return
             end if
             deallocate(ioContext % pio_iosystem)
+#ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_finalize(ioContext % smiol_context)
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_free_decomp failed with code $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             end if
+#endif
          end if
       end if
 
