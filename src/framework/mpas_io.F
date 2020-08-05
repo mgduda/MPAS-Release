@@ -160,6 +160,9 @@ module mpas_io
             call mpas_log_write('Invalid PIO configuration.', MPAS_LOG_CRIT)
          end if
 
+         ioContext % io_task_count = io_task_count
+         ioContext % io_task_stride = io_task_stride
+
 #ifdef MPAS_PIO_SUPPORT
          allocate(ioContext % pio_iosystem)
          call PIO_init(ioContext % dminfo % my_proc_id, &  ! comp_rank
@@ -1571,9 +1574,9 @@ module mpas_io
       allocate(smiol_indices(size(indices)))
       smiol_indices(:) = int(indices(:), kind=SMIOL_offset_kind) - 1_SMIOL_offset_kind   ! SMIOL indices are 0-based
       smiol_n_compute_elements = size(indices,kind=SMIOL_offset_kind)
-!MGD TODO: find a way to get num_io_tasks and io_stride
       local_ierr = SMIOLf_create_decomp(handle % ioContext % smiol_context, smiol_n_compute_elements, smiol_indices, &
-                                        2, 2, new_decomp % decomphandle % smiol_decomp)
+                                        handle % ioContext % io_task_count, handle % ioContext % io_task_stride, &
+                                        new_decomp % decomphandle % smiol_decomp)
       deallocate(smiol_indices)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_create_decomp failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
