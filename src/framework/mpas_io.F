@@ -7,7 +7,7 @@
 !
 module mpas_io
 
-#define MPAS_PIO_SUPPORT
+!define MPAS_PIO_SUPPORT
 #define MPAS_SMIOL_SUPPORT
 
    use mpas_derived_types
@@ -27,6 +27,7 @@ module mpas_io
 #include "smiol_codes.inc"
 #endif
 
+#ifdef MPAS_PIO_SUPPORT
 #ifdef USE_PIO2
    integer, parameter :: MPAS_INT_FILLVAL = PIO_FILL_INT
    character, parameter :: MPAS_CHAR_FILLVAL = achar(0)  ! TODO: To be replaced with PIO_FILL_CHAR once PIO2 provides this variable
@@ -46,6 +47,15 @@ module mpas_io
    real (kind=RKIND), parameter :: MPAS_REAL_FILLVAL = NF_FILL_FLOAT
 #else
    real (kind=RKIND), parameter :: MPAS_REAL_FILLVAL = NF_FILL_DOUBLE
+#endif
+#endif
+#endif
+
+#ifdef MPAS_SMIOL_SUPPORT
+#ifndef MPAS_PIO_SUPPORT
+   integer, parameter :: MPAS_INT_FILLVAL = huge(0)
+   character, parameter :: MPAS_CHAR_FILLVAL = achar(0)
+   real (kind=RKIND), parameter :: MPAS_REAL_FILLVAL = huge(0.0_RKIND)
 #endif
 #endif
 
@@ -107,7 +117,11 @@ module mpas_io
       type (mpas_io_context_type), intent(inout) :: ioContext
       integer, intent(in) :: io_task_count
       integer, intent(in) :: io_task_stride
+#ifdef MPAS_PIO_SUPPORT
       type (iosystem_desc_t), optional, pointer :: io_system
+#else
+      integer, optional, pointer :: io_system
+#endif
       integer, intent(out), optional :: ierr
 
       integer :: local_ierr
@@ -118,7 +132,9 @@ module mpas_io
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
       if (present(io_system)) then
+#ifdef MPAS_PIO_SUPPORT
          ioContext % pio_iosystem => io_system
+#endif
       else
 !call mpas_log_write('MGD PIO_init')
          if ( io_task_count < 0 .or. io_task_count > ioContext % dminfo % nprocs ) then
@@ -144,8 +160,8 @@ module mpas_io
             call mpas_log_write('Invalid PIO configuration.', MPAS_LOG_CRIT)
          end if
 
-         allocate(ioContext % pio_iosystem)
 #ifdef MPAS_PIO_SUPPORT
+         allocate(ioContext % pio_iosystem)
          call PIO_init(ioContext % dminfo % my_proc_id, &  ! comp_rank
                        ioContext % dminfo % comm,       &  ! comp_comm
                        io_task_count,             &     ! num_iotasks
@@ -1554,7 +1570,7 @@ module mpas_io
 #ifdef MPAS_SMIOL_SUPPORT
       allocate(smiol_indices(size(indices)))
       smiol_indices(:) = int(indices(:), kind=SMIOL_offset_kind) - 1_SMIOL_offset_kind   ! SMIOL indices are 0-based
-      smiol_n_compute_elements = size(indices,kind=c_size_t)
+      smiol_n_compute_elements = size(indices,kind=SMIOL_offset_kind)
 !MGD TODO: find a way to get num_io_tasks and io_stride
       local_ierr = SMIOLf_create_decomp(handle % ioContext % smiol_context, smiol_n_compute_elements, smiol_indices, &
                                         2, 2, new_decomp % decomphandle % smiol_decomp)
@@ -4123,7 +4139,9 @@ call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fie
             att_cursor => att_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
       end if
 
       ! Query attribute value
@@ -4285,7 +4303,9 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
             att_cursor => att_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
       end if
 
       ! Query attribute value
@@ -4440,7 +4460,9 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
             att_cursor => att_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
       end if
 
       if (present(precision)) then
@@ -4666,7 +4688,9 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
             att_cursor => att_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
       end if
 
       if (present(precision)) then
@@ -4853,7 +4877,9 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
             att_cursor => att_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
       end if
 
       ! Query attribute value
@@ -5046,7 +5072,9 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
             attlist_cursor => attlist_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
 
          ! Add attribute to global attribute list
          if (.not. associated(handle % attlist_head)) then
@@ -5217,7 +5245,9 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
             attlist_cursor => attlist_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
 
          ! Add attribute to global attribute list
          if (.not. associated(handle % attlist_head)) then
@@ -5377,7 +5407,9 @@ call mpas_log_write('1-d integer attributes not yet implemented in SMIOL: '//tri
             attlist_cursor => attlist_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
 
          ! Add attribute to global attribute list
          if (.not. associated(handle % attlist_head)) then
@@ -5592,7 +5624,9 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
             attlist_cursor => attlist_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
 
          ! Add attribute to global attribute list
          if (.not. associated(handle % attlist_head)) then
@@ -5774,7 +5808,9 @@ call mpas_log_write('1-d real attributes not yet implemented in SMIOL: '//trim(a
             attlist_cursor => attlist_cursor % next
          end do
 
+#ifdef MPAS_PIO_SUPPORT
          varid = PIO_global
+#endif
 
          ! Add attribute to global attribute list
          if (.not. associated(handle % attlist_head)) then

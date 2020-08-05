@@ -1,9 +1,15 @@
+#ifdef MPAS_PIO_SUPPORT
 #ifdef USE_PIO2
-!   integer, parameter :: MPAS_IO_OFFSET_KIND = PIO_OFFSET_KIND
+   integer, parameter :: MPAS_IO_OFFSET_KIND = PIO_OFFSET_KIND
 #else
-!   integer, parameter :: MPAS_IO_OFFSET_KIND = PIO_OFFSET
+   integer, parameter :: MPAS_IO_OFFSET_KIND = PIO_OFFSET
 #endif
+#endif
+#ifdef MPAS_SMIOL_SUPPORT
+#ifndef MPAS_PIO_SUPPORT
 integer, parameter :: MPAS_IO_OFFSET_KIND = SMIOL_offset_kind
+#endif
+#endif
 
    ! File access modes
    integer, parameter :: MPAS_IO_READ  = 1, &
@@ -62,8 +68,12 @@ integer, parameter :: MPAS_IO_OFFSET_KIND = SMIOL_offset_kind
       logical :: initialized = .false.
       logical :: preexisting_file = .false.
       logical :: data_mode = .false.
+#ifdef MPAS_PIO_SUPPORT
       type (file_desc_t) :: pio_file
+#endif
+#ifdef MPAS_SMIOL_SUPPORT
       type (SMIOLf_file), pointer :: smiol_file => null()
+#endif
       character (len=StrKIND) :: filename
       integer :: iomode
       integer :: ioformat
@@ -83,8 +93,12 @@ integer, parameter :: MPAS_IO_OFFSET_KIND = SMIOL_offset_kind
       integer :: field_type
       integer, dimension(:), pointer :: dims
       integer, dimension(:), pointer :: indices
+#ifdef MPAS_PIO_SUPPORT
       type (io_desc_t) :: pio_iodesc
+#endif
+#ifdef MPAS_SMIOL_SUPPORT
       type (SMIOLf_decomp), pointer :: smiol_decomp => null()
+#endif
    end type decomphandle_type
 
    type atthandle_type
@@ -108,7 +122,9 @@ integer, parameter :: MPAS_IO_OFFSET_KIND = SMIOL_offset_kind
    type fieldhandle_type
       character (len=StrKIND) :: fieldname
       integer :: fieldid
+#ifdef MPAS_PIO_SUPPORT
       type (Var_desc_t) :: field_desc
+#endif
       integer :: field_type
       logical :: has_unlimited_dim = .false.
       integer :: ndims
@@ -141,8 +157,12 @@ integer, parameter :: MPAS_IO_OFFSET_KIND = SMIOL_offset_kind
 
    type mpas_io_context_type
       type (decomplist_type), pointer :: decomp_list => null()
+#ifdef MPAS_PIO_SUPPORT
       type (iosystem_desc_t), pointer :: pio_iosystem => null()
+#endif
+#ifdef MPAS_SMIOL_SUPPORT
       type (SMIOLf_context), pointer :: smiol_context => null()
+#endif
       integer :: master_pio_iotype = -999
       type (dm_info), pointer :: dminfo => null()
    end type mpas_io_context_type
