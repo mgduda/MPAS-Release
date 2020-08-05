@@ -7,7 +7,7 @@
 !
 module mpas_io
 
-!define MPAS_PIO_SUPPORT
+#define MPAS_PIO_SUPPORT
 #define MPAS_SMIOL_SUPPORT
 
    use mpas_derived_types
@@ -533,7 +533,13 @@ module mpas_io
       local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(dimname), local_dimsize)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+         if (present(ierr)) ierr = MPAS_IO_ERR_MISSING_DIM
+         deallocate(new_dimlist_node % dimhandle)
+         deallocate(new_dimlist_node)
+         dimsize = -1
+         return
       end if
+      new_dimlist_node % dimhandle % dimsize = local_dimsize
 #endif
    
       ! Keep dimension information for future reference
@@ -768,15 +774,6 @@ module mpas_io
             deallocate(new_fieldlist_node)
             return
          end if
-#endif
-
-#ifdef MPAS_SMIOL_SUPPORT
-         local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), vartype=smiol_type)
-         if (local_ierr /= SMIOL_SUCCESS) then
-            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
-         end if
-#endif
-!call mpas_log_write('Inquired about variable type $i.', intArgs=(/new_fieldlist_node % fieldhandle % field_type/) )
 
          ! Convert to MPAS type
          new_fieldlist_node % fieldhandle % precision = MPAS_IO_NATIVE_PRECISION
@@ -792,6 +789,36 @@ module mpas_io
             new_fieldlist_node % fieldhandle % field_type = MPAS_IO_CHAR
 !!!!!!!! PIO DOES NOT SUPPORT LOGICAL !!!!!!!!
          end if
+#endif
+
+#ifdef MPAS_SMIOL_SUPPORT
+         local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), vartype=smiol_type)
+         if (local_ierr /= SMIOL_SUCCESS) then
+            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+            if (present(ierr)) ierr = MPAS_IO_ERR_PIO
+            deallocate(new_fieldlist_node % fieldhandle)
+            deallocate(new_fieldlist_node)
+            call mpas_log_write('Variable ' // trim(fieldname) // ' not in input file.', MPAS_LOG_WARN)
+            return
+         end if
+         new_fieldlist_node % fieldhandle % field_type = smiol_type
+
+         ! Convert to MPAS type
+         new_fieldlist_node % fieldhandle % precision = MPAS_IO_NATIVE_PRECISION
+         if (new_fieldlist_node % fieldhandle % field_type == SMIOL_REAL64) then
+            new_fieldlist_node % fieldhandle % field_type = MPAS_IO_DOUBLE
+            new_fieldlist_node % fieldhandle % precision = MPAS_IO_DOUBLE_PRECISION
+         else if (new_fieldlist_node % fieldhandle % field_type == SMIOL_REAL64) then
+            new_fieldlist_node % fieldhandle % field_type = MPAS_IO_REAL
+            new_fieldlist_node % fieldhandle % precision = MPAS_IO_SINGLE_PRECISION
+         else if (new_fieldlist_node % fieldhandle % field_type == SMIOL_INT32) then
+            new_fieldlist_node % fieldhandle % field_type = MPAS_IO_INT
+         else if (new_fieldlist_node % fieldhandle % field_type == SMIOL_CHAR) then
+            new_fieldlist_node % fieldhandle % field_type = MPAS_IO_CHAR
+!!!!!!!! PIO DOES NOT SUPPORT LOGICAL !!!!!!!!
+         end if
+#endif
+!call mpas_log_write('Inquired about variable type $i.', intArgs=(/new_fieldlist_node % fieldhandle % field_type/) )
 
          ! Get number of dimensions
 #ifdef MPAS_PIO_SUPPORT
@@ -809,7 +836,13 @@ module mpas_io
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), ndims=smiol_ndims)
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+            if (present(ierr)) ierr = MPAS_IO_ERR_PIO
+            deallocate(new_fieldlist_node % fieldhandle)
+            deallocate(new_fieldlist_node)
+            call mpas_log_write('Variable ' // trim(fieldname) // ' not in input file.', MPAS_LOG_WARN)
+            return
          end if
+         new_fieldlist_node% fieldhandle % ndims = smiol_ndims
 #endif
 
          allocate(dimids(new_fieldlist_node % fieldhandle % ndims))
@@ -869,12 +902,16 @@ module mpas_io
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
+         do i=1,new_fieldlist_node % fieldhandle % ndims
+            new_fieldlist_node % fieldhandle % dims(i) % dimname = smiol_dimnames(i)
+         end do
 !MGD TODO: store dimension sizes for all dims
          do i=1,new_fieldlist_node % fieldhandle % ndims
             local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(smiol_dimnames(i)), dimsize=smiol_dimlen)
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             end if
+            new_fieldlist_node % fieldhandle % dims(i) % dimsize = smiol_dimlen
          end do
          deallocate(smiol_dimnames)
 #endif
