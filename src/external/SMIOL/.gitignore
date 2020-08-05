@@ -1,0 +1,10 @@
+# All object and library files
+*.o
+*.a
+
+# All mod files
+*.mod
+
+# Intermediate files that may be produced by Intel compilers
+*.i
+*.i90
