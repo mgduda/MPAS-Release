@@ -1494,7 +1494,6 @@ module mpas_io
          pio_type = PIO_char
  !!!!!!! PIO DOES NOT SUPPORT LOGICAL !!!!!!!!
       end if
-#endif
 
       allocate(dimlist(ndims))
 
@@ -1566,8 +1565,9 @@ module mpas_io
       end if
 
       dimlist(ndims) = field_cursor % fieldhandle % dims(ndims) % dimsize
-#ifdef MPAS_PIO_SUPPORT
       call PIO_initdecomp(handle % ioContext % pio_iosystem, pio_type, dimlist, compdof, new_decomp % decomphandle % pio_iodesc)
+      deallocate(compdof)
+      deallocate(dimlist)
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
@@ -1596,8 +1596,6 @@ module mpas_io
 !call mpas_log_write('Setting decomp in fieldhandle')
       field_cursor % fieldhandle % decomp => new_decomp % decomphandle
 
-      deallocate(compdof)
-      deallocate(dimlist)
 !call mpas_log_write('All finished.')
 
    end subroutine MPAS_io_set_var_indices
