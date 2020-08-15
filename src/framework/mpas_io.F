@@ -348,7 +348,7 @@ module mpas_io
             pio_ierr = PIO_openfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), PIO_write)
 #endif
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_open_file(ioContext % smiol_context, 'smiol_'//trim(filename), &
+            local_ierr = SMIOLf_open_file(ioContext % smiol_context, trim(filename), &
                                           SMIOL_FILE_WRITE, MPAS_io_open % smiol_file)
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
@@ -361,7 +361,7 @@ module mpas_io
             pio_ierr = PIO_createfile(ioContext % pio_iosystem, MPAS_io_open % pio_file, pio_iotype, trim(filename), pio_mode)
 #endif
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_open_file(ioContext % smiol_context, 'smiol_'//trim(filename), &
+            local_ierr = SMIOLf_open_file(ioContext % smiol_context, trim(filename), &
                                           SMIOL_FILE_CREATE, MPAS_io_open % smiol_file)
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_open_file failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
@@ -473,6 +473,7 @@ module mpas_io
 #endif
 
 !MGD TODO: Do this for SMIOL once we have a way to inquire about unlimited dim by name
+      dimname = 'Time'
 
    end subroutine MPAS_io_inq_unlimited_dim
 
@@ -533,11 +534,9 @@ module mpas_io
          dimsize = -1
          return
       end if
-#endif
 
       if (new_dimlist_node % dimhandle % dimid == handle % pio_unlimited_dimid) new_dimlist_node % dimhandle % is_unlimited_dim = .true.
 
-#ifdef MPAS_PIO_SUPPORT
       pio_ierr = PIO_inq_dimlen(handle % pio_file, new_dimlist_node % dimhandle % dimid, new_dimlist_node % dimhandle % dimsize)
       if (pio_ierr /= PIO_noerr) then
          if (present(ierr)) ierr = MPAS_IO_ERR_PIO
@@ -549,7 +548,9 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-      local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(dimname), local_dimsize)
+      local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(dimname), &
+                                      dimsize=local_dimsize, &
+                                      is_unlimited=new_dimlist_node % dimhandle % is_unlimited_dim)
       if (local_ierr /= SMIOL_SUCCESS) then
          call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          if (present(ierr)) ierr = MPAS_IO_ERR_MISSING_DIM
@@ -827,7 +828,7 @@ module mpas_io
          if (new_fieldlist_node % fieldhandle % field_type == SMIOL_REAL64) then
             new_fieldlist_node % fieldhandle % field_type = MPAS_IO_DOUBLE
             new_fieldlist_node % fieldhandle % precision = MPAS_IO_DOUBLE_PRECISION
-         else if (new_fieldlist_node % fieldhandle % field_type == SMIOL_REAL64) then
+         else if (new_fieldlist_node % fieldhandle % field_type == SMIOL_REAL32) then
             new_fieldlist_node % fieldhandle % field_type = MPAS_IO_REAL
             new_fieldlist_node % fieldhandle % precision = MPAS_IO_SINGLE_PRECISION
          else if (new_fieldlist_node % fieldhandle % field_type == SMIOL_INT32) then
@@ -883,6 +884,7 @@ module mpas_io
 
          allocate(new_fieldlist_node % fieldhandle % dims(new_fieldlist_node % fieldhandle % ndims))
 
+#ifdef MPAS_PIO_SUPPORT
          ! Get information about dimensions
          do i=1,new_fieldlist_node % fieldhandle % ndims
             new_fieldlist_node % fieldhandle % dims(i) % dimid = dimids(i)
@@ -891,7 +893,6 @@ module mpas_io
                new_fieldlist_node % fieldhandle % has_unlimited_dim = .true.
             end if
 
-#ifdef MPAS_PIO_SUPPORT
             pio_ierr = PIO_inq_dimlen(handle % pio_file, dimids(i), new_fieldlist_node % fieldhandle % dims(i) % dimsize)
             if (pio_ierr /= PIO_noerr) then
                if (present(ierr)) ierr = MPAS_IO_ERR_PIO
@@ -910,12 +911,13 @@ module mpas_io
                deallocate(dimids)
                return
             end if
-#endif
 !call mpas_log_write('Inquired about dimension name ' // trim(new_fieldlist_node % fieldhandle % dims(i) % dimname))
 
          end do
+#endif
 
 #ifdef MPAS_SMIOL_SUPPORT
+         new_fieldlist_node % fieldhandle % has_unlimited_dim = .false.
          allocate(smiol_dimnames(smiol_ndims))
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), dimnames=smiol_dimnames)
          if (local_ierr /= SMIOL_SUCCESS) then
@@ -924,13 +926,17 @@ module mpas_io
          do i=1,new_fieldlist_node % fieldhandle % ndims
             new_fieldlist_node % fieldhandle % dims(i) % dimname = smiol_dimnames(i)
          end do
-!MGD TODO: store dimension sizes for all dims
          do i=1,new_fieldlist_node % fieldhandle % ndims
-            local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(smiol_dimnames(i)), dimsize=smiol_dimlen)
+            local_ierr = SMIOLf_inquire_dim(handle % smiol_file, trim(smiol_dimnames(i)), &
+                                            dimsize=smiol_dimlen, &
+                                            is_unlimited=new_fieldlist_node % fieldhandle % dims(i) % is_unlimited_dim)
             if (local_ierr /= SMIOL_SUCCESS) then
                call mpas_log_write('SMIOLf_inquire_dim failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             end if
             new_fieldlist_node % fieldhandle % dims(i) % dimsize = smiol_dimlen
+            if (new_fieldlist_node % fieldhandle % dims(i) % is_unlimited_dim) then
+               new_fieldlist_node % fieldhandle % has_unlimited_dim = .true.
+            end if
          end do
          deallocate(smiol_dimnames)
 #endif
@@ -1385,6 +1391,7 @@ module mpas_io
 !if (.not. associated(decomp_cursor)) call mpas_log_write('No existing decompositions to check...')
       early_return = 0
       DECOMP_LOOP: do while (associated(decomp_cursor))
+#ifdef MPAS_PIO_SUPPORT
 !MGD TODO: decomps in SMIOL are independent of field type, so this check can be skipped
          if (decomp_cursor % decomphandle % field_type == field_cursor % fieldhandle % field_type) then
          if (size(decomp_cursor % decomphandle % dims) == field_cursor % fieldhandle % ndims) then
@@ -1396,6 +1403,7 @@ module mpas_io
                   cycle DECOMP_LOOP
                end if
             end do
+#endif
 
             if (size(decomp_cursor % decomphandle % indices) /= size(indices)) then
 !call mpas_log_write('We do not have the same number of indices in this decomposition...')
@@ -1416,6 +1424,7 @@ module mpas_io
 !call mpas_log_write('Found a matching decomposition that we can use')
             early_return = 1
             exit DECOMP_LOOP
+#ifdef MPAS_PIO_SUPPORT
          else if ((size(decomp_cursor % decomphandle % dims) == field_cursor % fieldhandle % ndims - 1)  &
                   .and. field_cursor % fieldhandle % has_unlimited_dim  &
                  ) then
@@ -1451,6 +1460,7 @@ module mpas_io
             exit DECOMP_LOOP
          end if
          end if
+#endif
          decomp_cursor => decomp_cursor % next
       end do DECOMP_LOOP
 
@@ -2085,7 +2095,7 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
             if (associated(field_cursor % fieldhandle % decomp)) then
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray3d)
 #endif
 
 #ifdef MPAS_PIO_SUPPORT
@@ -2123,7 +2133,7 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
             if (associated(field_cursor % fieldhandle % decomp)) then
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray3d)
 #endif
 
 #ifdef MPAS_PIO_SUPPORT
@@ -3593,7 +3603,7 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray4d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray5d)
 #endif
             end if
             deallocate(singleArray5d)
@@ -3639,7 +3649,7 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray4d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray5d)
 #endif
             end if
             deallocate(doubleArray5d)
