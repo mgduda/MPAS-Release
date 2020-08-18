@@ -7,9 +7,6 @@
 !
 module mpas_io
 
-!define MPAS_PIO_SUPPORT
-#define MPAS_SMIOL_SUPPORT
-
    use mpas_derived_types
    use mpas_attlist
    use mpas_dmpar
@@ -264,7 +261,9 @@ module mpas_io
       integer :: local_ierr
       logical :: local_clobber, local_truncate
       logical :: exists
+#ifdef MPAS_SMIOL_SUPPORT
       integer(kind=SMIOL_offset_kind) :: preexisting_records
+#endif
 
 !      call mpas_log_write('Called MPAS_io_open()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
@@ -491,7 +490,9 @@ module mpas_io
       type (dimlist_type), pointer :: dim_cursor
       integer :: pio_ierr
       integer :: local_ierr
+#ifdef MPAS_SMIOL_SUPPORT
       integer(kind=SMIOL_offset_kind) :: local_dimsize
+#endif
 
 !      call mpas_log_write('Called MPAS_io_inq_dim()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
@@ -590,7 +591,9 @@ module mpas_io
       integer :: pio_ierr
       integer :: local_ierr
       integer :: inq_dimsize
+#ifdef MPAS_SMIOL_SUPPORT
       integer(kind=SMIOL_offset_kind) :: local_dimsize
+#endif
       type (dimlist_type), pointer :: new_dimlist_node
       type (dimlist_type), pointer :: dim_cursor
 
@@ -672,12 +675,16 @@ module mpas_io
 #ifdef MPAS_PIO_SUPPORT
          pio_ierr = PIO_def_dim(handle % pio_file, trim(dimname), PIO_unlimited, new_dimlist_node % dimhandle % dimid)
 #endif
+#ifdef MPAS_SMIOL_SUPPORT
          local_dimsize = -1_SMIOL_offset_kind
+#endif
       else
 #ifdef MPAS_PIO_SUPPORT
          pio_ierr = PIO_def_dim(handle % pio_file, trim(dimname), dimsize, new_dimlist_node % dimhandle % dimid)
 #endif
+#ifdef MPAS_SMIOL_SUPPORT
          local_dimsize = int(dimsize,kind=SMIOL_offset_kind)
+#endif
       end if
 #ifdef MPAS_SMIOL_SUPPORT
       local_ierr = SMIOLf_define_dim(handle % smiol_file, trim(dimname), local_dimsize)
@@ -735,7 +742,9 @@ module mpas_io
       integer :: smiol_type
       integer :: smiol_ndims
       character(len=StrKind), dimension(:), allocatable :: smiol_dimnames
+#ifdef MPAS_SMIOL_SUPPORT
       integer(kind=SMIOL_offset_kind) :: smiol_dimlen
+#endif
 
 
 !      call mpas_log_write('Called MPAS_io_inq_var()')
@@ -1343,9 +1352,11 @@ module mpas_io
       integer, dimension(:), pointer :: dimlist
       integer (kind=MPAS_IO_OFFSET_KIND), dimension(:), pointer :: compdof
       type (decomplist_type), pointer :: decomp_cursor, new_decomp
+#ifdef MPAS_SMIOL_SUPPORT
       integer(kind=SMIOL_offset_kind), dimension(:), pointer :: smiol_indices
       integer :: local_ierr
       integer(kind=SMIOL_offset_kind) :: smiol_n_compute_elements
+#endif
 
 !      call mpas_log_write('Called MPAS_io_set_var_indices()')
       if (present(ierr)) ierr = MPAS_IO_NOERR

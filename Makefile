@@ -428,6 +428,7 @@ LIBS =
 #
 # If user has indicated a PIO2 library, define USE_PIO2 pre-processor macro
 #
+ifneq "$(PIO)" ""
 ifeq "$(USE_PIO2)" "true"
 	override CPPFLAGS += -DUSE_PIO2
 endif
@@ -470,6 +471,7 @@ endif
 ifneq ($(wildcard $(PIO_LIB)/libgptl\.*), )
 	LIBS += -lgptl
 endif
+endif # $(PIO) neq ""
 
 ifneq "$(NETCDF)" ""
 	CPPINCLUDES += -I$(NETCDF)/include
@@ -578,11 +580,15 @@ else # USE_PAPI IF
 	PAPI_MESSAGE="Papi libraries are off."
 endif # USE_PAPI IF
 
+ifneq "$(PIO)" ""
 ifeq "$(USE_PIO2)" "true"
 	PIO_MESSAGE="Using the PIO 2 library."
 else # USE_PIO2 IF
 	PIO_MESSAGE="Using the PIO 1.x library."
 endif # USE_PIO2 IF
+else
+	PIO_MESSAGE="Not linking with PIO."
+endif
 
 ifdef TIMER_LIB
 ifeq "$(TIMER_LIB)" "tau"
@@ -696,6 +702,12 @@ ifdef MPAS_EXTERNAL_CPPFLAGS
 endif
 ####################################################
 
+ifneq "$(PIO)" ""
+	override CPPFLAGS += "-DMPAS_PIO_SUPPORT"
+else
+	override CPPFLAGS += "-DMPAS_SMIOL_SUPPORT"
+endif
+
 ifeq ($(wildcard src/core_$(CORE)), ) # CHECK FOR EXISTENCE OF CORE DIRECTORY
 
 all: core_error
@@ -772,8 +784,13 @@ else
 endif
 	@rm -rf pio[12].f90 pio[12].out
 
+ifneq "$(PIO)" ""
+	MAIN_DEPS = openmp pio_test
+else
+	MAIN_DEPS = openmp
+endif
 
-mpas_main: openmp_test pio_test
+mpas_main: $(MAIN_DEPS)
 ifeq "$(AUTOCLEAN)" "true"
 	$(RM) .mpas_core_*
 endif

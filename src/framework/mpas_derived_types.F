@@ -25,8 +25,6 @@
 !-----------------------------------------------------------------------
 module mpas_derived_types
 
-#define MPAS_SMIOL_SUPPORT
-
    use mpas_kind_types
 
 #ifdef MPAS_PIO_SUPPORT
