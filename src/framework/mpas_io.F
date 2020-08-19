@@ -2562,12 +2562,22 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
          end if
       else if (present(intArray4d)) then
 !         call mpas_log_write('  value is int4')
+         intArray4d_p => intArray4d
          if (associated(field_cursor % fieldhandle % decomp)) then
+#ifdef MPAS_SMIOL_SUPPORT
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), &
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, intArray4d_p)
+#endif
+
 #ifdef MPAS_PIO_SUPPORT
             call PIO_read_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                  intArray4d, pio_ierr)
 #endif
          else
+#ifdef MPAS_SMIOL_SUPPORT
+            local_ierr = SMIOLf_get_var(handle % smiol_file, trim(fieldname), null_decomp, intArray4d_p)
+#endif
+
 #ifdef MPAS_PIO_SUPPORT
             if (field_cursor % fieldhandle % has_unlimited_dim) then
                start5(:) = 1
@@ -2588,8 +2598,6 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
             end if
 #endif
          end if
-
-call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fieldname), messageType=MPAS_LOG_ERR)
 
       end if
 
@@ -3811,10 +3819,16 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
 #endif
          end if
       else if (present(intArray4d)) then
+         intArray4d_p => intArray4d
          if (associated(field_cursor % fieldhandle % decomp)) then
 #ifdef MPAS_PIO_SUPPORT
             call PIO_write_darray(handle % pio_file, field_cursor % fieldhandle % field_desc, field_cursor % fieldhandle % decomp % pio_iodesc, &
                                   intArray4d, pio_ierr)
+#endif
+
+#ifdef MPAS_SMIOL_SUPPORT
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
+                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray4d_p)
 #endif
          else
 #ifdef MPAS_PIO_SUPPORT
@@ -3839,9 +3853,11 @@ call mpas_log_write('1-d char variables not yet implemented in SMIOL: '//trim(fi
                pio_ierr = PIO_put_var(handle % pio_file, field_cursor % fieldhandle % field_desc, start4, count4, intArray4d)
             end if
 #endif
-         end if
 
-call mpas_log_write('4-d int variables not yet implemented in SMIOL: '//trim(fieldname), messageType=MPAS_LOG_ERR)
+#ifdef MPAS_SMIOL_SUPPORT
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray4d_p)
+#endif
+         end if
 
       end if
 #ifdef MPAS_PIO_SUPPORT
