@@ -19,12 +19,15 @@ typedef int64_t SMIOL_Offset;
  * Types
  */
 struct SMIOL_context {
-	MPI_Fint fcomm; /* Fortran handle to MPI communicator */
-	int comm_size;  /* Size of MPI communicator */
-	int comm_rank;  /* Rank within MPI communicator */
+	MPI_Fint fcomm;   /* Fortran handle to MPI communicator */
+	int comm_size;    /* Size of MPI communicator */
+	int comm_rank;    /* Rank within MPI communicator */
 
-	int lib_ierr;   /* Library-specific error code */
-	int lib_type;   /* From which library the error code originated */
+	int num_io_tasks; /* The number of I/O tasks */
+	int io_stride;    /* The stride between I/O tasks in the communicator */
+
+	int lib_ierr;     /* Library-specific error code */
+	int lib_type;     /* From which library the error code originated */
 };
 
 struct SMIOL_file {
@@ -33,6 +36,9 @@ struct SMIOL_file {
 #ifdef SMIOL_PNETCDF
 	int state; /* parallel-netCDF file state (i.e. Define or data mode) */
 	int ncidp; /* parallel-netCDF file handle */
+	int io_task; /* 1 = this task performs I/O calls; 0 = no I/O calls on this task */
+	int io_file_comm;
+	int io_group_comm;
 #endif
 };
 

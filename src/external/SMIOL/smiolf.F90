@@ -43,12 +43,17 @@ module SMIOLf
 
 
     type, bind(C) :: SMIOLf_context
-        integer :: fcomm             ! Fortran handle to MPI communicator; MPI_Fint on the C side, which is supposed to match a Fortran integer
-        integer(c_int) :: comm_size  ! Size of MPI communicator
-        integer(c_int) :: comm_rank  ! Rank within MPI communicator
+        integer :: fcomm                ! Fortran handle to MPI communicator; MPI_Fint on the C side, which is supposed to match
+                                        !   a Fortran integer
 
-        integer(c_int) :: lib_ierr   ! Library-specific error code
-        integer(c_int) :: lib_type   ! From which library the error code originated
+        integer(c_int) :: comm_size     ! Size of MPI communicator
+        integer(c_int) :: comm_rank     ! Rank within MPI communicator
+
+        integer(c_int) :: num_io_tasks  ! The number of I/O tasks
+        integer(c_int) :: io_stride     ! The stride between I/O tasks in the communicator
+
+        integer(c_int) :: lib_ierr      ! Library-specific error code
+        integer(c_int) :: lib_type      ! From which library the error code originated
     end type SMIOLf_context
 
     type, bind(C) :: SMIOLf_file
@@ -57,6 +62,9 @@ module SMIOLf
 #ifdef SMIOL_PNETCDF
         integer(c_int) :: state      ! parallel-netCDF file state (i.e. Define or data mode)
         integer(c_int) :: ncidp      ! parallel-netCDF file handle
+        integer(c_int) :: io_task    ! 1 = this task performs I/O calls; 0 = no I/O calls on this task
+        integer(c_int) :: io_file_comm
+        integer(c_int) :: io_group_comm
 #endif
     end type SMIOLf_file
 
@@ -209,8 +217,9 @@ contains
     !> \brief Initialize a SMIOL context
     !> \details
     !>  Initializes a SMIOL context, within which decompositions may be defined and
-    !>  files may be read and written. At present, the only input argument is an MPI
-    !>  communicator.
+    !>  files may be read and written. The input argument comm is an MPI communicator,
+    !>  and the input arguments num_io_tasks and io_stride provide the total number
+    !>  of I/O tasks and the stride between those I/O tasks within the communicator.
     !>
     !>  Upon successful return the context argument points to a valid SMIOL context;
     !>  otherwise, it is NULL and an error code other than MPI_SUCCESS is returned.
@@ -219,28 +228,32 @@ contains
     !>        that any use of the provided MPI communicator will be valid.
     !
     !-----------------------------------------------------------------------
-    integer function SMIOLf_init(comm, context) result(ierr)
+    integer function SMIOLf_init(comm, num_io_tasks, io_stride, context) result(ierr)
 
         use iso_c_binding, only : c_ptr, c_f_pointer, c_null_ptr, c_associated
 
         implicit none
 
         integer, intent(in) :: comm
+        integer, intent(in) :: num_io_tasks
+        integer, intent(in) :: io_stride
         type (SMIOLf_context), pointer :: context
 
         type (c_ptr) :: c_context = c_null_ptr
 
         ! C interface definitions
         interface
-            function SMIOL_fortran_init(comm, context) result(ierr) bind(C, name='SMIOL_fortran_init')
+            function SMIOL_fortran_init(comm, num_io_tasks, io_stride, context) result(ierr) bind(C, name='SMIOL_fortran_init')
                 use iso_c_binding, only : c_int, c_ptr
                 integer, value :: comm   ! MPI_Fint on the C side, which is supposed to match a Fortran integer
+                integer(c_int), value :: num_io_tasks
+                integer(c_int), value :: io_stride
                 type (c_ptr) :: context
                 integer(kind=c_int) :: ierr
             end function
         end interface
 
-        ierr = SMIOL_fortran_init(comm, c_context)
+        ierr = SMIOL_fortran_init(comm, num_io_tasks, io_stride, c_context)
 
         if (ierr == SMIOL_SUCCESS) then
             if (.not. c_associated(c_context)) then
@@ -1828,9 +1841,8 @@ contains
     !
     !> \brief Creates a mapping between compute elements and I/O elements
     !> \details
-    !>  Given arrays of global element IDs that each task computes, the number
-    !>  of I/O tasks, and the stride between I/O tasks, this routine works out
-    !>  a mapping of elements between compute and I/O tasks.
+    !>  Given arrays of global element IDs that each task computes, this routine
+    !>  works out a mapping of elements between compute and I/O tasks.
     !>
     !>  If all input arguments are determined to be valid and if the routine is
     !>  successful in working out a mapping, the decomp pointer is allocated
@@ -1838,9 +1850,7 @@ contains
     !>  a non-success error code is returned and the decomp pointer is unassociated.
     !
     !-----------------------------------------------------------------------
-    integer function SMIOLf_create_decomp(context, n_compute_elements, compute_elements, &
-                                          num_io_tasks, io_stride, decomp) &
-                                          result(ierr)
+    integer function SMIOLf_create_decomp(context, n_compute_elements, compute_elements, decomp) result(ierr)
 
         use iso_c_binding, only : c_size_t, c_ptr, c_null_ptr, c_loc, c_f_pointer, c_associated
 
@@ -1850,8 +1860,6 @@ contains
         type (SMIOLf_context), target, intent(in) :: context
         integer(kind=c_size_t), intent(in) :: n_compute_elements
         integer(kind=SMIOL_offset_kind), dimension(n_compute_elements), target, intent(in) :: compute_elements
-        integer, intent(in) :: num_io_tasks
-        integer, intent(in) :: io_stride
         type (SMIOLf_decomp), pointer, intent(inout) :: decomp
 
         ! Local variables
@@ -1860,15 +1868,12 @@ contains
         type (c_ptr) :: c_compute_elements
         
         interface
-            function SMIOL_create_decomp(context, n_compute_elements, compute_elements, &
-                                         num_io_tasks, io_stride, decomp) &
+            function SMIOL_create_decomp(context, n_compute_elements, compute_elements, decomp) &
                                          result(ierr) bind(C, name='SMIOL_create_decomp')
                 use iso_c_binding, only : c_size_t, c_ptr, c_int
                 type (c_ptr), value :: context
                 integer(c_size_t), value :: n_compute_elements
                 type (c_ptr), value :: compute_elements
-                integer(c_int), value :: num_io_tasks
-                integer(c_int), value :: io_stride
                 integer(kind=c_int) :: ierr
                 type (c_ptr) :: decomp
             end function
@@ -1886,8 +1891,7 @@ contains
 
         c_decomp = c_null_ptr
 
-        ierr = SMIOL_create_decomp(c_context, n_compute_elements, c_compute_elements, &
-                                   num_io_tasks, io_stride, c_decomp)
+        ierr = SMIOL_create_decomp(c_context, n_compute_elements, c_compute_elements, c_decomp)
 
         ! Error check and translate c_decomp pointer into a Fortran SMIOLf_decomp pointer
         if (ierr == SMIOL_SUCCESS) then

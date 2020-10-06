@@ -194,6 +194,8 @@ module mpas_io
 #ifdef MPAS_SMIOL_SUPPORT
          allocate(ioContext % smiol_context)
          local_ierr = SMIOLf_init(ioContext % dminfo % comm, &
+                                  iocontext % io_task_count, &
+                                  iocontext % io_task_stride, &
                                   iocontext % smiol_context)
          if (local_ierr /= SMIOL_SUCCESS) then
             call mpas_log_write('SMIOLf_init failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_CRIT)
@@ -1615,7 +1617,6 @@ module mpas_io
       smiol_indices(:) = int(indices(:), kind=SMIOL_offset_kind) - 1_SMIOL_offset_kind   ! SMIOL indices are 0-based
       smiol_n_compute_elements = size(indices,kind=SMIOL_offset_kind)
       local_ierr = SMIOLf_create_decomp(handle % ioContext % smiol_context, smiol_n_compute_elements, smiol_indices, &
-                                        handle % ioContext % io_task_count, handle % ioContext % io_task_stride, &
                                         new_decomp % decomphandle % smiol_decomp)
       deallocate(smiol_indices)
       if (local_ierr /= SMIOL_SUCCESS) then
