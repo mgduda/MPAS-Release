@@ -53,6 +53,14 @@ struct SMIOL_decomp {
 
 	size_t io_start;  /* The starting offset on disk for I/O by a task */
 	size_t io_count;  /* The number of elements for I/O by a task */
+
+#ifdef SMIOL_AGGREGATION
+	MPI_Fint agg_comm;
+	size_t n_compute;
+	size_t n_compute_agg;
+	int *counts;
+	int *displs;
+#endif
 };
 
 

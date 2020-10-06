@@ -14,6 +14,7 @@
 #define START_COUNT_READ 0
 #define START_COUNT_WRITE 1
 
+
 /*
  * Local functions
  */
@@ -21,6 +22,12 @@ int build_start_count(struct SMIOL_file *file, const char *varname,
                       const struct SMIOL_decomp *decomp,
                       int write_or_read, size_t *element_size, int *ndims,
                       size_t **start, size_t **count);
+
+#ifdef SMIOL_AGGREGATION
+void smiol_aggregate_list(MPI_Comm comm, size_t n_in, SMIOL_Offset *in_list,
+                          size_t *n_out, SMIOL_Offset **out_list,
+                          int **counts, int **displs);
+#endif
 
 
 /********************************************************************************
@@ -813,6 +820,13 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 	size_t *start;
 	size_t *count;
 
+	void *agg_buf = NULL;
+	const void *agg_buf_cnst = NULL;
+#ifdef SMIOL_AGGREGATION
+	MPI_Comm agg_comm;
+	MPI_Datatype dtype;
+#endif
+
 	/*
 	 * Basic checks on arguments
 	 */
@@ -845,14 +859,54 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 			return SMIOL_MALLOC_FAILURE;
 		}
 
+#ifdef SMIOL_AGGREGATION
+		ierr = MPI_Type_contiguous((int)element_size, MPI_UINT8_T, &dtype);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Type_contiguous failed with code %i\n", ierr);
+			return 1;
+		}
+
+		ierr = MPI_Type_commit(&dtype);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Type_commit failed with code %i\n", ierr);
+			return 1;
+		}
+
+		agg_buf = malloc(element_size * decomp->n_compute_agg);
+
+		agg_comm = MPI_Comm_f2c(decomp->agg_comm);
+
+		ierr = MPI_Gatherv((const void *)buf, (int)decomp->n_compute, dtype,
+		                   (void *)agg_buf, (const int *)decomp->counts, (const int *)decomp->displs,
+		                   dtype, 0, agg_comm);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Gatherv failed with code %i\n", ierr);
+			return 1;
+		}
+
+		ierr = MPI_Type_free(&dtype);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Type_free failed with code %i\n", ierr);
+			return 1;
+		}
+
+		agg_buf_cnst = agg_buf;
+#else
+		agg_buf_cnst = buf;
+#endif
+
 		ierr = transfer_field(decomp, SMIOL_COMP_TO_IO,
-		                      element_size, buf, out_buf);
+		                      element_size, agg_buf_cnst, out_buf);
 		if (ierr != SMIOL_SUCCESS) {
 			free(start);
 			free(count);
 			free(out_buf);
 			return ierr;
 		}
+
+#ifdef SMIOL_AGGREGATION
+		free(agg_buf);
+#endif
 	}
 
 	/*
@@ -996,6 +1050,12 @@ int SMIOL_get_var(struct SMIOL_file *file, const char *varname,
 	void *in_buf = NULL;
 	size_t *start;
 	size_t *count;
+
+	void *agg_buf = NULL;
+#ifdef SMIOL_AGGREGATION
+	MPI_Comm agg_comm;
+	MPI_Datatype dtype;
+#endif
 
 	/*
 	 * Basic checks on arguments
@@ -1148,9 +1208,49 @@ int SMIOL_get_var(struct SMIOL_file *file, const char *varname,
 	 * be done for decomposed variables.
 	 */
 	if (decomp) {
+
+#ifdef SMIOL_AGGREGATION
+		ierr = MPI_Type_contiguous((int)element_size, MPI_UINT8_T, &dtype);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Type_contiguous failed with code %i\n", ierr);
+			return 1;
+		}
+
+		ierr = MPI_Type_commit(&dtype);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Type_commit failed with code %i\n", ierr);
+			return 1;
+		}
+
+		agg_buf = malloc(element_size * decomp->n_compute_agg);
+#else
+		agg_buf = buf;
+#endif
 		ierr = transfer_field(decomp, SMIOL_IO_TO_COMP,
-		                      element_size, in_buf, buf);
+		                      element_size, in_buf, agg_buf);
+
+#ifdef SMIOL_AGGREGATION
+		agg_comm = MPI_Comm_f2c(decomp->agg_comm);
+
+		ierr = MPI_Scatterv((const void *)agg_buf, (const int*)decomp->counts, (const int *)decomp->displs,
+		                   dtype, (void *)buf, (int)decomp->n_compute,
+		                   dtype, 0, agg_comm);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Scatterv failed with code %i\n", ierr);
+			return 1;
+		}
+#endif
+
 		free(in_buf);
+#ifdef SMIOL_AGGREGATION
+		free(agg_buf);
+
+		ierr = MPI_Type_free(&dtype);
+		if (ierr != MPI_SUCCESS) {
+			fprintf(stderr, "MPI_Type_free failed with code %i\n", ierr);
+			return 1;
+		}
+#endif
 
 		if (ierr != SMIOL_SUCCESS) {
 			return ierr;
@@ -1591,6 +1691,17 @@ int SMIOL_create_decomp(struct SMIOL_context *context,
 	MPI_Datatype dtype;
 	int ierr;
 
+	size_t n_compute_elements_agg;
+	SMIOL_Offset *compute_elements_agg = NULL;
+#ifdef SMIOL_AGGREGATION
+	const int agg_factor = 9;     /* Eventually, compute this or get value from user */
+
+	int comm_rank;
+	MPI_Comm agg_comm;
+	int *counts;
+	int *displs;
+#endif
+
 
 	/*
 	 * Minimal check on the validity of arguments
@@ -1657,15 +1768,49 @@ int SMIOL_create_decomp(struct SMIOL_context *context,
 		}
 	}
 
+#ifdef SMIOL_AGGREGATION
+	ierr = MPI_Comm_rank(comm, &comm_rank);
+
+	/*
+	 * Create intracommunicators for aggregation
+	 */
+	ierr = MPI_Comm_split(comm, (comm_rank / agg_factor), comm_rank, &agg_comm);
+        if (ierr != MPI_SUCCESS) {
+                fprintf(stderr, "Error: MPI_Comm_split in smiol_aggregate_list\n");
+                return -1;
+        }
+
+	/*
+	 * Create aggregated compute_elements list
+	 */
+	smiol_aggregate_list(agg_comm, n_compute_elements, compute_elements,
+	                     &n_compute_elements_agg, &compute_elements_agg,
+	                     &counts, &displs);
+
+#else
+	n_compute_elements_agg = n_compute_elements;
+	compute_elements_agg = compute_elements;
+#endif
+
 	/*
 	 * Build the mapping between compute tasks and I/O tasks
 	 */
 	ierr = build_exchange(context,
-	                      n_compute_elements, compute_elements,
+	                      n_compute_elements_agg, compute_elements_agg,
 	                      io_count, io_elements,
 	                      decomp);
 
 	free(io_elements);
+
+#ifdef SMIOL_AGGREGATION
+	(*decomp)->agg_comm = MPI_Comm_c2f(agg_comm);
+	(*decomp)->n_compute = n_compute_elements;
+	(*decomp)->n_compute_agg = n_compute_elements_agg;
+	(*decomp)->counts = counts;
+	(*decomp)->displs = displs;
+
+	free(compute_elements_agg);
+#endif
 
 	/*
 	 * If decomp was successfully created, add io_start and io_count values
@@ -1693,9 +1838,22 @@ int SMIOL_create_decomp(struct SMIOL_context *context,
  ********************************************************************************/
 int SMIOL_free_decomp(struct SMIOL_decomp **decomp)
 {
+#ifdef SMIOL_AGGREGATION
+	MPI_Comm comm;
+#endif
+
 	if ((*decomp) == NULL) {
 		return SMIOL_SUCCESS;
 	}
+
+#ifdef SMIOL_AGGREGATION
+	comm = MPI_Comm_f2c((*decomp)->agg_comm);
+	if (comm != MPI_COMM_NULL) {
+		MPI_Comm_free(&comm);
+	}
+	free((*decomp)->counts);
+	free((*decomp)->displs);
+#endif
 
 	free((*decomp)->comp_list);
 	free((*decomp)->io_list);
@@ -1912,3 +2070,83 @@ int build_start_count(struct SMIOL_file *file, const char *varname,
 
 	return SMIOL_SUCCESS;
 }
+
+
+#ifdef SMIOL_AGGREGATION
+/*******************************************************************************
+ *
+ * smiol_aggregate_list
+ *
+ * Collects elements from lists across all ranks onto rank 0
+ *
+ * The out_list argument will point to an allocated array on return, and n_out will
+ * specify the number of elements in the output array.
+ *
+ * The output arguments counts and displs are valid only on rank 0, and are allocated
+ * according to the size of the communicator.
+ *
+ *******************************************************************************/
+void smiol_aggregate_list(MPI_Comm comm, size_t n_in, SMIOL_Offset *in_list,
+                          size_t *n_out, SMIOL_Offset **out_list,
+                          int **counts, int **displs)
+{
+	int comm_size;
+	int comm_rank;
+	int err;
+	int i;
+	int n_in32;
+	int n_out32;
+
+	*n_out = 0;
+	n_out32 = 0;
+	*out_list = NULL;
+
+	*counts = NULL;
+	*displs = NULL;
+
+	n_in32 = (int)n_in;
+
+	if (MPI_Comm_size(comm, &comm_size) != MPI_SUCCESS) {
+		fprintf(stderr, "Error: MPI_Comm_size\n");
+	}
+
+	if (MPI_Comm_rank(comm, &comm_rank) != MPI_SUCCESS) {
+		fprintf(stderr, "Error: MPI_Comm_rank\n");
+	}
+
+	/*
+	 * Number of output elements on rank 0 is the sum of number of input elements
+	 * across all tasks in the communicator
+	 */
+	err = MPI_Reduce((const void *)&n_in32, (void *)&n_out32, 1, MPI_INT, MPI_SUM, 0, comm);
+	if (err != MPI_SUCCESS) {
+		fprintf(stderr, "Error: MPI_Reduce in smiol_aggregate_list\n");
+		return;
+	}
+
+	*n_out = n_out32;
+
+	if (comm_rank == 0) {
+		*out_list = (SMIOL_Offset *)malloc(sizeof(SMIOL_Offset) * (size_t)(*n_out));
+		*counts = (int *)malloc(sizeof(int) * (size_t)(comm_size));
+		*displs = (int *)malloc(sizeof(int) * (size_t)(comm_size));
+	}
+
+	/*
+	 * Gather the number of input elements from all tasks onto rank 0
+	 */
+	err = MPI_Gather((const void *)&n_in32, 1, MPI_INT, (void *)(*counts), 1, MPI_INT, 0, comm);
+
+	/*
+	 * Perform a scan of counts to get displs
+	 */
+	if (comm_rank == 0) {
+		(*displs)[0] = 0;
+		for (i=1; i<comm_size; i++) {
+			(*displs)[i] = (*displs)[i-1] + (*counts)[i-1];
+		}
+	}
+
+	err = MPI_Gatherv((const void *)in_list, n_in32, MPI_LONG, (void *)(*out_list), (*counts), (*displs), MPI_LONG, 0, comm);
+}
+#endif

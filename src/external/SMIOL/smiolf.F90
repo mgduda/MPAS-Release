@@ -77,6 +77,14 @@ module SMIOLf
 
         integer(c_size_t) :: io_start;  ! The starting offset on disk for I/O by a task
         integer(c_size_t) :: io_count;  ! The number of elements for I/O by a task
+
+#ifdef SMIOL_AGGREGATION
+        integer :: agg_comm                  ! TO DO: Description
+        integer(c_size_t) :: n_compute       ! TO DO: Description
+        integer(c_size_t) :: n_compute_agg   ! TO DO: Description
+        type (c_ptr) :: counts               ! TO DO: Description
+        type (c_ptr) :: displs               ! TO DO: Description
+#endif
     end type SMIOLf_decomp
 
     interface SMIOLf_define_att
@@ -622,11 +630,6 @@ contains
     !>  are expected to be null-terminated strings, except if the variable has
     !>  zero dimensions, in which case the dimnames argument is ignored.
     !>
-    !>  Unlike the C SMIOL_define_var function, this routine assumes that
-    !>  dimnames provides the dimension names in their natural Fortran order,
-    !>  with the fastest-varying dimension given first and any unlimited
-    !>  dimension given last.
-    !>
     !>  Upon successful completion, SMIOL_SUCCESS is returned; otherwise, an error
     !>  code is returned.
     !
@@ -746,10 +749,6 @@ contains
     !>  least the number of dimensions in the variable, and each character string
     !>  in the dimnames array must be large enough to accommodate the corresponding
     !>  dimension name.
-    !>
-    !>  Unlike the C SMIOL_inquire_var function, this routine returns the list of
-    !>  dimension names in its natural Fortran order, with the fastest-varying
-    !>  dimension given first and any unlimited dimension given last.
     !
     !-----------------------------------------------------------------------
     integer function SMIOLf_inquire_var(file, varname, vartype, ndims, dimnames) result(ierr)
@@ -829,7 +828,7 @@ contains
         end if
 
         !
-        ! Set C pointers for dimension names in C order
+        ! Set C pointers for dimension names
         !
         if (present(dimnames)) then
             ndims_in = size(dimnames)
@@ -869,7 +868,7 @@ contains
         end if
 
         !
-        ! Copy dimension names to output argument, reversing their order
+        ! Copy dimension names to output argument
         !
         if (present(dimnames)) then
             do j=1,c_ndims
