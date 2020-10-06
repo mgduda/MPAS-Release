@@ -39,6 +39,8 @@ struct SMIOL_file {
 	int io_task; /* 1 = this task performs I/O calls; 0 = no I/O calls on this task */
 	int io_file_comm;
 	int io_group_comm;
+	int n_reqs;
+	int *reqs;
 #endif
 };
 

@@ -9,6 +9,8 @@
 #include "pnetcdf.h"
 #define PNETCDF_DEFINE_MODE 0
 #define PNETCDF_DATA_MODE 1
+#define N_REQS 256 
+#define BUFSIZE (64*1024*1024)
 #endif
 
 #define START_COUNT_READ 0
@@ -255,6 +257,14 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	                      context->comm_rank, &io_group_comm);
 	(*file)->io_group_comm = MPI_Comm_c2f(io_group_comm);
 
+#ifdef SMIOL_PNETCDF
+	(*file)->n_reqs = 0;
+	if ((*file)->io_task) {
+		(*file)->reqs = malloc(sizeof(int) * (size_t)N_REQS);
+	} else {
+		(*file)->reqs = NULL;
+	}
+#endif
 
 	if (mode & SMIOL_FILE_CREATE) {
 #ifdef SMIOL_PNETCDF
@@ -263,6 +273,8 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 			                    (NC_64BIT_DATA | NC_CLOBBER), MPI_INFO_NULL,
 			                    &((*file)->ncidp));
 			
+/* TO DO - check return status code */
+                        ncmpi_buffer_attach((*file)->ncidp, BUFSIZE);
 		}
 		(*file)->state = PNETCDF_DEFINE_MODE;
 #endif
@@ -271,6 +283,9 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 		if ((*file)->io_task) {
 			ierr = ncmpi_open(io_file_comm, filename,
 			                  NC_WRITE, MPI_INFO_NULL, &((*file)->ncidp));
+
+/* TO DO - check return status code */
+                        ncmpi_buffer_attach((*file)->ncidp, BUFSIZE);
 		}
 		(*file)->state = PNETCDF_DATA_MODE;
 #endif
@@ -325,6 +340,7 @@ int SMIOL_close_file(struct SMIOL_file **file)
 	int ierr;
 	MPI_Comm io_file_comm;
 	MPI_Comm io_group_comm;
+        int statuses[N_REQS];
 #endif
 
 	/*
@@ -337,6 +353,12 @@ int SMIOL_close_file(struct SMIOL_file **file)
 
 #ifdef SMIOL_PNETCDF
 	if ((*file)->io_task) {
+		if ((*file)->n_reqs > 0) {
+fprintf(stderr, "Waiting on %i reqs in SMIOL_close_file\n", (*file)->n_reqs);
+			ierr = ncmpi_wait_all((*file)->ncidp, (*file)->n_reqs, (*file)->reqs, statuses);
+			(*file)->n_reqs = 0;
+		}
+		free((*file)->reqs);
 		ierr = ncmpi_close((*file)->ncidp);
 	}
 	MPI_Bcast(&ierr, 1, MPI_INT, 0, MPI_Comm_f2c((*file)->io_group_comm));
@@ -930,6 +952,12 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 	MPI_Comm agg_comm;
 	MPI_Datatype dtype;
 #endif
+#ifdef SMIOL_PNETCDF
+        MPI_Offset usage;
+        long lusage;
+        long max_usage;
+        int statuses[N_REQS];
+#endif
 
 	/*
 	 * Basic checks on arguments
@@ -1092,11 +1120,29 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 		}
 
 		if (file->io_task) {
-			ierr = ncmpi_put_vara_all(file->ncidp,
-			                          varidp,
-			                          mpi_start, mpi_count,
-			                          buf_p,
-			                          0, MPI_DATATYPE_NULL);
+
+			ierr = ncmpi_inq_buffer_usage(file->ncidp, &usage);
+			if (decomp) {
+				usage += element_size * decomp->io_count;
+			} else {
+				usage += element_size;
+			}
+
+			lusage = usage;
+			ierr = MPI_Allreduce(&lusage, &max_usage, 1, MPI_LONG, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
+fprintf(stderr, "max_usage = %li, n_reqs = %i\n", max_usage, file->n_reqs);
+			if (max_usage > BUFSIZE || file->n_reqs == N_REQS) {
+fprintf(stderr, "Waiting on %i reqs before queueing more writes\n", file->n_reqs);
+				ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
+				file->n_reqs = 0;
+			}
+
+			ierr = ncmpi_bput_vara(file->ncidp,
+			                       varidp,
+			                       mpi_start, mpi_count,
+			                       buf_p,
+			                       0, MPI_DATATYPE_NULL,
+			                       &(file->reqs[(file->n_reqs++)]));
 		}
 		MPI_Bcast(&ierr, 1, MPI_INT, 0, MPI_Comm_f2c(file->io_group_comm));
 
@@ -1669,6 +1715,7 @@ int SMIOL_sync_file(struct SMIOL_file *file)
 {
 #ifdef SMIOL_PNETCDF
 	int ierr;
+        int statuses[N_REQS];
 #endif
 
 	/*
@@ -1696,6 +1743,14 @@ int SMIOL_sync_file(struct SMIOL_file *file)
 	}
 
 	if (file->io_task) {
+#ifdef SMIOL_PNETCDF
+		if (file->n_reqs > 0) {
+fprintf(stderr, "Waiting on %i reqs in SMIOL_sync_file\n", file->n_reqs);
+			ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
+			file->n_reqs = 0;
+		}
+#endif
+
 		ierr = ncmpi_sync(file->ncidp);
 	}
 	MPI_Bcast(&ierr, 1, MPI_INT, 0, MPI_Comm_f2c(file->io_group_comm));

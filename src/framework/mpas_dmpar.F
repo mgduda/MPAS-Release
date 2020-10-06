@@ -277,9 +277,7 @@ include 'mpif.h'
 #ifdef _MPI
       integer :: mpi_rank, mpi_size
       integer :: mpi_ierr
-#ifdef MPAS_OPENMP
       integer :: desiredThreadLevel, threadLevel
-#endif
 
       if ( present(mpi_comm) ) then
          dminfo % initialized_mpi = .false.
@@ -294,7 +292,8 @@ include 'mpif.h'
          desiredThreadLevel = MPI_THREAD_FUNNELED
          call MPI_Init_thread(desiredThreadLevel, threadLevel, mpi_ierr)
 #else
-         call MPI_Init(mpi_ierr)
+!         call MPI_Init(mpi_ierr)
+         call MPI_Init_thread(MPI_THREAD_MULTIPLE, threadLevel, mpi_ierr)
 #endif
          call MPI_Comm_dup(MPI_COMM_WORLD, dminfo % comm, mpi_ierr)
       end if
