@@ -277,7 +277,17 @@ include 'mpif.h'
 #ifdef _MPI
       integer :: mpi_rank, mpi_size
       integer :: mpi_ierr
+#ifdef MPAS_OPENMP
       integer :: desiredThreadLevel, threadLevel
+#endif
+      integer :: threadLevel
+
+      interface
+          subroutine set_compute_affinity(rank) bind(C)
+              use iso_c_binding, only : c_int
+              integer(c_int), value :: rank
+          end subroutine set_compute_affinity
+      end interface
 
       if ( present(mpi_comm) ) then
          dminfo % initialized_mpi = .false.
@@ -301,6 +311,8 @@ include 'mpif.h'
       ! Find out our rank and the total number of processors
       call MPI_Comm_rank(dminfo % comm, mpi_rank, mpi_ierr)
       call MPI_Comm_size(dminfo % comm, mpi_size, mpi_ierr)
+
+      call set_compute_affinity(mpi_rank)
 
       dminfo % nprocs = mpi_size
       dminfo % my_proc_id = mpi_rank

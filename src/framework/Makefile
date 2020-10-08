@@ -27,6 +27,7 @@ OBJS = mpas_kind_types.o \
        mpas_c_interfacing.o \
        random_id.o \
        pool_hash.o \
+       affinity.o \
        mpas_derived_types.o \
        mpas_domain_routines.o \
        mpas_field_routines.o \

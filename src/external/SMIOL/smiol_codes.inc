@@ -6,6 +6,7 @@
 #define SMIOL_LIBRARY_ERROR      (-5)
 #define SMIOL_WRONG_ARG_TYPE     (-6)
 #define SMIOL_INSUFFICIENT_ARG   (-7)
+#define SMIOL_ASYNC_ERROR        (-8)
 
 #define SMIOL_FILE_CREATE         (1)
 #define SMIOL_FILE_READ           (2)
