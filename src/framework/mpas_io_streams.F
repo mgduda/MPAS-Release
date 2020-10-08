@@ -3917,7 +3917,7 @@ module mpas_io_streams
       !
       ! Sync all fields with disk
       !
-      call MPAS_io_sync(stream % fileHandle)
+!      call MPAS_io_sync(stream % fileHandle)
 
    end subroutine MPAS_writeStream
 

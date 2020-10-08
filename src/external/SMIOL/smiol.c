@@ -1,16 +1,19 @@
+#define _GNU_SOURCE
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sched.h>
 #include "smiol.h"
 #include "smiol_utils.h"
+#include "smiol_async.h"
 
 #ifdef SMIOL_PNETCDF
 #include "pnetcdf.h"
 #define PNETCDF_DEFINE_MODE 0
 #define PNETCDF_DATA_MODE 1
 #define N_REQS 256 
-#define BUFSIZE (64*1024*1024)
+#define BUFSIZE (256*1024*1024)
 #endif
 
 #define START_COUNT_READ 0
@@ -24,6 +27,8 @@ int build_start_count(struct SMIOL_file *file, const char *varname,
                       const struct SMIOL_decomp *decomp,
                       int write_or_read, size_t *element_size, int *ndims,
                       size_t **start, size_t **count);
+
+void *async_write(void *b);
 
 #ifdef SMIOL_AGGREGATION
 void smiol_aggregate_list(MPI_Comm comm, size_t n_in, SMIOL_Offset *in_list,
@@ -72,6 +77,10 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
                struct SMIOL_context **context)
 {
 	MPI_Comm smiol_comm;
+        struct sched_param param;
+
+        param.sched_priority = 32;
+        sched_setparam(0, &param);
 
 	/*
 	 * Before dereferencing context below, ensure that the pointer
@@ -105,7 +114,7 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
 	 */
 	(*context)->lib_ierr = 0;
 	(*context)->lib_type = SMIOL_LIBRARY_UNKNOWN;
-
+	(*context)->checksum = 0;
 	(*context)->num_io_tasks = num_io_tasks;
 	(*context)->io_stride = io_stride;
 
@@ -131,6 +140,20 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
 		(*context) = NULL;
 		return SMIOL_MPI_ERROR;
 	}
+
+	/*
+	 * Prepare asynchronous output components of the context
+	 */
+	if (SMIOL_async_init(*context) != 0) {
+		free((*context));
+		(*context) = NULL;
+		return SMIOL_ASYNC_ERROR;
+	}
+
+	/*
+	 * Set checksum for the SMIOL_context
+	 */
+	(*context)->checksum = 42424242;  /* TO DO - compute a real checksum here... */
 
 	return SMIOL_SUCCESS;
 }
@@ -163,11 +186,27 @@ int SMIOL_finalize(struct SMIOL_context **context)
 		return SMIOL_SUCCESS;
 	}
 
+	/*
+	 * Verify validity through checksum
+	 */
+	if ((*context)->checksum != 42424242) {
+		return SMIOL_INVALID_ARGUMENT;
+	}
+
 	smiol_comm = MPI_Comm_f2c((*context)->fcomm);
 	if (MPI_Comm_free(&smiol_comm) != MPI_SUCCESS) {
 		free((*context));
 		(*context) = NULL;
 		return SMIOL_MPI_ERROR;
+	}
+
+	/*
+	 * Finalize asynchronous output
+	 */
+	if (SMIOL_async_finalize(*context) != 0) {
+		free((*context));
+		(*context) = NULL;
+		return SMIOL_ASYNC_ERROR;
 	}
 
 	free((*context));
@@ -215,6 +254,7 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	MPI_Comm io_file_comm;
 	MPI_Comm io_group_comm;
 #endif
+        pthread_mutexattr_t mutexattr;
 
 	/*
 	 * Before dereferencing file below, ensure that the pointer
@@ -265,6 +305,8 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 		(*file)->reqs = NULL;
 	}
 #endif
+
+	(*file)->mode = mode;
 
 	if (mode & SMIOL_FILE_CREATE) {
 #ifdef SMIOL_PNETCDF
@@ -318,6 +360,54 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	}
 #endif
 
+	/*
+	 * Asynchronous queue initialization
+	 */
+	(*file)->head = NULL;
+	(*file)->tail = NULL;
+
+
+        /*
+         * Mutex setup
+         */
+        (*file)->mutex = malloc(sizeof(pthread_mutex_t));
+
+        ierr = pthread_mutexattr_init(&mutexattr);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutexattr_init: %i\n", ierr);
+                return 1;
+        }
+
+        ierr = pthread_mutex_init((*file)->mutex, (const pthread_mutexattr_t *)&mutexattr);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutex_init: %i\n", ierr);
+                return 1;
+        }
+
+        ierr = pthread_mutexattr_destroy(&mutexattr);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutexattr_destroy: %i\n", ierr);
+                return 1;
+        }
+
+
+
+	/*
+	 * Asynchronous writer thread initialization
+	 */
+	(*file)->writer = NULL;
+
+
+	/*
+	 * Asynchronous status initialization
+	 */
+	(*file)->active = 0;
+
+	/*
+	 * Set checksum for the SMIOL_file
+	 */
+	(*file)->checksum = 42424242;  /* TO DO - compute a real checksum here... */
+
 	return SMIOL_SUCCESS;
 }
 
@@ -351,25 +441,31 @@ int SMIOL_close_file(struct SMIOL_file **file)
 		return SMIOL_SUCCESS;
 	}
 
-#ifdef SMIOL_PNETCDF
-	if ((*file)->io_task) {
-		if ((*file)->n_reqs > 0) {
-fprintf(stderr, "Waiting on %i reqs in SMIOL_close_file\n", (*file)->n_reqs);
-			ierr = ncmpi_wait_all((*file)->ncidp, (*file)->n_reqs, (*file)->reqs, statuses);
-			(*file)->n_reqs = 0;
-		}
-		free((*file)->reqs);
-		ierr = ncmpi_close((*file)->ncidp);
-	}
-	MPI_Bcast(&ierr, 1, MPI_INT, 0, MPI_Comm_f2c((*file)->io_group_comm));
 
-	if (ierr != NC_NOERR) {
-		((*file)->context)->lib_type = SMIOL_LIBRARY_PNETCDF;
-		((*file)->context)->lib_ierr = ierr;
-		free((*file));
-		(*file) = NULL;
+	/*
+	 * Verify validity through checksum
+	 */
+	if ((*file)->checksum != 42424242) {
+		return SMIOL_INVALID_ARGUMENT;
+	}
+
+
+	/*
+	 * Wait for asynchronous writer to finish
+	 */
+	SMIOL_async_join_thread(&((*file)->writer));
+
+
+	/*
+	 * Free mutex
+	 */
+        ierr = pthread_mutex_destroy((*file)->mutex);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutex_destroy: %i\n", ierr);
 		return SMIOL_LIBRARY_ERROR;
 	}
+
+        free((*file)->mutex);
 
 	io_file_comm = MPI_Comm_f2c((*file)->io_file_comm);
 	if (MPI_Comm_free(&io_file_comm) != MPI_SUCCESS) {
@@ -383,6 +479,24 @@ fprintf(stderr, "Waiting on %i reqs in SMIOL_close_file\n", (*file)->n_reqs);
 		free((*file));
 		(*file) = NULL;
 		return SMIOL_MPI_ERROR;
+	}
+
+#ifdef SMIOL_PNETCDF
+	if ((*file)->io_task) {
+
+/* TO DO - check return status */
+		if ((*file)->mode & SMIOL_FILE_CREATE ||
+		    (*file)->mode & SMIOL_FILE_WRITE) {
+			ncmpi_buffer_detach((*file)->ncidp);
+		}
+
+		if ((ierr = ncmpi_close((*file)->ncidp)) != NC_NOERR) {
+			((*file)->context)->lib_type = SMIOL_LIBRARY_PNETCDF;
+			((*file)->context)->lib_ierr = ierr;
+			free((*file));
+			(*file) = NULL;
+			return SMIOL_LIBRARY_ERROR;
+		}
 	}
 #endif
 
@@ -952,12 +1066,6 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 	MPI_Comm agg_comm;
 	MPI_Datatype dtype;
 #endif
-#ifdef SMIOL_PNETCDF
-        MPI_Offset usage;
-        long lusage;
-        long max_usage;
-        int statuses[N_REQS];
-#endif
 
 	/*
 	 * Basic checks on arguments
@@ -1053,6 +1161,7 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 		const void *buf_p;
 		MPI_Offset *mpi_start;
 		MPI_Offset *mpi_count;
+		struct SMIOL_async_buffer *async;
 
 		if (file->state == PNETCDF_DEFINE_MODE) {
 			if (file->io_task) {
@@ -1091,10 +1200,14 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 			return SMIOL_LIBRARY_ERROR;
 		}
 
+		if (file->io_task) {
 		if (decomp) {
 			buf_p = out_buf;
-		} else {
-			buf_p = buf;
+		} else if (file->io_task) {
+                        size_t buf_size = element_size;
+
+                        buf_p = malloc(buf_size);
+                        memcpy(buf_p, buf, buf_size);
 		}
 
 		mpi_start = malloc(sizeof(MPI_Offset) * (size_t)ndims);
@@ -1119,36 +1232,32 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 			mpi_count[j] = (MPI_Offset)count[j];
 		}
 
-		if (file->io_task) {
+                async = malloc(sizeof(struct SMIOL_async_buffer));
 
-			ierr = ncmpi_inq_buffer_usage(file->ncidp, &usage);
-			if (decomp) {
-				usage += element_size * decomp->io_count;
-			} else {
-				usage += element_size;
-			}
-
-			lusage = usage;
-			ierr = MPI_Allreduce(&lusage, &max_usage, 1, MPI_LONG, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
-fprintf(stderr, "max_usage = %li, n_reqs = %i\n", max_usage, file->n_reqs);
-			if (max_usage > BUFSIZE || file->n_reqs == N_REQS) {
-fprintf(stderr, "Waiting on %i reqs before queueing more writes\n", file->n_reqs);
-				ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
-				file->n_reqs = 0;
-			}
-
-			ierr = ncmpi_bput_vara(file->ncidp,
-			                       varidp,
-			                       mpi_start, mpi_count,
-			                       buf_p,
-			                       0, MPI_DATATYPE_NULL,
-			                       &(file->reqs[(file->n_reqs++)]));
+		async->ierr = 0;
+		async->ncidp = file->ncidp;
+		async->varidp = varidp;
+		async->mpi_start = mpi_start;
+		async->mpi_count = mpi_count;
+		async->buf = buf_p;
+		if (decomp) {
+			async->bufsize = decomp->io_count * element_size;
+		} else {
+			async->bufsize = element_size;
 		}
-		MPI_Bcast(&ierr, 1, MPI_INT, 0, MPI_Comm_f2c(file->io_group_comm));
+		async->next = NULL;
 
-		free(mpi_start);
-		free(mpi_count);
+		pthread_mutex_lock(file->mutex);
+		SMIOL_async_queue_add(file, async);
+		if (!file->active) {
+			SMIOL_async_join_thread(&(file->writer));
+			file->active = 1;
+			SMIOL_async_launch_thread(&(file->writer), async_write, (void *)file);
+		}
+		pthread_mutex_unlock(file->mutex);
+		}
 
+/*
 		if (ierr != NC_NOERR) {
 			file->context->lib_type = SMIOL_LIBRARY_PNETCDF;
 			file->context->lib_ierr = ierr;
@@ -1161,15 +1270,18 @@ fprintf(stderr, "Waiting on %i reqs before queueing more writes\n", file->n_reqs
 
 			return SMIOL_LIBRARY_ERROR;
 		}
+*/
 	}
 #endif
 
 	/*
 	 * Free up memory before returning
 	 */
+/*
 	if (decomp) {
 		free(out_buf);
 	}
+*/
 
 	free(start);
 	free(count);
@@ -1266,6 +1378,11 @@ int SMIOL_get_var(struct SMIOL_file *file, const char *varname,
 	}
 
 /* MGD TO DO: could verify that if not file->io_task, then size of in_buf is zero */
+
+	/*
+	 * Wait for asynchronous writer to finish
+	 */
+	SMIOL_async_join_thread(&(file->writer));
 
 	/*
 	 * Read in_buf
@@ -1725,6 +1842,17 @@ int SMIOL_sync_file(struct SMIOL_file *file)
 		return SMIOL_INVALID_ARGUMENT;
 	}
 
+	if (file->checksum != 42424242) {
+		return SMIOL_INVALID_ARGUMENT;
+	}
+
+
+	/*
+	 * Wait for asynchronous writer to finish
+	 */
+	SMIOL_async_join_thread(&(file->writer));
+
+
 #ifdef SMIOL_PNETCDF
 	/*
 	 * If the file is in define mode then switch it into data mode
@@ -1743,14 +1871,6 @@ int SMIOL_sync_file(struct SMIOL_file *file)
 	}
 
 	if (file->io_task) {
-#ifdef SMIOL_PNETCDF
-		if (file->n_reqs > 0) {
-fprintf(stderr, "Waiting on %i reqs in SMIOL_sync_file\n", file->n_reqs);
-			ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
-			file->n_reqs = 0;
-		}
-#endif
-
 		ierr = ncmpi_sync(file->ncidp);
 	}
 	MPI_Bcast(&ierr, 1, MPI_INT, 0, MPI_Comm_f2c(file->io_group_comm));
@@ -1796,6 +1916,8 @@ const char *SMIOL_error_string(int errno)
 		return "argument is of the wrong type";
 	case SMIOL_INSUFFICIENT_ARG:
 		return "argument is of insufficient size";
+	case SMIOL_ASYNC_ERROR:
+		return "failure in SMIOL asynchronous function";
 	default:
 		return "Unknown error";
 	}
@@ -2296,6 +2418,130 @@ int build_start_count(struct SMIOL_file *file, const char *varname,
 	free(dimsizes);
 
 	return SMIOL_SUCCESS;
+}
+
+
+/********************************************************************************
+ *
+ * async_write
+ *
+ * Handles calls to file-level API to write a buffer to a file
+ *
+ * This function does not free any memory after the write has been attempted.
+ *
+ * This function returns the pointer to its argument. The ierr member of
+ * the argument will be set to 0 if the write was successful.
+ *
+ ********************************************************************************/
+void *async_write(void *b)
+{
+	struct SMIOL_file *file;
+	struct SMIOL_async_buffer *async;
+
+#ifdef SMIOL_PNETCDF
+        MPI_Offset usage;
+        long lusage;
+        long max_usage;
+        int statuses[N_REQS];
+#endif
+	cpu_set_t mask;
+	struct sched_param param;
+	struct timespec t;
+	int i;
+	int empty;
+	int min_empty;
+	int max_empty;
+	int ierr;
+
+	file = b;
+
+	param.sched_priority = 1;
+	sched_setparam(0, &param);
+
+	CPU_ZERO(&mask);
+	CPU_SET(35, &mask);
+	sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i Begin async write\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+
+	while (file->active) {
+		pthread_mutex_lock(file->mutex);
+		empty = SMIOL_async_queue_empty(file);
+		MPI_Allreduce(&empty, &max_empty, 1, MPI_INT, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
+		MPI_Allreduce(&empty, &min_empty, 1, MPI_INT, MPI_MIN, MPI_Comm_f2c(file->io_file_comm));
+
+		if (max_empty == min_empty) {
+			async = SMIOL_async_queue_remove(file);
+			if (async == NULL && file->n_reqs == 0) {
+				file->active = 0;
+			}
+		}
+		pthread_mutex_unlock(file->mutex);
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i Queue access complete\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+
+		if (max_empty != min_empty) {
+if (file->context->comm_rank == 0) {
+	clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+	fprintf(stderr, "%i.%9.9i disagreement\n", (int)t.tv_sec, (int)t.tv_nsec);
+}
+			continue;
+		}
+
+		if (async != NULL) {
+#ifdef SMIOL_PNETCDF
+			ierr = ncmpi_inq_buffer_usage(file->ncidp, &usage);
+			usage += async->bufsize;
+
+			lusage = usage;
+			ierr = MPI_Allreduce(&lusage, &max_usage, 1, MPI_LONG, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i max_usage = %li\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec, max_usage);
+			if (max_usage > BUFSIZE || file->n_reqs == N_REQS) {
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i buffer size exceeded... wait_all\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+				ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
+				file->n_reqs = 0;
+			}
+
+			/* TO DO: How do we communicate ierr back to main thread? */
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i call ncmpi_bput_vara\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+			async->ierr = ncmpi_bput_vara(async->ncidp,
+			                              async->varidp,
+			                              async->mpi_start,
+			                              async->mpi_count,
+			                              async->buf,
+			                              0, MPI_DATATYPE_NULL,
+			                              &(file->reqs[(file->n_reqs++)]));
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i return from ncmpi_bput_vara\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+
+			free(async->mpi_start);
+			free(async->mpi_count);
+			free(async->buf);
+			free(async);
+#else
+			async->ierr = 0;
+#endif
+		} else if (file->n_reqs > 0) {
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i no buffer, but pending writes\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+			ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
+			file->n_reqs = 0;
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i pending writes finished\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+		}
+
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i Bottom of loop\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+	}
+
+clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+fprintf(stderr, "[%i] %i.%9.9i Finish async write\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
+
+	return b;
 }
 
 

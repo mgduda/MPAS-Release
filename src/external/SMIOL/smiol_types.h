@@ -28,6 +28,17 @@ struct SMIOL_context {
 
 	int lib_ierr;     /* Library-specific error code */
 	int lib_type;     /* From which library the error code originated */
+
+	/*
+	 * Asynchronous output
+	 */
+	pthread_mutex_t *mutex;
+	pthread_cond_t *cond;
+
+	/*
+	 * Checksum for verifying validity of contents of a SMIOL_context struct
+	 */
+	int checksum;
 };
 
 struct SMIOL_file {
@@ -42,6 +53,21 @@ struct SMIOL_file {
 	int n_reqs;
 	int *reqs;
 #endif
+
+	/*
+	 * Asynchronous output
+	 */
+	int mode;
+	int active;
+	pthread_t *writer;
+	pthread_mutex_t *mutex;
+	struct SMIOL_async_buffer *head;
+	struct SMIOL_async_buffer *tail;
+
+	/*
+	 * Checksum for verifying validity of contents of a SMIOL_file struct
+	 */
+	int checksum;
 };
 
 struct SMIOL_decomp {
@@ -69,6 +95,19 @@ struct SMIOL_decomp {
 	int *counts;
 	int *displs;
 #endif
+};
+
+struct SMIOL_async_buffer {
+	int ierr;
+	void *buf;
+	size_t bufsize;
+#ifdef SMIOL_PNETCDF
+	int ncidp;
+	int varidp;
+	MPI_Offset *mpi_start;
+	MPI_Offset *mpi_count;
+#endif
+	struct SMIOL_async_buffer *next;
 };
 
 
