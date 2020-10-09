@@ -430,7 +430,6 @@ int SMIOL_close_file(struct SMIOL_file **file)
 	int ierr;
 	MPI_Comm io_file_comm;
 	MPI_Comm io_group_comm;
-        int statuses[N_REQS];
 #endif
 
 	/*
@@ -1832,7 +1831,6 @@ int SMIOL_sync_file(struct SMIOL_file *file)
 {
 #ifdef SMIOL_PNETCDF
 	int ierr;
-        int statuses[N_REQS];
 #endif
 
 	/*
@@ -2449,8 +2447,7 @@ void *async_write(void *b)
 	struct timespec t;
 	int i;
 	int empty;
-	int min_empty;
-	int max_empty;
+	int sum_empty;
 	int ierr;
 
 	file = b;
@@ -2462,30 +2459,25 @@ void *async_write(void *b)
 	CPU_SET(35, &mask);
 	sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i Begin async write\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
-
 	while (file->active) {
 		pthread_mutex_lock(file->mutex);
 		empty = SMIOL_async_queue_empty(file);
-		MPI_Allreduce(&empty, &max_empty, 1, MPI_INT, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
-		MPI_Allreduce(&empty, &min_empty, 1, MPI_INT, MPI_MIN, MPI_Comm_f2c(file->io_file_comm));
 
-		if (max_empty == min_empty) {
+		/* empty can only take on values of 0 or 1, so the sum must equal 0 or n if all threads agree */
+		MPI_Allreduce(&empty, &sum_empty, 1, MPI_INT, MPI_SUM, MPI_Comm_f2c(file->io_file_comm));
+
+		/* Only if all threads agree on whether there are more items in the queue
+		 * can we proceed; otherwise, keep all threads alive and try another iteration
+		 */
+		if (sum_empty == 0 || sum_empty == file->context->num_io_tasks) {
 			async = SMIOL_async_queue_remove(file);
 			if (async == NULL && file->n_reqs == 0) {
 				file->active = 0;
 			}
 		}
 		pthread_mutex_unlock(file->mutex);
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i Queue access complete\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 
-		if (max_empty != min_empty) {
-if (file->context->comm_rank == 0) {
-	clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-	fprintf(stderr, "%i.%9.9i disagreement\n", (int)t.tv_sec, (int)t.tv_nsec);
-}
+		if (sum_empty != 0 && sum_empty != file->context->num_io_tasks) {
 			continue;
 		}
 
@@ -2496,18 +2488,12 @@ if (file->context->comm_rank == 0) {
 
 			lusage = usage;
 			ierr = MPI_Allreduce(&lusage, &max_usage, 1, MPI_LONG, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i max_usage = %li\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec, max_usage);
 			if (max_usage > BUFSIZE || file->n_reqs == N_REQS) {
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i buffer size exceeded... wait_all\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 				ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
 				file->n_reqs = 0;
 			}
 
 			/* TO DO: How do we communicate ierr back to main thread? */
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i call ncmpi_bput_vara\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 			async->ierr = ncmpi_bput_vara(async->ncidp,
 			                              async->varidp,
 			                              async->mpi_start,
@@ -2515,8 +2501,6 @@ fprintf(stderr, "[%i] %i.%9.9i call ncmpi_bput_vara\n", file->context->comm_rank
 			                              async->buf,
 			                              0, MPI_DATATYPE_NULL,
 			                              &(file->reqs[(file->n_reqs++)]));
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i return from ncmpi_bput_vara\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 
 			free(async->mpi_start);
 			free(async->mpi_count);
@@ -2526,20 +2510,11 @@ fprintf(stderr, "[%i] %i.%9.9i return from ncmpi_bput_vara\n", file->context->co
 			async->ierr = 0;
 #endif
 		} else if (file->n_reqs > 0) {
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i no buffer, but pending writes\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 			ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
 			file->n_reqs = 0;
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i pending writes finished\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 		}
 
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i Bottom of loop\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 	}
-
-clock_gettime(CLOCK_MONOTONIC_RAW, &t);
-fprintf(stderr, "[%i] %i.%9.9i Finish async write\n", file->context->comm_rank, (int)t.tv_sec, (int)t.tv_nsec);
 
 	return b;
 }
