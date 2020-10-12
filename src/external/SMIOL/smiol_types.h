@@ -61,6 +61,9 @@ struct SMIOL_file {
 	int active;
 	pthread_t *writer;
 	pthread_mutex_t *mutex;
+	pthread_cond_t *cond;
+	unsigned long queue_head;
+	unsigned long queue_tail;
 	struct SMIOL_async_buffer *head;
 	struct SMIOL_async_buffer *tail;
 

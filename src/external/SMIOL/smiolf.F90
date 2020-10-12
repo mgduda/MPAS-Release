@@ -5,7 +5,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 module SMIOLf
 
-    use iso_c_binding, only : c_int, c_size_t, c_int64_t, c_ptr
+    use iso_c_binding, only : c_int, c_long, c_size_t, c_int64_t, c_ptr
 
     private
 
@@ -54,6 +54,14 @@ module SMIOLf
 
         integer(c_int) :: lib_ierr      ! Library-specific error code
         integer(c_int) :: lib_type      ! From which library the error code originated
+
+	!
+	! Asynchronous output
+	!
+	type (c_ptr) :: mutex
+	type (c_ptr) :: cond
+
+        integer(c_int) :: checksum
     end type SMIOLf_context
 
     type, bind(C) :: SMIOLf_file
@@ -65,7 +73,25 @@ module SMIOLf
         integer(c_int) :: io_task    ! 1 = this task performs I/O calls; 0 = no I/O calls on this task
         integer(c_int) :: io_file_comm
         integer(c_int) :: io_group_comm
+        integer(c_int) :: n_reqs
+        type (c_ptr) :: reqs
 #endif
+	!
+	! Asynchronous output
+	!
+        integer(c_int) :: mode
+        integer(c_int) :: active
+	type (c_ptr) :: writer
+	type (c_ptr) :: mutex
+	type (c_ptr) :: cond
+
+        integer(c_long) :: queue_head   ! Should be unsigned long
+        integer(c_long) :: queue_tail   ! Should be unsigned long
+
+	type (c_ptr) :: head
+	type (c_ptr) :: tail
+
+        integer(c_int) :: checksum
     end type SMIOLf_file
 
     type, bind(C) :: SMIOLf_decomp
