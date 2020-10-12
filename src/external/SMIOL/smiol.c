@@ -77,10 +77,6 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
                struct SMIOL_context **context)
 {
 	MPI_Comm smiol_comm;
-        struct sched_param param;
-
-        param.sched_priority = 32;
-        sched_setparam(0, &param);
 
 	/*
 	 * Before dereferencing context below, ensure that the pointer
@@ -255,6 +251,7 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	MPI_Comm io_group_comm;
 #endif
         pthread_mutexattr_t mutexattr;
+	pthread_condattr_t condattr;
 
 	/*
 	 * Before dereferencing file below, ensure that the pointer
@@ -390,6 +387,31 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
                 return 1;
         }
 
+	/*
+	 * Condition variable setup
+	 */
+	(*file)->cond = malloc(sizeof(pthread_cond_t));
+
+	ierr = pthread_condattr_init(&condattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_condattr_init: %i\n", ierr);
+		return 1;
+	}
+
+	ierr = pthread_cond_init((*file)->cond, (const pthread_condattr_t *)&condattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_cond_init: %i\n", ierr);
+		return 1;
+	}
+
+	ierr = pthread_condattr_destroy(&condattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_condattr_destroy: %i\n", ierr);
+		return 1;
+	}
+
+	(*file)->queue_head = 0;
+	(*file)->queue_tail = 0;
 
 
 	/*
@@ -1246,14 +1268,14 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 		}
 		async->next = NULL;
 
-		pthread_mutex_lock(file->mutex);
+		SMIOL_async_ticket_lock(file);
 		SMIOL_async_queue_add(file, async);
 		if (!file->active) {
 			SMIOL_async_join_thread(&(file->writer));
 			file->active = 1;
 			SMIOL_async_launch_thread(&(file->writer), async_write, (void *)file);
 		}
-		pthread_mutex_unlock(file->mutex);
+		SMIOL_async_ticket_unlock(file);
 		}
 
 /*
@@ -2443,7 +2465,6 @@ void *async_write(void *b)
         int statuses[N_REQS];
 #endif
 	cpu_set_t mask;
-	struct sched_param param;
 	struct timespec t;
 	int i;
 	int empty;
@@ -2452,15 +2473,13 @@ void *async_write(void *b)
 
 	file = b;
 
-	param.sched_priority = 1;
-	sched_setparam(0, &param);
 
 	CPU_ZERO(&mask);
 	CPU_SET(35, &mask);
 	sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
 	while (file->active) {
-		pthread_mutex_lock(file->mutex);
+		SMIOL_async_ticket_lock(file);
 		empty = SMIOL_async_queue_empty(file);
 
 		/* empty can only take on values of 0 or 1, so the sum must equal 0 or n if all threads agree */
@@ -2475,7 +2494,7 @@ void *async_write(void *b)
 				file->active = 0;
 			}
 		}
-		pthread_mutex_unlock(file->mutex);
+		SMIOL_async_ticket_unlock(file);
 
 		if (sum_empty != 0 && sum_empty != file->context->num_io_tasks) {
 			continue;

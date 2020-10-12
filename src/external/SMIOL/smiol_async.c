@@ -176,6 +176,46 @@ struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_file *file)
 
 /********************************************************************************
  *
+ * SMIOL_async_ticket_lock
+ *
+ * https://stackoverflow.com/questions/12685112/pthreads-thread-starvation-caused-by-quick-re-locking
+ *
+ * Detailed description.
+ *
+ ********************************************************************************/
+void SMIOL_async_ticket_lock(struct SMIOL_file *file)
+{
+	unsigned long queue_me;
+
+	pthread_mutex_lock(file->mutex);
+	queue_me = file->queue_tail++;
+	while (queue_me != file->queue_head) {
+		pthread_cond_wait(file->cond, file->mutex);
+	}
+	pthread_mutex_unlock(file->mutex);
+}
+
+
+/********************************************************************************
+ *
+ * SMIOL_async_ticket_unlock
+ *
+ * https://stackoverflow.com/questions/12685112/pthreads-thread-starvation-caused-by-quick-re-locking
+ *
+ * Detailed description.
+ *
+ ********************************************************************************/
+void SMIOL_async_ticket_unlock(struct SMIOL_file *file)
+{
+	pthread_mutex_lock(file->mutex);
+	file->queue_head++;
+	pthread_cond_broadcast(file->cond);
+	pthread_mutex_unlock(file->mutex);
+}
+
+
+/********************************************************************************
+ *
  * SMIOL_async_launch_thread
  *
  * Short, one-line description.
