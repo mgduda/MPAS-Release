@@ -645,7 +645,11 @@ int parse_namelist_records_from_registry(ezxml_t registry)/*{{{*/
 		}
 
 		fortprintf(fd, "      if (dminfo %% my_proc_id == IO_NODE) then\n");
-		fortprintf(fd, "         rewind(unitNumber)\n");
+		fortprintf(fd, "! Rewinding before each read leads to errors when the code is built with\n");
+		fortprintf(fd, "! the NAG Fortran compiler.\n");
+		fortprintf(fd, "! If using other compilers, the rewind statement may be uncommented\n");
+		fortprintf(fd, "! to allow namelist groups to appear in any order in a namelist file.\n");
+		fortprintf(fd, "!        rewind(unitNumber)\n");
 		fortprintf(fd, "         read(unitNumber, %s, iostat=ierr)\n", nmlrecname);
 		fortprintf(fd, "      end if\n");
 
