@@ -1334,6 +1334,8 @@ module mpas_timekeeping
       character (len=StrKIND) :: timeSubString
       character (len=StrKIND) :: secDecSubString
       character(len=StrKIND), pointer, dimension(:) :: subStrings
+      character(len=16) :: fmtString
+      integer :: baseWidth
 
 !      if (present(DD)) then
 !         days = DD
@@ -1403,8 +1405,27 @@ module mpas_timekeeping
       if (present(timeString) .or. present(dt)) then
 
 
-         if(present(dt)) then
-            write (timeString_,*) "00:00:", dt         
+         if (present(dt)) then
+            !
+            ! Before writing dt into a timeString, first construct an appropriate
+            ! format string; leaving the format up to the compiler with fmt=* lead
+            ! to errors if the compiler makes a peculiar choice of format
+            !
+
+            ! Width of the representation of unit-magnitude dt, increased in proportion to log10(dt)
+            baseWidth = 12
+
+            if (dt > 0.0_RKIND) then
+                write(fmtString, '(a,i2.2,a,i2.2,a)') '(a,f', int(floor(max(log10(dt),0.0_RKIND)))+baseWidth, &
+                                                      '.', baseWidth-2,')'
+            else if (dt < 0.0_RKIND) then
+                write(fmtString, '(a,i2.2,a,i2.2,a)') '(a,f', int(floor(max(log10(abs(dt)),0.0_RKIND)))+baseWidth+1, &
+                                                      '.', baseWidth-2,')'
+            else
+                write(fmtString, '(a)') '(a,f3.1)'
+            end if
+
+            write(timeString_,trim(fmtString)) '00:00:', dt
          else
             timeString_ = timeString
          end if
