@@ -5986,9 +5986,11 @@ call mpas_log_write('Done with soil consistency check')
       ! Set terrain field based on PHIS
       !
       call mpas_pool_get_array(mesh, 'ter', ter)
+      call mpas_pool_get_field(mesh, 'ter', ter_field)
       call mpas_pool_get_array(mesh, 'PHIS', PHIS)
 
-      ter(:) = PHIS(:) / gravity
+      ter(1:nCellsSolve) = PHIS(1:nCellsSolve) / gravity
+      call mpas_dmpar_exch_halo_field(ter_field)
 
 
       !
@@ -6025,7 +6027,6 @@ call mpas_log_write('Done with soil consistency check')
       call mpas_pool_get_array(mesh, 'nEdgesOnCell', nEdgesOnCell)
       call mpas_pool_get_array(mesh, 'cellsOnCell', cellsOnCell)
       call mpas_pool_get_array(mesh, 'edgesOnCell', edgesOnCell)
-      call mpas_pool_get_field(mesh, 'ter', ter_field)
       call mpas_pool_get_config(configs, 'config_nsmterrain', config_nsmterrain)
       nsmterrain = config_nsmterrain
 

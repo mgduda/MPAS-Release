@@ -410,8 +410,10 @@ module init_atm_core_interface
       call mpas_decomp_create_decomp_list(decompList)
 
       decompFunc => mpas_uniform_decomp
-
       call mpas_decomp_register_method(decompList, 'uniform', decompFunc, ierr)
+
+      decompFunc => atm_cells_decomp
+      call mpas_decomp_register_method(decompList, 'cells', decompFunc, ierr)
 
       if ( ierr == MPAS_DECOMP_NOERR ) then
          ierr = 0
@@ -446,6 +448,48 @@ module init_atm_core_interface
       call init_atm_generate_structs(block, block % structs, block % dimensions, block % packages)
 
    end function init_atm_setup_block
+
+
+   function atm_cells_decomp(block, manager, globalDimSize, numBlocks, ownedIndices) result(iErr)
+
+      implicit none
+
+      type (block_type), intent(in) :: block
+      type (mpas_streamManager_type), intent(inout) :: manager
+      integer, intent(in) :: globalDimSize
+      integer, intent(in) :: numBlocks
+
+      integer, dimension(:), pointer :: ownedIndices
+
+      integer :: iErr
+      integer, pointer :: nCellsSolve
+      integer, dimension(:), pointer :: indexToCellID
+
+      integer :: blockDimSize, blockStart, i
+
+      iErr = 0
+
+      nullify(nCellsSolve)
+      nullify(indexToCellID)
+      call mpas_pool_get_dimension(block % dimensions, 'nCellsSolve', nCellsSolve)
+      call mpas_pool_get_array(block % allFields, 'indexToCellID_blk', indexToCellID)
+
+      if (.not. associated(nCellsSolve)) then
+          iErr = 1
+          return
+      end if
+      call mpas_log_write('nCellsSolve = $i', intArgs=[nCellsSolve], messageType=MPAS_LOG_ERR)
+
+      if (.not. associated(indexToCellID)) then
+          iErr = 1
+          return
+      end if
+      call mpas_log_write('size(indexToCellID) = $i', intArgs=[size(indexToCellID)], messageType=MPAS_LOG_ERR)
+
+      allocate(ownedIndices(nCellsSolve))
+      ownedIndices(1:nCellsSolve) = indexToCellID(1:nCellsSolve)
+
+   end function atm_cells_decomp
 
 
 #include "setup_immutable_streams.inc"
