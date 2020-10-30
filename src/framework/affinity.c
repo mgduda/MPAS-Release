@@ -10,17 +10,13 @@ void set_compute_affinity(int rank)
 	cpu_set_t mask;
 
 	CPU_ZERO(&mask);
-/*
-	if (rank % 35 < 17) {
-		CPU_SET(rank % 34, &mask);
-		fprintf(stderr, "Assigning rank %i to CPU %i\n", rank, rank % 34);
+	if (rank % 10 < 5) {
+		CPU_SET(rank % 10, &mask);
+		fprintf(stderr, "Assigning rank %i to CPU %i\n", rank, rank % 10);
 	} else {
-		CPU_SET((rank % 34) + 1, &mask);
-		fprintf(stderr, "Assigning rank %i to CPU %i\n", rank, (rank % 34) + 1);
+		CPU_SET((rank % 10) + 1, &mask);
+		fprintf(stderr, "Assigning rank %i to CPU %i\n", rank, (rank % 10) + 1);
 	}
-*/
-	CPU_SET(rank % 35, &mask);
-	fprintf(stderr, "Assigning rank %i to CPU %i\n", rank, rank % 35);
 	sched_setaffinity(0, sizeof(cpu_set_t), &mask);	
 #endif
 }
