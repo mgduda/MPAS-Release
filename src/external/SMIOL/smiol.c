@@ -12,8 +12,8 @@
 #include "pnetcdf.h"
 #define PNETCDF_DEFINE_MODE 0
 #define PNETCDF_DATA_MODE 1
-#define N_REQS 256 
-#define BUFSIZE (256*1024*1024)
+#define N_REQS 512 
+#define BUFSIZE (512*1024*1024)
 #endif
 
 #define START_COUNT_READ 0
@@ -2063,7 +2063,7 @@ int SMIOL_create_decomp(struct SMIOL_context *context,
 	size_t n_compute_elements_agg;
 	SMIOL_Offset *compute_elements_agg = NULL;
 #ifdef SMIOL_AGGREGATION
-	const int agg_factor = 9;     /* Eventually, compute this or get value from user */
+	const int agg_factor = 5;     /* Eventually, compute this or get value from user */
 
 	int comm_rank;
 	MPI_Comm agg_comm;
@@ -2475,7 +2475,8 @@ void *async_write(void *b)
 
 
 	CPU_ZERO(&mask);
-	CPU_SET(35, &mask);
+	CPU_SET(5, &mask);
+	CPU_SET(11, &mask);
 	sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
 	while (file->active) {
