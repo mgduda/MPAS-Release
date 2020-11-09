@@ -133,6 +133,8 @@
  integer, dimension(:), pointer :: bdyMaskCell
  character(len=StrKIND), pointer :: mminlu
 
+ real (kind=RKIND) :: dx, dy
+
  real (kind=RKIND) :: xPixel, yPixel, zPixel
 
 !--------------------------------------------------------------------------------------------------
@@ -267,7 +269,6 @@
          call mpas_log_write('Please correct the namelist.', messageType=MPAS_LOG_CRIT)
  end select surface_input_select0
 
-
 !
 ! Interpolate HGT
 !
@@ -287,16 +288,19 @@
 
  rarray_ptr = c_loc(rarray)
 
- start_lat = -89.99583
+ dx = 1.0_RKIND / 120.0_RKIND
+ dy = 1.0_RKIND / 120.0_RKIND
+
+ start_lat = -90.0_RKIND + 0.5_RKIND * dy / real(supersample_fac, kind=RKIND)
  select case(trim(config_topo_data))
     case('GTOPO30')
        call mpas_log_write('Using GTOPO30 terrain dataset')
        geog_sub_path = 'topo_30s/'
-       start_lon = -179.99583
+       start_lon = -180.0_RKIND + 0.5_RKIND * dx / real(supersample_fac, kind=RKIND)
     case('GMTED2010')
        call mpas_log_write('Using GMTED2010 terrain dataset')
        geog_sub_path = 'topo_gmted2010_30s/'
-       start_lon = 0.004166667
+       start_lon = 0.0_RKIND + 0.5_RKIND * dx / real(supersample_fac, kind=RKIND)
     case('default')
        call mpas_log_write('*****************************************************************', messageType=MPAS_LOG_ERR)
        call mpas_log_write('Invalid topography dataset '''//trim(config_topo_data) &
@@ -321,12 +325,15 @@
        call init_atm_check_read_error(istatus, fname)
 
        iPoint = 1
-       do j=4,ny-3
-       do i=4,nx-3
-          lat_pt = start_lat + (jTileStart + j - 5) * 0.0083333333
-          lon_pt = start_lon + (iTileStart + i - 5) * 0.0083333333
-          lat_pt = lat_pt * PI / 180.0
-          lon_pt = lon_pt * PI / 180.0
+       do j=supersample_fac * 3 + 1, supersample_fac * (ny-3)
+       do i=supersample_fac * 3 + 1, supersample_fac * (nx-3)
+          ii = (i - 1) / supersample_fac + 1
+          jj = (j - 1) / supersample_fac + 1
+
+          lat_pt = start_lat + (supersample_fac*(jTileStart-1) + j - (supersample_fac*3+1)) * dy / supersample_fac
+          lon_pt = start_lon + (supersample_fac*(iTileStart-1) + i - (supersample_fac*3+1)) * dx / supersample_fac
+          lat_pt = lat_pt * PI / 180.0_RKIND
+          lon_pt = lon_pt * PI / 180.0_RKIND
 
           iPoint = nearest_cell(lat_pt,lon_pt,iPoint,nCells,maxEdges, &
                                 nEdgesOnCell,cellsOnCell, &
@@ -337,7 +344,7 @@
           ! model grid cell contains the pixel (else, a different cell would be nearest)
           !
           if (bdyMaskCell(iPoint) < nBdyLayers) then
-             ter(iPoint) = ter(iPoint) + rarray(i,j,1)
+             ter(iPoint) = ter(iPoint) + rarray(ii,jj,1)
              nhs(iPoint) = nhs(iPoint) + 1
 
           ! For outermost boundary cells, additional work is needed to verify that the pixel
@@ -350,7 +357,7 @@
              if (in_cell(xPixel, yPixel, zPixel, xCell(iPoint), yCell(iPoint), zCell(iPoint), &
                          nEdgesOnCell(iPoint), verticesOnCell(:,iPoint), xVertex, yVertex, zVertex)) then
 
-                ter(iPoint) = ter(iPoint) + rarray(i,j,1)
+                ter(iPoint) = ter(iPoint) + rarray(ii,jj,1)
                 nhs(iPoint) = nhs(iPoint) + 1
 
              end if
@@ -367,7 +374,6 @@
  deallocate(rarray)
  deallocate(nhs)
  call mpas_log_write('--- end interpolate TER')
-
 
 !
 ! Interpolate LU_INDEX
@@ -401,6 +407,12 @@
 
  rarray_ptr = c_loc(rarray)
 
+ dx = 1.0_RKIND / 120.0_RKIND
+ dy = 1.0_RKIND / 120.0_RKIND
+
+ start_lat = -90.0_RKIND + 0.5_RKIND * dy / real(supersample_fac, kind=RKIND)
+ start_lon = -180.0_RKIND + 0.5_RKIND * dx / real(supersample_fac, kind=RKIND)
+
  do jTileStart = 1,20401,ny
     jTileEnd = jTileStart + ny - 1
 
@@ -416,17 +428,19 @@
        call init_atm_check_read_error(istatus, fname)
 
        iPoint = 1
-       do j=1,ny
-       do i=1,nx
+       do j=1, supersample_fac * ny
+       do i=1, supersample_fac * nx
+          ii = (i - 1) / supersample_fac + 1
+          jj = (j - 1) / supersample_fac + 1
 !
 ! The MODIS dataset appears to have zeros at the South Pole, possibly other places, too
 !
-if (rarray(i,j,1) == 0) cycle
+if (rarray(ii,jj,1) == 0) cycle
 
-          lat_pt = -89.99583  + (jTileStart + j - 2) * 0.0083333333
-          lon_pt = -179.99583 + (iTileStart + i - 2) * 0.0083333333
-          lat_pt = lat_pt * PI / 180.0
-          lon_pt = lon_pt * PI / 180.0
+          lat_pt = start_lat + (supersample_fac*(jTileStart-1) + j - 1) * dy / supersample_fac
+          lon_pt = start_lon + (supersample_fac*(iTileStart-1) + i - 1) * dx / supersample_fac
+          lat_pt = lat_pt * PI / 180.0_RKIND
+          lon_pt = lon_pt * PI / 180.0_RKIND
 
           iPoint = nearest_cell(lat_pt,lon_pt,iPoint,nCells,maxEdges, &
                                 nEdgesOnCell,cellsOnCell, &
@@ -437,7 +451,7 @@ if (rarray(i,j,1) == 0) cycle
           ! model grid cell contains the pixel (else, a different cell would be nearest)
           !
           if (bdyMaskCell(iPoint) < nBdyLayers) then
-             ncat(int(rarray(i,j,1)),iPoint) = ncat(int(rarray(i,j,1)),iPoint) + 1
+             ncat(int(rarray(ii,jj,1)),iPoint) = ncat(int(rarray(ii,jj,1)),iPoint) + 1
 
           ! For outermost boundary cells, additional work is needed to verify that the pixel
           ! actually lies within the nearest cell
@@ -449,7 +463,7 @@ if (rarray(i,j,1) == 0) cycle
              if (in_cell(xPixel, yPixel, zPixel, xCell(iPoint), yCell(iPoint), zCell(iPoint), &
                          nEdgesOnCell(iPoint), verticesOnCell(:,iPoint), xVertex, yVertex, zVertex)) then
 
-                ncat(int(rarray(i,j,1)),iPoint) = ncat(int(rarray(i,j,1)),iPoint) + 1
+                ncat(int(rarray(ii,jj,1)),iPoint) = ncat(int(rarray(ii,jj,1)),iPoint) + 1
 
              end if
           end if
@@ -489,6 +503,12 @@ if (rarray(i,j,1) == 0) cycle
 
  rarray_ptr = c_loc(rarray)
 
+ dx = 1.0_RKIND / 120.0_RKIND
+ dy = 1.0_RKIND / 120.0_RKIND
+
+ start_lat = -90.0_RKIND + 0.5_RKIND * dy / real(supersample_fac, kind=RKIND)
+ start_lon = -180.0_RKIND + 0.5_RKIND * dx / real(supersample_fac, kind=RKIND)
+
  do jTileStart = 1,20401,ny
     jTileEnd = jTileStart + ny - 1
 
@@ -504,12 +524,15 @@ if (rarray(i,j,1) == 0) cycle
        call init_atm_check_read_error(istatus, fname)
 
        iPoint = 1
-       do j=1,ny
-       do i=1,nx
-          lat_pt = -89.99583  + (jTileStart + j - 2) * 0.0083333333
-          lon_pt = -179.99583 + (iTileStart + i - 2) * 0.0083333333
-          lat_pt = lat_pt * PI / 180.0
-          lon_pt = lon_pt * PI / 180.0
+       do j=1, supersample_fac * ny
+       do i=1, supersample_fac * nx
+          ii = (i - 1) / supersample_fac + 1
+          jj = (j - 1) / supersample_fac + 1
+
+          lat_pt = start_lat + (supersample_fac*(jTileStart-1) + j - 1) * dy / supersample_fac
+          lon_pt = start_lon + (supersample_fac*(iTileStart-1) + i - 1) * dx / supersample_fac
+          lat_pt = lat_pt * PI / 180.0_RKIND
+          lon_pt = lon_pt * PI / 180.0_RKIND
 
           iPoint = nearest_cell(lat_pt,lon_pt,iPoint,nCells,maxEdges, &
                                 nEdgesOnCell,cellsOnCell, &
@@ -520,7 +543,7 @@ if (rarray(i,j,1) == 0) cycle
           ! model grid cell contains the pixel (else, a different cell would be nearest)
           !
           if (bdyMaskCell(iPoint) < nBdyLayers) then
-             ncat(int(rarray(i,j,1)),iPoint) = ncat(int(rarray(i,j,1)),iPoint) + 1
+             ncat(int(rarray(ii,jj,1)),iPoint) = ncat(int(rarray(ii,jj,1)),iPoint) + 1
 
           ! For outermost boundary cells, additional work is needed to verify that the pixel
           ! actually lies within the nearest cell
@@ -532,7 +555,7 @@ if (rarray(i,j,1) == 0) cycle
              if (in_cell(xPixel, yPixel, zPixel, xCell(iPoint), yCell(iPoint), zCell(iPoint), &
                          nEdgesOnCell(iPoint), verticesOnCell(:,iPoint), xVertex, yVertex, zVertex)) then
 
-                ncat(int(rarray(i,j,1)),iPoint) = ncat(int(rarray(i,j,1)),iPoint) + 1
+                ncat(int(rarray(ii,jj,1)),iPoint) = ncat(int(rarray(ii,jj,1)),iPoint) + 1
 
              end if
           end if
@@ -885,8 +908,12 @@ if (rarray(i,j,1) == 0) cycle
 
     rarray_ptr = c_loc(rarray)
 
-    start_lat = -89.99583
-    start_lon = -179.99583
+    dx = 1.0_RKIND / 120.0_RKIND
+    dy = 1.0_RKIND / 120.0_RKIND
+
+    start_lat = -90.0_RKIND + 0.5_RKIND * dy / real(supersample_fac, kind=RKIND)
+    start_lon = -180.0_RKIND + 0.5_RKIND * dx / real(supersample_fac, kind=RKIND)
+
     geog_sub_path = 'greenfrac_fpar_modis/'
 
     do jTileStart = 1,20401,ny
@@ -904,12 +931,15 @@ if (rarray(i,j,1) == 0) cycle
           call init_atm_check_read_error(istatus, fname)
 
           iPoint = 1
-          do j=1,ny
-          do i=1,nx
-             lat_pt = start_lat + (jTileStart + j - 2) * 0.0083333333
-             lon_pt = start_lon + (iTileStart + i - 2) * 0.0083333333
-             lat_pt = lat_pt * PI / 180.0
-             lon_pt = lon_pt * PI / 180.0
+          do j=1, supersample_fac * ny
+          do i=1, supersample_fac * nx
+             ii = (i - 1) / supersample_fac + 1
+             jj = (j - 1) / supersample_fac + 1
+
+             lat_pt = start_lat + (supersample_fac*(jTileStart-1) + j - 1) * dy / supersample_fac
+             lon_pt = start_lon + (supersample_fac*(iTileStart-1) + i - 1) * dx / supersample_fac
+             lat_pt = lat_pt * PI / 180.0_RKIND
+             lon_pt = lon_pt * PI / 180.0_RKIND
 
              iPoint = nearest_cell(lat_pt,lon_pt,iPoint,nCells,maxEdges, &
                                    nEdgesOnCell,cellsOnCell, &
@@ -922,10 +952,10 @@ if (rarray(i,j,1) == 0) cycle
              !
              if (landmask(iPoint) == 1 .and. bdyMaskCell(iPoint) < nBdyLayers) then
                 do k=1,nz
-                   if (rarray(i,j,k) == msgval) then
-                      rarray(i,j,k) = fillval
+                   if (rarray(ii,jj,k) == msgval) then
+                      rarray(ii,jj,k) = fillval
                    end if
-                   greenfrac(k,iPoint) = greenfrac(k,iPoint) + rarray(i,j,k)
+                   greenfrac(k,iPoint) = greenfrac(k,iPoint) + rarray(ii,jj,k)
                 end do
                 nhs(iPoint) = nhs(iPoint) + 1
 
@@ -939,10 +969,10 @@ if (rarray(i,j,1) == 0) cycle
                 if (in_cell(xPixel, yPixel, zPixel, xCell(iPoint), yCell(iPoint), zCell(iPoint), &
                             nEdgesOnCell(iPoint), verticesOnCell(:,iPoint), xVertex, yVertex, zVertex)) then
                    do k=1,nz
-                      if (rarray(i,j,k) == msgval) then
-                         rarray(i,j,k) = fillval
+                      if (rarray(ii,jj,k) == msgval) then
+                         rarray(ii,jj,k) = fillval
                       end if
-                      greenfrac(k,iPoint) = greenfrac(k,iPoint) + rarray(i,j,k)
+                      greenfrac(k,iPoint) = greenfrac(k,iPoint) + rarray(ii,jj,k)
                    end do
                    nhs(iPoint) = nhs(iPoint) + 1
                 end if
