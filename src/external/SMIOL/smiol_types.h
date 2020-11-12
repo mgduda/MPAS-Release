@@ -32,6 +32,8 @@ struct SMIOL_context {
 	/*
 	 * Asynchronous output
 	 */
+	int async_io_comm;    /* Comm for ranks performing I/O */
+	int async_group_comm; /* Comm for group of ranks associated with an I/O rank */
 	pthread_mutex_t *mutex;
 	pthread_cond_t *cond;
 
