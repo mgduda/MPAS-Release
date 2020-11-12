@@ -64,8 +64,7 @@ struct SMIOL_file {
 	pthread_cond_t *cond;
 	unsigned long queue_head;
 	unsigned long queue_tail;
-	struct SMIOL_async_buffer *head;
-	struct SMIOL_async_buffer *tail;
+	struct SMIOL_async_queue *queue;
 
 	/*
 	 * Checksum for verifying validity of contents of a SMIOL_file struct
@@ -113,6 +112,12 @@ struct SMIOL_async_buffer {
 	struct SMIOL_async_buffer *next;
 };
 
+struct SMIOL_async_queue {
+	struct SMIOL_async_buffer *head;
+	struct SMIOL_async_buffer *tail;
+};
+
+#define SMIOL_ASYNC_QUEUE_INITIALIZER (struct SMIOL_async_queue){NULL, NULL}
 
 /*
  * Return error codes

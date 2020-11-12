@@ -360,8 +360,8 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	/*
 	 * Asynchronous queue initialization
 	 */
-	(*file)->head = NULL;
-	(*file)->tail = NULL;
+	(*file)->queue = malloc(sizeof(struct SMIOL_async_queue));
+	*((*file)->queue) = SMIOL_ASYNC_QUEUE_INITIALIZER;
 
 
         /*
@@ -487,6 +487,11 @@ int SMIOL_close_file(struct SMIOL_file **file)
 	}
 
         free((*file)->mutex);
+
+	/*
+	 * Free queue
+	 */
+	free((*file)->queue);
 
 	io_file_comm = MPI_Comm_f2c((*file)->io_file_comm);
 	if (MPI_Comm_free(&io_file_comm) != MPI_SUCCESS) {
@@ -1269,7 +1274,7 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 		async->next = NULL;
 
 		SMIOL_async_ticket_lock(file);
-		SMIOL_async_queue_add(file, async);
+		SMIOL_async_queue_add(file->queue, async);
 		if (!file->active) {
 			SMIOL_async_join_thread(&(file->writer));
 			file->active = 1;
@@ -2481,7 +2486,7 @@ void *async_write(void *b)
 
 	while (file->active) {
 		SMIOL_async_ticket_lock(file);
-		empty = SMIOL_async_queue_empty(file);
+		empty = SMIOL_async_queue_empty(file->queue);
 
 		/* empty can only take on values of 0 or 1, so the sum must equal 0 or n if all threads agree */
 		MPI_Allreduce(&empty, &sum_empty, 1, MPI_INT, MPI_SUM, MPI_Comm_f2c(file->io_file_comm));
@@ -2490,7 +2495,7 @@ void *async_write(void *b)
 		 * can we proceed; otherwise, keep all threads alive and try another iteration
 		 */
 		if (sum_empty == 0 || sum_empty == file->context->num_io_tasks) {
-			async = SMIOL_async_queue_remove(file);
+			async = SMIOL_async_queue_remove(file->queue);
 			if (async == NULL && file->n_reqs == 0) {
 				file->active = 0;
 			}
