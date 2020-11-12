@@ -77,6 +77,10 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
                struct SMIOL_context **context)
 {
 	MPI_Comm smiol_comm;
+	int io_task;
+	int io_group;
+	MPI_Comm async_io_comm;
+	MPI_Comm async_group_comm;
 
 	/*
 	 * Before dereferencing context below, ensure that the pointer
@@ -147,6 +151,26 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
 	}
 
 	/*
+	 * Communicator
+	 */
+	io_task = ((*context)->comm_rank % (*context)->io_stride == 0) ? 1 : 0;
+
+	/* Create a communicator for collective file I/O operations */
+/* TO DO: check return error code here */
+	MPI_Comm_split(MPI_Comm_f2c((*context)->fcomm), io_task,
+	               (*context)->comm_rank, &async_io_comm);
+	(*context)->async_io_comm = MPI_Comm_c2f(async_io_comm);
+
+	/* Create a communicator for gathering/scattering values within a group
+	   of tasks associated with an I/O task */
+	io_group = (*context)->comm_rank / (*context)->io_stride;
+/* TO DO: check return error code here */
+	MPI_Comm_split(MPI_Comm_f2c((*context)->fcomm), io_group,
+	               (*context)->comm_rank, &async_group_comm);
+	(*context)->async_group_comm = MPI_Comm_c2f(async_group_comm);
+
+
+	/*
 	 * Set checksum for the SMIOL_context
 	 */
 	(*context)->checksum = 42424242;  /* TO DO - compute a real checksum here... */
@@ -169,6 +193,8 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
 int SMIOL_finalize(struct SMIOL_context **context)
 {
 	MPI_Comm smiol_comm;
+	MPI_Comm async_io_comm;
+	MPI_Comm async_group_comm;
 
 	/*
 	 * If the pointer to the context pointer is NULL, assume we have nothing
@@ -203,6 +229,18 @@ int SMIOL_finalize(struct SMIOL_context **context)
 		free((*context));
 		(*context) = NULL;
 		return SMIOL_ASYNC_ERROR;
+	}
+
+	async_io_comm = MPI_Comm_f2c((*context)->async_io_comm);
+	if (MPI_Comm_free(&async_io_comm) != MPI_SUCCESS) {
+		fprintf(stderr, "Error: MPI_Comm_free\n");
+		return SMIOL_MPI_ERROR;
+	}
+
+	async_group_comm = MPI_Comm_f2c((*context)->async_group_comm);
+	if (MPI_Comm_free(&async_group_comm) != MPI_SUCCESS) {
+		fprintf(stderr, "Error: MPI_Comm_free\n");
+		return SMIOL_MPI_ERROR;
 	}
 
 	free((*context));
