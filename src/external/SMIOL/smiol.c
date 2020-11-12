@@ -284,7 +284,6 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 {
 #ifdef SMIOL_PNETCDF
 	int ierr;
-	int io_group;
 	MPI_Comm io_file_comm;
 	MPI_Comm io_group_comm;
 #endif
@@ -322,14 +321,13 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	(*file)->io_task = (context->comm_rank % context->io_stride == 0) ? 1 : 0;
 
 	/* Create a communicator for collective file I/O operations */
-	ierr = MPI_Comm_split(MPI_Comm_f2c(context->fcomm), (*file)->io_task,
-	                      context->comm_rank, &io_file_comm);
+/* TO DO: check return error code here */
+        ierr = MPI_Comm_dup(MPI_Comm_f2c(context->async_io_comm), &io_file_comm);
 	(*file)->io_file_comm = MPI_Comm_c2f(io_file_comm);
 
 	/* Create a communicator for gathering/scattering values within a group of tasks associated with an I/O task */
-	io_group = context->comm_rank / context->io_stride;
-	ierr = MPI_Comm_split(MPI_Comm_f2c(context->fcomm), io_group,
-	                      context->comm_rank, &io_group_comm);
+/* TO DO: check return error code here */
+        ierr = MPI_Comm_dup(MPI_Comm_f2c(context->async_group_comm), &io_group_comm);
 	(*file)->io_group_comm = MPI_Comm_c2f(io_group_comm);
 
 #ifdef SMIOL_PNETCDF
@@ -2527,7 +2525,7 @@ void *async_write(void *b)
 		empty = SMIOL_async_queue_empty(file->queue);
 
 		/* empty can only take on values of 0 or 1, so the sum must equal 0 or n if all threads agree */
-		MPI_Allreduce(&empty, &sum_empty, 1, MPI_INT, MPI_SUM, MPI_Comm_f2c(file->io_file_comm));
+		MPI_Allreduce(&empty, &sum_empty, 1, MPI_INT, MPI_SUM, MPI_Comm_f2c(file->context->async_io_comm));
 
 		/* Only if all threads agree on whether there are more items in the queue
 		 * can we proceed; otherwise, keep all threads alive and try another iteration
@@ -2550,7 +2548,7 @@ void *async_write(void *b)
 			usage += async->bufsize;
 
 			lusage = usage;
-			ierr = MPI_Allreduce(&lusage, &max_usage, 1, MPI_LONG, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
+			ierr = MPI_Allreduce(&lusage, &max_usage, 1, MPI_LONG, MPI_MAX, MPI_Comm_f2c(file->context->async_io_comm));
 			if (max_usage > BUFSIZE || file->n_reqs == N_REQS) {
 				ierr = ncmpi_wait_all(file->ncidp, file->n_reqs, file->reqs, statuses);
 				file->n_reqs = 0;
