@@ -284,7 +284,6 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 {
 #ifdef SMIOL_PNETCDF
 	int ierr;
-	int io_group;
 	MPI_Comm io_file_comm;
 	MPI_Comm io_group_comm;
 #endif
@@ -322,14 +321,13 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	(*file)->io_task = (context->comm_rank % context->io_stride == 0) ? 1 : 0;
 
 	/* Create a communicator for collective file I/O operations */
-	ierr = MPI_Comm_split(MPI_Comm_f2c(context->fcomm), (*file)->io_task,
-	                      context->comm_rank, &io_file_comm);
+/* TO DO: check return error code here */
+        ierr = MPI_Comm_dup(MPI_Comm_f2c(context->async_io_comm), &io_file_comm);
 	(*file)->io_file_comm = MPI_Comm_c2f(io_file_comm);
 
 	/* Create a communicator for gathering/scattering values within a group of tasks associated with an I/O task */
-	io_group = context->comm_rank / context->io_stride;
-	ierr = MPI_Comm_split(MPI_Comm_f2c(context->fcomm), io_group,
-	                      context->comm_rank, &io_group_comm);
+/* TO DO: check return error code here */
+        ierr = MPI_Comm_dup(MPI_Comm_f2c(context->async_group_comm), &io_group_comm);
 	(*file)->io_group_comm = MPI_Comm_c2f(io_group_comm);
 
 #ifdef SMIOL_PNETCDF
