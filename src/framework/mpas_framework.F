@@ -132,7 +132,7 @@ module mpas_framework
       integer, optional, pointer :: io_system
 #endif
 
-      call MPAS_io_finalize(domain % ioContext, .false.)
+      call MPAS_io_finalize(domain % ioContext, .true.)
 
       call mpas_deallocate_domain(domain)
 
