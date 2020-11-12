@@ -114,14 +114,14 @@ int SMIOL_async_finalize(struct SMIOL_context *context)
  * Detailed description.
  *
  ********************************************************************************/
-void SMIOL_async_queue_add(struct SMIOL_file *file, struct SMIOL_async_buffer *b)
+void SMIOL_async_queue_add(struct SMIOL_async_queue *queue, struct SMIOL_async_buffer *b)
 {
-	if (!file->head && !file->tail) {
-		file->head = b;
-		file->tail = b;
-	} else if (file->head && file->tail) {
-		file->head->next = b;
-		file->head = b;
+	if (!queue->head && !queue->tail) {
+		queue->head = b;
+		queue->tail = b;
+	} else if (queue->head && queue->tail) {
+		queue->head->next = b;
+		queue->head = b;
 	} else {
 		fprintf(stderr, "List error: only one of head or tail was associated!\n");
 	}
@@ -137,9 +137,9 @@ void SMIOL_async_queue_add(struct SMIOL_file *file, struct SMIOL_async_buffer *b
  * Detailed description.
  *
  ********************************************************************************/
-int SMIOL_async_queue_empty(struct SMIOL_file *file)
+int SMIOL_async_queue_empty(struct SMIOL_async_queue *queue)
 {
-	if (!file->tail) {
+	if (!queue->tail) {
 		return 1;
 	}
 
@@ -156,17 +156,17 @@ int SMIOL_async_queue_empty(struct SMIOL_file *file)
  * Detailed description.
  *
  ********************************************************************************/
-struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_file *file)
+struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_async_queue *queue)
 {
 	struct SMIOL_async_buffer *b;
 
-	if (!file->tail) {
+	if (!queue->tail) {
 		b = NULL;
 	} else {
-		b = file->tail;
-		file->tail = file->tail->next;
-		if (!file->tail) {
-			file->head = NULL;
+		b = queue->tail;
+		queue->tail = queue->tail->next;
+		if (!queue->tail) {
+			queue->head = NULL;
 		}
 	}
 

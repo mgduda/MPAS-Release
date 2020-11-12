@@ -8,12 +8,12 @@ int SMIOL_async_init(struct SMIOL_context *context);
 
 int SMIOL_async_finalize(struct SMIOL_context *context);
 
-void SMIOL_async_queue_add(struct SMIOL_file *file,
+void SMIOL_async_queue_add(struct SMIOL_async_queue *queue,
                            struct SMIOL_async_buffer *b);
 
-int SMIOL_async_queue_empty(struct SMIOL_file *file);
+int SMIOL_async_queue_empty(struct SMIOL_async_queue *queue);
 
-struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_file *file);
+struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_async_queue *queue);
 
 void SMIOL_async_ticket_lock(struct SMIOL_file *file);
 
