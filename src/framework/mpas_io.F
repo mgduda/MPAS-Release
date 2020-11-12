@@ -6147,7 +6147,7 @@ module mpas_io
 #ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_finalize(ioContext % smiol_context)
             if (local_ierr /= SMIOL_SUCCESS) then
-               call mpas_log_write('SMIOLf_free_decomp failed with code $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+               call mpas_log_write('SMIOLf_finalize failed with code $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             end if
 #endif
          end if
