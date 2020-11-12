@@ -723,6 +723,7 @@ ifneq "$(PIO)" ""
 	override CPPFLAGS += "-DMPAS_PIO_SUPPORT"
 else
 	override CPPFLAGS += "-DMPAS_SMIOL_SUPPORT"
+	override LIBS += -lpthread
 endif
 
 ifeq ($(wildcard src/core_$(CORE)), ) # CHECK FOR EXISTENCE OF CORE DIRECTORY
