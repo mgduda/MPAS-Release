@@ -176,6 +176,105 @@ struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_async_queue *qu
 
 /********************************************************************************
  *
+ * SMIOL_async_ticketlock_create
+ *
+ * https://stackoverflow.com/questions/12685112/pthreads-thread-starvation-caused-by-quick-re-locking
+ *
+ * Detailed description.
+ *
+ ********************************************************************************/
+void SMIOL_async_ticketlock_create(struct SMIOL_async_ticketlock *lock)
+{
+	int ierr;
+        pthread_mutexattr_t mutexattr;
+	pthread_condattr_t condattr;
+
+        ierr = pthread_mutexattr_init(&mutexattr);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutexattr_init: %i\n", ierr);
+                return;
+        }
+
+        lock->mutex = malloc(sizeof(pthread_mutex_t));
+        ierr = pthread_mutex_init(lock->mutex, (const pthread_mutexattr_t *)&mutexattr);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutex_init: %i\n", ierr);
+                return;
+        }
+
+        ierr = pthread_mutexattr_destroy(&mutexattr);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutexattr_destroy: %i\n", ierr);
+                return;
+        }
+
+	/*
+	 * Condition variable setup
+	 */
+	lock->cond = malloc(sizeof(pthread_cond_t));
+
+	ierr = pthread_condattr_init(&condattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_condattr_init: %i\n", ierr);
+		return;
+	}
+
+	ierr = pthread_cond_init(lock->cond, (const pthread_condattr_t *)&condattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_cond_init: %i\n", ierr);
+		return;
+	}
+
+	ierr = pthread_condattr_destroy(&condattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_condattr_destroy: %i\n", ierr);
+		return;
+	}
+
+	lock->queue_head = 0;
+	lock->queue_tail = 0;
+}
+
+
+/********************************************************************************
+ *
+ * SMIOL_async_ticketlock_free
+ *
+ * https://stackoverflow.com/questions/12685112/pthreads-thread-starvation-caused-by-quick-re-locking
+ *
+ * Detailed description.
+ *
+ ********************************************************************************/
+void SMIOL_async_ticketlock_free(struct SMIOL_async_ticketlock *lock)
+{
+	int ierr;
+
+	/*
+	 * Free mutex
+	 */
+        ierr = pthread_mutex_destroy(lock->mutex);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_mutex_destroy: %i\n", ierr);
+		return;
+	}
+
+        free(lock->mutex);
+
+	/*
+	 * Free condition variable
+	 */
+        ierr = pthread_cond_destroy(lock->cond);
+        if (ierr) {
+                fprintf(stderr, "Error: pthread_cond_destroy: %i\n", ierr);
+		return;
+	}
+
+        free(lock->cond);
+}
+
+
+/********************************************************************************
+ *
  * SMIOL_async_ticket_lock
  *
  * https://stackoverflow.com/questions/12685112/pthreads-thread-starvation-caused-by-quick-re-locking
@@ -183,16 +282,16 @@ struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_async_queue *qu
  * Detailed description.
  *
  ********************************************************************************/
-void SMIOL_async_ticket_lock(struct SMIOL_file *file)
+void SMIOL_async_ticket_lock(struct SMIOL_async_ticketlock *lock)
 {
 	unsigned long queue_me;
 
-	pthread_mutex_lock(file->mutex);
-	queue_me = file->queue_tail++;
-	while (queue_me != file->queue_head) {
-		pthread_cond_wait(file->cond, file->mutex);
+	pthread_mutex_lock(lock->mutex);
+	queue_me = lock->queue_tail++;
+	while (queue_me != lock->queue_head) {
+		pthread_cond_wait(lock->cond, lock->mutex);
 	}
-	pthread_mutex_unlock(file->mutex);
+	pthread_mutex_unlock(lock->mutex);
 }
 
 
@@ -205,12 +304,12 @@ void SMIOL_async_ticket_lock(struct SMIOL_file *file)
  * Detailed description.
  *
  ********************************************************************************/
-void SMIOL_async_ticket_unlock(struct SMIOL_file *file)
+void SMIOL_async_ticket_unlock(struct SMIOL_async_ticketlock *lock)
 {
-	pthread_mutex_lock(file->mutex);
-	file->queue_head++;
-	pthread_cond_broadcast(file->cond);
-	pthread_mutex_unlock(file->mutex);
+	pthread_mutex_lock(lock->mutex);
+	lock->queue_head++;
+	pthread_cond_broadcast(lock->cond);
+	pthread_mutex_unlock(lock->mutex);
 }
 
 
