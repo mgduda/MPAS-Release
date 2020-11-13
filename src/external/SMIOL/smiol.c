@@ -287,8 +287,6 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	MPI_Comm io_file_comm;
 	MPI_Comm io_group_comm;
 #endif
-        pthread_mutexattr_t mutexattr;
-	pthread_condattr_t condattr;
 
 	/*
 	 * Before dereferencing file below, ensure that the pointer
@@ -399,55 +397,12 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 	(*file)->queue = malloc(sizeof(struct SMIOL_async_queue));
 	*((*file)->queue) = SMIOL_ASYNC_QUEUE_INITIALIZER;
 
-
-        /*
-         * Mutex setup
-         */
-        (*file)->mutex = malloc(sizeof(pthread_mutex_t));
-
-        ierr = pthread_mutexattr_init(&mutexattr);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutexattr_init: %i\n", ierr);
-                return 1;
-        }
-
-        ierr = pthread_mutex_init((*file)->mutex, (const pthread_mutexattr_t *)&mutexattr);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutex_init: %i\n", ierr);
-                return 1;
-        }
-
-        ierr = pthread_mutexattr_destroy(&mutexattr);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutexattr_destroy: %i\n", ierr);
-                return 1;
-        }
-
 	/*
-	 * Condition variable setup
+	 * Ticket lock initialization
 	 */
-	(*file)->cond = malloc(sizeof(pthread_cond_t));
-
-	ierr = pthread_condattr_init(&condattr);
-	if (ierr) {
-		fprintf(stderr, "Error: pthread_condattr_init: %i\n", ierr);
-		return 1;
-	}
-
-	ierr = pthread_cond_init((*file)->cond, (const pthread_condattr_t *)&condattr);
-	if (ierr) {
-		fprintf(stderr, "Error: pthread_cond_init: %i\n", ierr);
-		return 1;
-	}
-
-	ierr = pthread_condattr_destroy(&condattr);
-	if (ierr) {
-		fprintf(stderr, "Error: pthread_condattr_destroy: %i\n", ierr);
-		return 1;
-	}
-
-	(*file)->queue_head = 0;
-	(*file)->queue_tail = 0;
+	(*file)->lock = malloc(sizeof(struct SMIOL_async_ticketlock));
+	*((*file)->lock) = SMIOL_ASYNC_TICKETLOCK_INITIALIZER;
+	SMIOL_async_ticketlock_create((*file)->lock);
 
 
 	/*
@@ -512,22 +467,16 @@ int SMIOL_close_file(struct SMIOL_file **file)
 	 */
 	SMIOL_async_join_thread(&((*file)->writer));
 
-
-	/*
-	 * Free mutex
-	 */
-        ierr = pthread_mutex_destroy((*file)->mutex);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutex_destroy: %i\n", ierr);
-		return SMIOL_LIBRARY_ERROR;
-	}
-
-        free((*file)->mutex);
-
 	/*
 	 * Free queue
 	 */
 	free((*file)->queue);
+
+	/*
+	 * Free ticket lock
+	 */
+	SMIOL_async_ticketlock_free((*file)->lock);
+	free((*file)->lock);
 
 	io_file_comm = MPI_Comm_f2c((*file)->io_file_comm);
 	if (MPI_Comm_free(&io_file_comm) != MPI_SUCCESS) {
@@ -1309,14 +1258,14 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 		}
 		async->next = NULL;
 
-		SMIOL_async_ticket_lock(file);
+		SMIOL_async_ticket_lock(file->lock);
 		SMIOL_async_queue_add(file->queue, async);
 		if (!file->active) {
 			SMIOL_async_join_thread(&(file->writer));
 			file->active = 1;
 			SMIOL_async_launch_thread(&(file->writer), async_write, (void *)file);
 		}
-		SMIOL_async_ticket_unlock(file);
+		SMIOL_async_ticket_unlock(file->lock);
 		}
 
 /*
@@ -2521,7 +2470,7 @@ void *async_write(void *b)
 	sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
 	while (file->active) {
-		SMIOL_async_ticket_lock(file);
+		SMIOL_async_ticket_lock(file->lock);
 		empty = SMIOL_async_queue_empty(file->queue);
 
 		/* empty can only take on values of 0 or 1, so the sum must equal 0 or n if all threads agree */
@@ -2536,7 +2485,7 @@ void *async_write(void *b)
 				file->active = 0;
 			}
 		}
-		SMIOL_async_ticket_unlock(file);
+		SMIOL_async_ticket_unlock(file->lock);
 
 		if (sum_empty != 0 && sum_empty != file->context->num_io_tasks) {
 			continue;

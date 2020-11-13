@@ -62,10 +62,7 @@ struct SMIOL_file {
 	int mode;
 	int active;
 	pthread_t *writer;
-	pthread_mutex_t *mutex;
-	pthread_cond_t *cond;
-	unsigned long queue_head;
-	unsigned long queue_tail;
+	struct SMIOL_async_ticketlock *lock;
 	struct SMIOL_async_queue *queue;
 
 	/*
@@ -113,6 +110,15 @@ struct SMIOL_async_buffer {
 #endif
 	struct SMIOL_async_buffer *next;
 };
+
+struct SMIOL_async_ticketlock {
+	pthread_mutex_t *mutex;
+	pthread_cond_t *cond;
+	unsigned long queue_head;
+	unsigned long queue_tail;
+};
+
+#define SMIOL_ASYNC_TICKETLOCK_INITIALIZER (struct SMIOL_async_ticketlock){NULL, NULL, 0, 0}
 
 struct SMIOL_async_queue {
 	struct SMIOL_async_buffer *head;
