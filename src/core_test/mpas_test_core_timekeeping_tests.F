@@ -19,7 +19,8 @@ module test_core_timekeeping_tests
    implicit none
    private
 
-   public :: test_core_test_intervals
+   public :: test_core_test_intervals, &
+             test_core_test_alarms
 
    contains
 
@@ -118,6 +119,269 @@ module test_core_timekeeping_tests
       call mpas_timer_stop('timekeeping tests')
 
    end subroutine test_core_test_intervals!}}}
+
+
+   !***********************************************************************
+   !
+   !  routine test_core_test_alarms
+   !
+   !> \brief   MPAS Test Core timekeeping alarm tests
+   !> \author  Michael Duda
+   !> \date    3 December 2020
+   !> \details 
+   !>  Cases to test:
+   !>   1) Alarms are added and removed
+   !>   2) The current time on the clock is changed
+   !>   3) Alarms before the current time are ignored
+   !>   4) The clock direction is changed
+   !
+   !-----------------------------------------------------------------------
+   subroutine test_core_test_alarms(domain, threadErrs, err)
+
+      use mpas_derived_types, only : MPAS_Clock_type, MPAS_TimeInterval_type, MPAS_Time_type
+      use mpas_timekeeping, only : mpas_create_clock, mpas_destroy_clock, mpas_set_time, mpas_set_timeInterval
+
+      type (domain_type), intent(inout) :: domain
+      integer, dimension(:), intent(out) :: threadErrs
+      integer, intent(out) :: err
+
+      integer :: i
+      integer :: threadNum
+      integer :: ierr
+      type (MPAS_Clock_type) :: clock
+      type (MPAS_Time_type) :: now
+      type (MPAS_Time_type) :: startTime
+      type (MPAS_Time_type) :: stopTime
+      type (MPAS_Time_type) :: alarmTime
+      type (MPAS_Time_type) :: nextRingTime
+      type (MPAS_TimeInterval_type) :: timeStep
+      type (MPAS_TimeInterval_type) :: alarmInterval
+      character(len=StrKIND) :: temp
+
+      call mpas_timer_start('alarm tests')
+
+      threadNum = mpas_threading_get_thread_num()
+      err = 0
+      threadErrs(:) = 0
+
+      if (threadNum == 0) then
+         call mpas_set_time(startTime, dateTimeString='1850-01-01_00:00:00', ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error setting startTime in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         call mpas_set_time(stopTime, dateTimeString='2000-01-01_00:00:00', ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error setting startTime in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         call mpas_set_timeInterval(timeStep, timeString='01:00:00', ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error setting timeStep in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         call mpas_create_clock(clock, startTime, timeStep, stopTime=stopTime, ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error creating clock in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+
+         !
+         ! Add a recurring alarm to the clock
+         !
+         call mpas_set_time(alarmTime, dateTimeString='1850-01-01_00:00:00', ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error setting alarmTime in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         call mpas_set_timeInterval(alarmInterval, timeString='24:00:00', ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error setting timeStep in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         call mpas_add_clock_alarm(clock, 'daily', alarmTime, alarmTimeInterval=alarmInterval, ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error adding daily alarm in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+
+         !
+         ! Add a one-shot alarm to the clock
+         !
+         call mpas_set_time(alarmTime, dateTimeString='1850-01-02_00:00:00', ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error setting alarmTime in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         call mpas_add_clock_alarm(clock, 'one-shot', alarmTime, ierr=ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error adding one-shot alarm in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'daily', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time: '//trim(temp))
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'one-shot', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time: '//trim(temp))
+
+         if (mpas_is_alarm_ringing(clock, 'daily')) then
+            call mpas_reset_clock_alarm(clock, 'daily')
+         end if
+
+         if (mpas_is_alarm_ringing(clock, 'one-shot')) then
+            call mpas_reset_clock_alarm(clock, 'one-shot')
+         end if
+
+         !
+         ! Directly set the time 12 hours ahead
+         !
+         call mpas_set_time(now, dateTimeString='1850-01-01_12:00:00')
+         call mpas_set_clock_time(clock, now, MPAS_NOW)
+
+         now = mpas_get_clock_time(clock, MPAS_NOW, ierr)
+         call mpas_get_time(now, dateTimeString=temp)
+         call mpas_log_write('Current time: '//trim(temp))
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'daily', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (daily): '//trim(temp))
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'one-shot', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (one-shot): '//trim(temp))
+
+         !
+         ! Change the direction of the clock
+         !
+         call mpas_log_write('Clock is now running backwards')
+         call mpas_set_clock_direction(clock, MPAS_BACKWARD)
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'daily', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (daily): '//trim(temp))
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'one-shot', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (one-shot): '//trim(temp))
+
+         !
+         ! Directly set the time 36 hours ahead
+         !
+         call mpas_set_time(now, dateTimeString='1850-01-02_12:00:00')
+         call mpas_set_clock_time(clock, now, MPAS_NOW)
+
+         now = mpas_get_clock_time(clock, MPAS_NOW, ierr)
+         call mpas_get_time(now, dateTimeString=temp)
+         call mpas_log_write('Current time: '//trim(temp))
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'daily', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (daily): '//trim(temp))
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'one-shot', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (one-shot): '//trim(temp))
+
+         !
+         ! Change the direction of the clock
+         !
+         call mpas_log_write('Clock is now running forwards')
+         call mpas_set_clock_direction(clock, MPAS_FORWARD)
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'daily', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (daily): '//trim(temp))
+
+         nextRingTime = mpas_alarm_next_ring_time(clock, 'one-shot', strictlyInFuture=.true., ierr=ierr)
+         call mpas_get_time(nextRingTime, dateTimeString=temp)
+         call mpas_log_write('Next ring time (one-shot): '//trim(temp))
+
+         !
+         ! Directly set the time back to start time
+         !
+         now = mpas_get_clock_time(clock, MPAS_START_TIME, ierr)
+         call mpas_set_clock_time(clock, now, MPAS_NOW)
+
+         !
+         ! Advance clock by 48 time steps = two days
+         !
+         do i = 1, 48
+
+             call mpas_advance_clock(clock, ierr=ierr)
+             if (ierr /= 0) then
+                 call mpas_log_write('Error advancing clock in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+                 err = 1
+                 threadErrs(1) = 1
+                 return
+             end if
+
+             now = mpas_get_clock_time(clock, MPAS_NOW, ierr)
+             call mpas_get_time(now, dateTimeString=temp)
+             call mpas_log_write('Current time: '//trim(temp))
+
+             nextRingTime = mpas_alarm_next_ring_time(clock, 'daily', strictlyInFuture=.true., ierr=ierr)
+             call mpas_get_time(nextRingTime, dateTimeString=temp)
+             call mpas_log_write('Next ring time (daily): '//trim(temp))
+
+             nextRingTime = mpas_alarm_next_ring_time(clock, 'one-shot', strictlyInFuture=.true., ierr=ierr)
+             call mpas_get_time(nextRingTime, dateTimeString=temp)
+             call mpas_log_write('Next ring time (one-shot): '//trim(temp))
+
+             call mpas_log_write('-------------')
+
+             if (mpas_is_alarm_ringing(clock, 'daily')) then
+                call mpas_reset_clock_alarm(clock, 'daily')
+             end if
+
+             if (mpas_is_alarm_ringing(clock, 'one-shot')) then
+                call mpas_reset_clock_alarm(clock, 'one-shot')
+             end if
+         end do
+
+         call mpas_destroy_clock(clock, ierr)
+         if (ierr /= 0) then
+             call mpas_log_write('Error destroying clock in test_core_test_alarms', messageType=MPAS_LOG_ERR)
+             err = 1
+             threadErrs(1) = 1
+             return
+         end if
+
+         call mpas_log_write(' Completed alarm tests')
+      end if
+
+      call mpas_timer_stop('alarm tests')
+
+   end subroutine test_core_test_alarms
+
 
    subroutine test_core_interval_test(ref_str, int1_str, int2_str, expected_divs, expected_remainder_str, ierr)!{{{
       character (len=*), intent(in) :: ref_str, int1_str, int2_str

@@ -156,6 +156,8 @@ module test_core
 
       call test_core_test_intervals(domain, threadErrs, iErr)
 
+      call test_core_test_alarms(domain, threadErrs, iErr)
+
       ! Test writing of block write streams, which have the prefix 'block_'
       block => domain % blocklist
       do while (associated(block))
