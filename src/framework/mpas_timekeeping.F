@@ -712,6 +712,130 @@ module mpas_timekeeping
 
 
    !-----------------------------------------------------------------------
+   !  routine mpas_alarm_next_ring_time
+   !
+   !> \brief This function returns the next ring time of an alarm.
+   !> \author Michael Duda
+   !> \date   3 December 2020
+   !> \details This function returns the next ring time of an alarm.
+   !-----------------------------------------------------------------------
+   type (MPAS_Time_type) function mpas_alarm_next_ring_time(clock, alarmId, strictlyInFuture, ierr)
+
+      implicit none
+
+      ! Arguments
+      type (MPAS_Clock_type), intent(in) :: clock
+      character (len=*), intent(in) :: alarmID
+      logical, intent(in), optional :: strictlyInFuture
+      integer, intent(out), optional :: ierr
+
+      ! Local variables
+      type (MPAS_Alarm_type), pointer :: alarmPtr
+      logical :: strictlyInFuture_local
+      type (MPAS_Time_type) :: clockNow
+      type (MPAS_Time_type) :: prevRingTime
+      type (MPAS_TimeInterval_type) :: nowInterval, nowRemainder
+      integer (kind=I8KIND) :: nDivs
+
+
+      if (present(ierr)) then
+         ierr = 0
+      end if
+
+      if (present(strictlyInFuture)) then
+         strictlyInFuture_local = strictlyInFuture
+      else
+         strictlyInFuture_local = .false.
+      end if
+
+      !
+      ! Search for alarm in list
+      !
+      alarmPtr => clock % alarmListHead
+      do while (associated(alarmPtr))
+         if (trim(alarmPtr % alarmID) == trim(alarmID)) then
+
+            clockNow = mpas_get_clock_time(clock, MPAS_NOW, ierr)
+
+            !
+            ! Handle one-shot alarms
+            !
+            if (.not. alarmPtr % isRecurring) then
+               if (.not. alarmPtr % isSet) then  ! Is this identical to ringing when combined with (ringTime <= nowTime)?
+                  call mpas_set_time(mpas_alarm_next_ring_time, dateTimeString='0000-01-01_00:00:00')
+                  if (present(ierr)) then
+                     ierr = 2   ! TO DO: define useful error code constants (alarm was ringing in past)
+                  end if
+               else
+                  if (clock % direction == MPAS_FORWARD) then
+                     if (.not. strictlyInFuture_local .and. alarmPtr % ringTime <= clockNow) then
+                        mpas_alarm_next_ring_time = clockNow
+                     else if (alarmPtr % ringTime > clockNow) then
+                        mpas_alarm_next_ring_time = alarmPtr % ringTime
+                     else ! Alarm is ringing, but not in the future
+                        call mpas_set_time(mpas_alarm_next_ring_time, dateTimeString='0000-01-01_00:00:00')
+                        if (present(ierr)) then
+                           ierr = 3   ! TO DO: define useful error code constants (alarm is ringing now)
+                        end if
+                     end if
+                  else
+                     if (.not. strictlyInFuture_local .and. alarmPtr % ringTime >= clockNow) then
+                        mpas_alarm_next_ring_time = clockNow
+                     else if (alarmPtr % ringTime < clockNow) then
+                        mpas_alarm_next_ring_time = alarmPtr % ringTime
+                     else ! Alarm is ringing, but not in the future
+                        call mpas_set_time(mpas_alarm_next_ring_time, dateTimeString='0000-01-01_00:00:00')
+                        if (present(ierr)) then
+                           ierr = 3   ! TO DO: define useful error code constants (alarm is ringing now)
+                        end if
+                     end if
+                  end if
+               end if
+
+            !
+            ! Handle recurring alarms
+            !
+            else if (alarmPtr % isRecurring) then
+
+               if (clock % direction == MPAS_FORWARD) then
+                  nowInterval = clockNow - alarmPtr % prevRingTime
+                  call mpas_interval_division(alarmPtr % prevRingTime, nowInterval, alarmPtr % ringTimeInterval, nDivs, nowRemainder)
+                  prevRingTime = clockNow - nowRemainder
+
+                  if (.not. strictlyInFuture_local .and. prevRingTime == clockNow) then
+                     mpas_alarm_next_ring_time = clockNow
+                  else
+                     mpas_alarm_next_ring_time = prevRingTime + alarmPtr % ringTimeInterval
+                  end if
+               else
+                  nowInterval = alarmPtr % prevRingTime - clockNow
+                  call mpas_interval_division(alarmPtr % prevRingTime, nowInterval, alarmPtr % ringTimeInterval, nDivs, nowRemainder)
+                  prevRingTime = clockNow + nowRemainder
+
+                  if (.not. strictlyInFuture_local .and. prevRingTime == clockNow) then
+                     mpas_alarm_next_ring_time = clockNow
+                  else
+                     mpas_alarm_next_ring_time = prevRingTime - alarmPtr % ringTimeInterval
+                  end if
+               end if
+            end if
+
+            exit
+         end if
+         alarmPtr => alarmPtr % next
+      end do
+
+      if (.not. associated(alarmPtr)) then
+         call mpas_log_write('Alarm '''//trim(alarmID)//''' not found in mpas_alarm_next_ring_time', messageType=MPAS_LOG_ERR)
+         if (present(ierr)) then
+            ierr = 0
+         end if
+      end if
+
+   end function mpas_alarm_next_ring_time
+
+
+   !-----------------------------------------------------------------------
    !  routine mpas_alarm_get_next_ring_time
    !
    !> \brief This function returns the next ring time of an alarm.
