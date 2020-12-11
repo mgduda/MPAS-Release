@@ -141,11 +141,11 @@ pgi-summit:
 	"CC_SERIAL = pgcc" \
 	"CXX_SERIAL = pgc++" \
 	"FFLAGS_PROMOTION = -r8" \
-	"FFLAGS_OPT = -g -O3 -byteswapio -Mfree" \
+	"FFLAGS_OPT = -g -O3 -byteswapio -Mfree -Mnofma" \
 	"CFLAGS_OPT = -O3 " \
 	"CXXFLAGS_OPT = -O3 " \
 	"LDFLAGS_OPT = -O3 " \
-	"FFLAGS_ACC = -acc -Minfo=accel -ta=tesla:cc70,cc60,deepcopy,nollvm " \
+	"FFLAGS_ACC = -acc -Mnofma -Minfo=accel -ta=tesla:cc70,cc60,deepcopy,nollvm " \
 	"CFLAGS_ACC = -acc -Minfo=accel -ta=tesla:cc70,cc60,deepcopy,nollvm "  \
 	"FFLAGS_DEBUG = -O0 -g -Mbounds -Mchkptr -byteswapio -Mfree -Ktrap=divz,fp,inv,ovf -traceback" \
 	"CFLAGS_DEBUG = -O0 -g -traceback" \
