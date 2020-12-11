@@ -84,6 +84,335 @@ module atm_time_integration
    contains
 
 
+   !-----------------------------------------------------------------------
+   !  routine MPAS_atm_dynamics_init
+   !
+   !> \brief Initialize the dynamics component
+   !> \author Michael Duda
+   !> \date   23 March 2018
+   !> \details
+   !>  Prepare the dynamics component of MPAS-Atmosphere for time integration.
+   !>  This may involve allocating dynamics-local storage, and setting up
+   !>  OpenACC-optimized communication structures.
+   !
+   !-----------------------------------------------------------------------
+   subroutine mpas_atm_dynamics_init(domain)
+
+      use mpas_pool_routines, only : mpas_pool_get_subpool
+
+      implicit none
+
+      ! Arguments
+      type (domain_type), intent(inout) :: domain
+
+      ! Local variables
+      type (mpas_pool_type), pointer :: mesh
+      integer, dimension(:), pointer :: nEdgesOnEdge
+      integer, dimension(:), pointer :: nEdgesOnCell
+      integer, dimension(:), pointer :: int1d
+      integer, dimension(:,:), pointer :: edgesOnEdge
+      integer, dimension(:,:), pointer :: edgesOnVertex
+      integer, dimension(:,:), pointer :: edgesOnCell
+      integer, dimension(:,:), pointer :: verticesOnCell
+      integer, dimension(:,:), pointer :: kiteForCell
+      integer, dimension(:,:), pointer :: cellsOnEdge
+      integer, dimension(:,:), pointer :: verticesOnEdge
+      integer, dimension(:,:), pointer :: int2d
+      real(kind=RKIND), dimension(:), pointer :: invAreaTriangle
+      real(kind=RKIND), dimension(:), pointer :: invAreaCell
+      real(kind=RKIND), dimension(:), pointer :: dcEdge
+      real(kind=RKIND), dimension(:), pointer :: dvEdge
+      real(kind=RKIND), dimension(:), pointer :: invDcEdge
+      real(kind=RKIND), dimension(:), pointer :: invDvEdge
+      real(kind=RKIND), dimension(:), pointer :: real1d
+      real(kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex
+      real(kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
+      real(kind=RKIND), dimension(:,:), pointer :: edgesOnVertex_sign
+      real(kind=RKIND), dimension(:,:), pointer :: edgesOnCell_sign
+      real(kind=RKIND), dimension(:,:), pointer :: real2d
+      
+      call field_to_device(domain, 'nEdgesOnEdge')
+      call field_to_device(domain, 'nEdgesOnCell')
+      call field_to_device(domain, 'edgesOnEdge')
+      call field_to_device(domain, 'edgesOnVertex')
+      call field_to_device(domain, 'edgesOnCell')
+      call field_to_device(domain, 'verticesOnCell')
+      call field_to_device(domain, 'kiteForCell')
+      call field_to_device(domain, 'cellsOnEdge')
+      call field_to_device(domain, 'verticesOnEdge')
+      call field_to_device(domain, 'invAreaTriangle')
+      call field_to_device(domain, 'invAreaCell')
+      call field_to_device(domain, 'dcEdge')
+      call field_to_device(domain, 'dvEdge')
+      call field_to_device(domain, 'invDcEdge')
+      call field_to_device(domain, 'invDvEdge')
+      call field_to_device(domain, 'kiteAreasOnVertex')
+      call field_to_device(domain, 'weightsOnEdge')
+      call field_to_device(domain, 'edgesOnVertex_sign')
+      call field_to_device(domain, 'edgesOnCell_sign')
+
+!      call mpas_pool_get_subpool(domain % blocklist % structs, 'mesh', mesh)
+
+#if 0
+      nullify(int1d)
+      call mpas_pool_get_array(mesh, 'nEdgesOnEdge', int1d)
+      if (.not. associated(int1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: nEdgesOnEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(int1d)
+
+      nullify(int1d)
+      call mpas_pool_get_array(mesh, 'nEdgesOnCell', int1d)
+      if (.not. associated(int1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: nEdgesOnCell not found in mesh pool')
+      end if
+      !$acc enter data copyin(int1d)
+
+      nullify(int2d)
+      call mpas_pool_get_array(mesh, 'edgesOnEdge', int2d)
+      if (.not. associated(int2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: edgesOnEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(int2d)
+
+      nullify(int2d)
+      call mpas_pool_get_array(mesh, 'edgesOnVertex', int2d)
+      if (.not. associated(int2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: edgesOnVertex not found in mesh pool')
+      end if
+      !$acc enter data copyin(int2d)
+
+      nullify(int2d)
+      call mpas_pool_get_array(mesh, 'edgesOnCell', int2d)
+      if (.not. associated(int2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: edgesOnCell not found in mesh pool')
+      end if
+      !$acc enter data copyin(int2d)
+
+      nullify(int2d)
+      call mpas_pool_get_array(mesh, 'verticesOnCell', int2d)
+      if (.not. associated(int2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: verticesOnCell not found in mesh pool')
+      end if
+      !$acc enter data copyin(int2d)
+
+      nullify(int2d)
+      call mpas_pool_get_array(mesh, 'kiteForCell', int2d)
+      if (.not. associated(int2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: kiteForCell not found in mesh pool')
+      end if
+      !$acc enter data copyin(int2d)
+
+      nullify(int2d)
+      call mpas_pool_get_array(mesh, 'cellsOnEdge', int2d)
+      if (.not. associated(int2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: cellsOnEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(int2d)
+
+      nullify(int2d)
+      call mpas_pool_get_array(mesh, 'verticesOnEdge', int2d)
+      if (.not. associated(int2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: verticesOnEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(int2d)
+
+      nullify(real1d)
+      call mpas_pool_get_array(mesh, 'invAreaTriangle', real1d)
+      if (.not. associated(real1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: invAreaTriangle not found in mesh pool')
+      end if
+      !$acc enter data copyin(real1d)
+
+      nullify(real1d)
+      call mpas_pool_get_array(mesh, 'invAreaCell', real1d)
+      if (.not. associated(real1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: invAreaCell not found in mesh pool')
+      end if
+      !$acc enter data copyin(real1d)
+
+      nullify(real1d)
+      call mpas_pool_get_array(mesh, 'dcEdge', real1d)
+      if (.not. associated(real1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: dcEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(real1d)
+
+      nullify(real1d)
+      call mpas_pool_get_array(mesh, 'dvEdge', real1d)
+      if (.not. associated(real1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: dvEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(real1d)
+
+      nullify(real1d)
+      call mpas_pool_get_array(mesh, 'invDcEdge', real1d)
+      if (.not. associated(real1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: invDcEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(real1d)
+
+      nullify(real1d)
+      call mpas_pool_get_array(mesh, 'invDvEdge', real1d)
+      if (.not. associated(real1d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: invDvEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(real1d)
+
+      nullify(real2d)
+      call mpas_pool_get_array(mesh, 'kiteAreasOnVertex', real2d)
+      if (.not. associated(real2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: kiteAreasOnVertex not found in mesh pool')
+      end if
+      !$acc enter data copyin(real2d)
+
+      nullify(real2d)
+      call mpas_pool_get_array(mesh, 'weightsOnEdge', real2d)
+      if (.not. associated(real2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: weightsOnEdge not found in mesh pool')
+      end if
+      !$acc enter data copyin(real2d)
+
+      nullify(real2d)
+      call mpas_pool_get_array(mesh, 'edgesOnVertex_sign', real2d)
+      if (.not. associated(real2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: edgesOnVertex_sign not found in mesh pool')
+      end if
+      !$acc enter data copyin(real2d)
+
+      nullify(real2d)
+      call mpas_pool_get_array(mesh, 'edgesOnCell_sign', real2d)
+      if (.not. associated(real2d)) then
+          call mpas_log_write('Error: mpas_atm_dynamics_init: edgesOnCell_sign not found in mesh pool')
+      end if
+      !$acc enter data copyin(real2d)
+#endif
+
+   end subroutine mpas_atm_dynamics_init
+
+
+   !-----------------------------------------------------------------------
+   !  routine MPAS_atm_dynamics_finalize
+   !
+   !> \brief Finalize the dynamics component
+   !> \author Michael Duda
+   !> \date   23 March 2018
+   !> \details
+   !>  Free up dynamics-local memory and shut down infrastructure used
+   !>  only in the dynamics component of MPAS-Atmosphere.
+   !
+   !-----------------------------------------------------------------------
+   subroutine mpas_atm_dynamics_finalize(domain)
+
+      implicit none
+
+      ! Arguments
+      type (domain_type), intent(inout) :: domain
+
+      ! Local variables
+      type (mpas_pool_type), pointer :: mesh
+      integer, dimension(:), pointer :: nEdgesOnEdge
+      integer, dimension(:), pointer :: nEdgesOnCell
+      integer, dimension(:,:), pointer :: edgesOnEdge
+      integer, dimension(:,:), pointer :: edgesOnVertex
+      integer, dimension(:,:), pointer :: edgesOnCell
+      integer, dimension(:,:), pointer :: verticesOnCell
+      integer, dimension(:,:), pointer :: kiteForCell
+      integer, dimension(:,:), pointer :: cellsOnEdge
+      integer, dimension(:,:), pointer :: verticesOnEdge
+      real(kind=RKIND), dimension(:), pointer :: invAreaTriangle
+      real(kind=RKIND), dimension(:), pointer :: invAreaCell
+      real(kind=RKIND), dimension(:), pointer :: dcEdge
+      real(kind=RKIND), dimension(:), pointer :: dvEdge
+      real(kind=RKIND), dimension(:), pointer :: invDcEdge
+      real(kind=RKIND), dimension(:), pointer :: invDvEdge
+      real(kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex
+      real(kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
+      real(kind=RKIND), dimension(:,:), pointer :: edgesOnVertex_sign
+      real(kind=RKIND), dimension(:,:), pointer :: edgesOnCell_sign
+
+
+      call mpas_pool_get_subpool(domain % blocklist % structs, 'mesh', mesh)
+
+      nullify(nEdgesOnEdge)
+      call mpas_pool_get_array(mesh, 'nEdgesOnEdge', nEdgesOnEdge)
+      !$acc exit data delete(nEdgesOnEdge)
+
+      nullify(nEdgesOnCell)
+      call mpas_pool_get_array(mesh, 'nEdgesOnCell', nEdgesOnCell)
+      !$acc exit data delete(nEdgesOnCell)
+
+      nullify(edgesOnEdge)
+      call mpas_pool_get_array(mesh, 'edgesOnEdge', edgesOnEdge)
+      !$acc exit data delete(edgesOnEdge)
+
+      nullify(edgesOnVertex)
+      call mpas_pool_get_array(mesh, 'edgesOnVertex', edgesOnVertex)
+      !$acc exit data delete(edgesOnVertex)
+
+      nullify(edgesOnCell)
+      call mpas_pool_get_array(mesh, 'edgesOnCell', edgesOnCell)
+      !$acc exit data delete(edgesOnCell)
+
+      nullify(verticesOnCell)
+      call mpas_pool_get_array(mesh, 'verticesOnCell', verticesOnCell)
+      !$acc exit data delete(verticesOnCell)
+
+      nullify(kiteForCell)
+      call mpas_pool_get_array(mesh, 'kiteForCell', kiteForCell)
+      !$acc exit data delete(kiteForCell)
+
+      nullify(cellsOnEdge)
+      call mpas_pool_get_array(mesh, 'cellsOnEdge', cellsOnEdge)
+      !$acc exit data delete(cellsOnEdge)
+
+      nullify(verticesOnEdge)
+      call mpas_pool_get_array(mesh, 'verticesOnEdge', verticesOnEdge)
+      !$acc exit data delete(verticesOnEdge)
+
+      nullify(invAreaTriangle)
+      call mpas_pool_get_array(mesh, 'invAreaTriangle', invAreaTriangle)
+      !$acc exit data delete(invAreaTriangle)
+
+      nullify(invAreaCell)
+      call mpas_pool_get_array(mesh, 'invAreaCell', invAreaCell)
+      !$acc exit data delete(invAreaCell)
+
+      nullify(dcEdge)
+      call mpas_pool_get_array(mesh, 'dcEdge', dcEdge)
+      !$acc exit data delete(dcEdge)
+
+      nullify(dvEdge)
+      call mpas_pool_get_array(mesh, 'dvEdge', dvEdge)
+      !$acc exit data delete(dvEdge)
+
+      nullify(invDcEdge)
+      call mpas_pool_get_array(mesh, 'invDcEdge', invDcEdge)
+      !$acc exit data delete(invDcEdge)
+
+      nullify(invDvEdge)
+      call mpas_pool_get_array(mesh, 'invDvEdge', invDvEdge)
+      !$acc exit data delete(invDvEdge)
+
+      nullify(kiteAreasOnVertex)
+      call mpas_pool_get_array(mesh, 'kiteAreasOnVertex', kiteAreasOnVertex)
+      !$acc exit data delete(kiteAreasOnVertex)
+
+      nullify(weightsOnEdge)
+      call mpas_pool_get_array(mesh, 'weightsOnEdge', weightsOnEdge)
+      !$acc exit data delete(weightsOnEdge)
+
+      nullify(edgesOnVertex_sign)
+      call mpas_pool_get_array(mesh, 'edgesOnVertex_sign', edgesOnVertex_sign)
+      !$acc exit data delete(edgesOnVertex_sign)
+
+      nullify(edgesOnCell_sign)
+      call mpas_pool_get_array(mesh, 'edgesOnCell_sign', edgesOnCell_sign)
+      !$acc exit data delete(edgesOnCell_sign)
+
+   end subroutine mpas_atm_dynamics_finalize
+
+
    subroutine atm_timestep(domain, dt, nowTime, itimestep)
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
    ! Advance model state forward in time by the specified time step
@@ -5578,66 +5907,113 @@ module atm_time_integration
       real (kind=RKIND) :: ke_fact, efac
       logical :: reconstruct_v
 
+call mpas_timer_start('atm_compute_solve_diagnostics_total_work')
 
+!$acc enter data copyin(u)
+!$acc enter data create(h_edge,ke_edge)
+!$acc enter data copyin(h)
+!$acc enter data create(vorticity)
+!$acc enter data create(divergence)
+!$acc enter data create(ke)
+!$acc enter data create(ke_vertex)
+!$acc enter data create(pv_vertex)
+!$acc enter data create(pv_edge)
+!$acc enter data create(pv_cell)
+
+call mpas_timer_start('atm_compute_solve_diagnostics_work')
       !
       ! Compute height on cell edges at velocity locations
       !
+      call mpas_timer_start('h_edge')
+!$acc parallel present(cellsOnEdge,dcEdge,dvEdge)
+      !$acc loop gang worker
       do iEdge=edgeStart,edgeEnd
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
-!DIR$ IVDEP
+         !$acc loop vector
+         !DIR$ IVDEP
          do k=1,nVertLevels
             h_edge(k,iEdge) = 0.5 * (h(k,cell1) + h(k,cell2))
          end do
 
-!  the first openmp barrier below is set so that ke_edge is computed
-!  it would be good to move this somewhere else?
+         ! the first openmp barrier below is set so that ke_edge is computed
+         ! it would be good to move this somewhere else?
 
          efac = dcEdge(iEdge)*dvEdge(iEdge)
+         !$acc loop vector
          do k=1,nVertLevels
             ke_edge(k,iEdge) = efac*u(k,iEdge)**2
          end do
 
       end do
+!$acc end parallel
+      call mpas_timer_stop('h_edge')
 
       !
       ! Compute circulation and relative vorticity at each vertex
       !
+      call mpas_timer_start('vorticity')
+!$acc parallel present(edgesOnVertex,edgesOnVertex_sign,dcEdge,invAreaTriangle)
+      !$acc loop gang worker
       do iVertex=vertexStart,vertexEnd
-         vorticity(1:nVertLevels,iVertex) = 0.0
+         !$acc loop vector
+         do k=1,nVertLevels
+            vorticity(k,iVertex) = 0.0
+         end do
+
+         !$acc loop seq
          do i=1,vertexDegree
             iEdge = edgesOnVertex(i,iVertex)
             s = edgesOnVertex_sign(i,iVertex) * dcEdge(iEdge)
-!DIR$ IVDEP
+            !$acc loop vector
+            !DIR$ IVDEP
             do k=1,nVertLevels
                vorticity(k,iVertex) = vorticity(k,iVertex) + s * u(k,iEdge)
             end do
          end do
-!DIR$ IVDEP
+
+         !$acc loop vector
+         !DIR$ IVDEP
          do k=1,nVertLevels
             vorticity(k,iVertex) = vorticity(k,iVertex) * invAreaTriangle(iVertex)
          end do
       end do
+!$acc end parallel
+      call mpas_timer_stop('vorticity')
 
 
       !
       ! Compute the divergence at each cell center
       !
+      call mpas_timer_start('divergence')
+!$acc parallel present(nEdgesOnCell,edgesOnCell,edgesOnCell_sign,dvEdge,invAreaCell)
+      !$acc loop gang worker
       do iCell=cellStart,cellEnd
-         divergence(1:nVertLevels,iCell) = 0.0
+         !$acc loop vector
+         do k=1,nVertLevels
+            divergence(k,iCell) = 0.0
+         end do
+
+         !$acc loop seq
          do i=1,nEdgesOnCell(iCell)
             iEdge = edgesOnCell(i,iCell)
             s = edgesOnCell_sign(i,iCell) * dvEdge(iEdge)
-!DIR$ IVDEP
+            !$acc loop vector
+            !DIR$ IVDEP
             do k=1,nVertLevels
               divergence(k,iCell) = divergence(k,iCell) + s * u(k,iEdge)
             end do
          end do
+
          r = invAreaCell(iCell)
+
+         !$acc loop vector
          do k = 1,nVertLevels
             divergence(k,iCell) = divergence(k,iCell) * r
          end do
       end do
+!$acc end parallel
+      call mpas_timer_stop('divergence')
 
 
 !$OMP BARRIER
@@ -5647,23 +6023,34 @@ module atm_time_integration
       !
       ! Replace 2.0 with 2 in exponentiation to avoid outside chance that
       ! compiler will actually allow "float raised to float" operation
+      call mpas_timer_start('ke')
+!$acc parallel present(ke_edge,nEdgesOnCell,edgesOnCell)
+      !$acc loop gang vector
       do iCell=cellStart,cellEnd
-         ke(1:nVertLevels,iCell) = 0.0
+         !$acc loop vector
+         do k=1,nVertLevels
+            ke(k,iCell) = 0.0
+         end do
+
+         !$acc loop seq
          do i=1,nEdgesOnCell(iCell)
             iEdge = edgesOnCell(i,iCell)
+            !$acc loop vector
             do k=1,nVertLevels
-!               ke(k,iCell) = ke(k,iCell) + 0.25 * dcEdge(iEdge) * dvEdge(iEdge) * u(k,iEdge)**2
                ke(k,iCell) = ke(k,iCell) + 0.25 * ke_edge(k,iEdge)
             end do
          end do
-!DIR$ IVDEP
+         !DIR$ IVDEP
          do k=1,nVertLevels
             ke(k,iCell) = ke(k,iCell) * invAreaCell(iCell)
          end do
       end do
+!$acc end parallel
+      call mpas_timer_stop('ke')
 
 
       if (hollingsworth) then
+call mpas_timer_start('hollingsworth')
 
          ! Compute ke at cell vertices - AG's new KE construction, part 1
          ! *** approximation here because we don't have inner triangle areas
@@ -5671,19 +6058,19 @@ module atm_time_integration
 
          ! Replace 2.0 with 2 in exponentiation to avoid outside chance that
          ! compiler will actually allow "float raised to float" operation
+!$acc parallel present(ke_edge,edgesOnVertex,invAreaTriangle)
+
+         !$acc loop gang worker
          do iVertex=vertexStart,vertexEnd
             r = 0.25 * invAreaTriangle(iVertex) 
+            !$acc loop vector
             do k=1,nVertLevels
 
-!               ke_vertex(k,iVertex) = (  dcEdge(EdgesOnVertex(1,iVertex))*dvEdge(EdgesOnVertex(1,iVertex))*u(k,EdgesOnVertex(1,iVertex))**2  &
-!                                        +dcEdge(EdgesOnVertex(2,iVertex))*dvEdge(EdgesOnVertex(2,iVertex))*u(k,EdgesOnVertex(2,iVertex))**2  &
-!                                        +dcEdge(EdgesOnVertex(3,iVertex))*dvEdge(EdgesOnVertex(3,iVertex))*u(k,EdgesOnVertex(3,iVertex))**2  &
-!                                      ) * r
-
-               ke_vertex(k,iVertex) = (  ke_edge(k,EdgesOnVertex(1,iVertex))+ke_edge(k,EdgesOnVertex(2,iVertex))+ke_edge(k,EdgesOnVertex(3,iVertex)) )*r
+               ke_vertex(k,iVertex) = (  ke_edge(k,edgesOnVertex(1,iVertex))+ke_edge(k,edgesOnVertex(2,iVertex))+ke_edge(k,edgesOnVertex(3,iVertex)) )*r
 
             end do
          end do
+!$acc end parallel
 
 !$OMP BARRIER
 
@@ -5692,25 +6079,32 @@ module atm_time_integration
 
          ke_fact = 1.0 - .375
 
+!$acc parallel present(verticesOnCell, kiteForCell, invAreaCell, kiteAreasOnVertex)
+         !$acc loop gang worker
          do iCell=cellStart,cellEnd
+            !$acc loop vector
             do k=1,nVertLevels
                ke(k,iCell) = ke_fact * ke(k,iCell)
             end do
          end do
 
-
+         !$acc loop gang worker
          do iCell=cellStart,cellEnd
             r = invAreaCell(iCell)
+            !$acc loop seq
             do i=1,nEdgesOnCell(iCell)
                iVertex = verticesOnCell(i,iCell)
                j = kiteForCell(i,iCell)
-!DIR$ IVDEP
+               !$acc loop vector
+               !DIR$ IVDEP
                do k = 1,nVertLevels
                   ke(k,iCell) = ke(k,iCell) + (1.-ke_fact)*kiteAreasOnVertex(j,iVertex) * ke_vertex(k,iVertex) * r
                end do
             end do
          end do
+!$acc end parallel
 
+call mpas_timer_stop('hollingsworth')
       end if
 
       !
@@ -5723,16 +6117,29 @@ module atm_time_integration
       end if
 
       if (reconstruct_v) then
+!$acc enter data create(v)
+      else if (config_apvm_upwinding > 0.0) then
+!$acc enter data copyin(v)
+      end if
+
+      if (reconstruct_v) then
+call mpas_timer_start('tangential_wind')
+!$acc parallel present(nEdgesOnEdge,edgesOnEdge,weightsOnEdge)
+!$acc loop gang worker
         do iEdge = edgeStart,edgeEnd
-          v(1:nVertLevels,iEdge) = 0.0
-          do i=1,nEdgesOnEdge(iEdge)
-            eoe = edgesOnEdge(i,iEdge)
-!DIR$ IVDEP
-            do k = 1,nVertLevels
+          do k = 1,nVertLevels
+            v(k,iEdge) = 0.0
+          end do
+!$acc loop vector
+          do k = 1,nVertLevels
+            do i=1,nEdgesOnEdge(iEdge)
+              eoe = edgesOnEdge(i,iEdge)
               v(k,iEdge) = v(k,iEdge) + weightsOnEdge(i,iEdge) * u(k, eoe)
             end do
           end do
         end do
+!$acc end parallel
+call mpas_timer_stop('tangential_wind')
       end if
 
       !
@@ -5741,19 +6148,18 @@ module atm_time_integration
       !
       ! Avoid dividing h_vertex by areaTriangle and move areaTriangle into
       ! numerator for the pv_vertex calculation
+      call mpas_timer_start('pv_vertex')
+!$acc parallel copyin(fVertex) present(vorticity)
+      !$acc loop gang worker
       do iVertex = vertexStart,vertexEnd
-!DIR$ IVDEP
+         !$acc loop vector
+         !DIR$ IVDEP
          do k=1,nVertLevels
-!
-! the following commented code is for the PV conserving shallow water solver.  
-!            h_vertex = 0.0
-!            do i=1,vertexDegree
-!               h_vertex = h_vertex + h(k,cellsOnVertex(i,iVertex)) * kiteAreasOnVertex(i,iVertex)
-!            end do
-!            pv_vertex(k,iVertex) = (fVertex(iVertex) + vorticity(k,iVertex)) * areaTriangle(iVertex) / h_vertex
             pv_vertex(k,iVertex) = (fVertex(iVertex) + vorticity(k,iVertex))
          end do
       end do
+!$acc end parallel
+      call mpas_timer_stop('pv_vertex')
 
 !$OMP BARRIER
 
@@ -5761,32 +6167,52 @@ module atm_time_integration
       ! Compute pv at the edges
       !   ( this computes pv_edge at all edges bounding real cells )
       !
+      call mpas_timer_start('pv_edge')
+!$acc parallel present(verticesOnEdge)
+      !$acc loop gang worker
       do iEdge = edgeStart,edgeEnd
-!DIR$ IVDEP
+         !$acc loop vector
+         !DIR$ IVDEP
          do k=1,nVertLevels
             pv_edge(k,iEdge) =  0.5 * (pv_vertex(k,verticesOnEdge(1,iEdge)) + pv_vertex(k,verticesOnEdge(2,iEdge)))
          end do
       end do
+!$acc end parallel
+      call mpas_timer_stop('pv_edge')
 
       if (config_apvm_upwinding > 0.0) then
 
-      !
-      ! Compute pv at cell centers
-      !    ( this computes pv_cell for all real cells )
-      !  only needed for APVM upwinding
-      !
-      do iCell=cellStart,cellEnd
-         pv_cell(1:nVertLevels,iCell) = 0.0
-         r = invAreaCell(iCell)
-         do i=1,nEdgesOnCell(iCell)
-            iVertex = verticesOnCell(i,iCell)
-            j = kiteForCell(i,iCell)
-!DIR$ IVDEP
+         !
+         ! Compute pv at cell centers
+         !    ( this computes pv_cell for all real cells )
+         !  only needed for APVM upwinding
+         !
+         call mpas_timer_start('pv_cell')
+!$acc parallel present(invAreaCell,nEdgesOnCell,verticesOnCell,kiteForCell,kiteAreasOnVertex)
+
+         !$acc loop gang worker
+         do iCell=cellStart,cellEnd
+
+            !$acc loop vector
             do k = 1,nVertLevels
-               pv_cell(k,iCell) = pv_cell(k,iCell) + kiteAreasOnVertex(j,iVertex) * pv_vertex(k,iVertex) * r
+               pv_cell(k,iCell) = 0.0
+            end do
+
+            r = invAreaCell(iCell)
+
+            !$acc loop seq
+            do i=1,nEdgesOnCell(iCell)
+               iVertex = verticesOnCell(i,iCell)
+               j = kiteForCell(i,iCell)
+               !$acc loop vector
+               !DIR$ IVDEP
+               do k = 1,nVertLevels
+                  pv_cell(k,iCell) = pv_cell(k,iCell) + kiteAreasOnVertex(j,iVertex) * pv_vertex(k,iVertex) * r
+               end do
             end do
          end do
-      end do
+!$acc end parallel
+         call mpas_timer_stop('pv_cell')
 
 
 !$OMP BARRIER
@@ -5805,19 +6231,46 @@ module atm_time_integration
          ! Merged loops for calculating gradPVt, gradPVn and pv_edge
          ! Also precomputed inverses of dvEdge and dcEdge to avoid repeated divisions
          !
+         call mpas_timer_start('apvm')
          r = config_apvm_upwinding * dt
+!$acc parallel create(gradPVt,gradPVn) present(invDvEdge,invDcEdge,verticesOnEdge,cellsOnEdge)
+
+         !$acc loop gang worker
          do iEdge = edgeStart,edgeEnd
             r1 = 1.0_RKIND * invDvEdge(iEdge)
             r2 = 1.0_RKIND * invDcEdge(iEdge)
-!DIR$ IVDEP
+            !$acc loop vector
+            !DIR$ IVDEP
             do k = 1,nVertLevels
                gradPVt(k,iEdge) = (pv_vertex(k,verticesOnEdge(2,iEdge)) - pv_vertex(k,verticesOnEdge(1,iEdge))) * r1
                gradPVn(k,iEdge) = (pv_cell(k,cellsOnEdge(2,iEdge)) - pv_cell(k,cellsOnEdge(1,iEdge))) * r2
                pv_edge(k,iEdge) = pv_edge(k,iEdge) - r * (v(k,iEdge) * gradPVt(k,iEdge) + u(k,iEdge) * gradPVn(k,iEdge))
             end do
          end do
+!$acc end parallel
+         call mpas_timer_stop('apvm')
 
       end if  ! apvm upwinding
+
+      if (reconstruct_v) then
+!$acc exit data copyout(v)
+      else if (config_apvm_upwinding > 0.0) then
+!$acc exit data delete(v)
+      end if
+call mpas_timer_stop('atm_compute_solve_diagnostics_work')
+
+!$acc exit data copyout(vorticity)
+!$acc exit data copyout(divergence)
+!$acc exit data copyout(ke)
+!$acc exit data copyout(h_edge,ke_edge)
+!$acc exit data delete(h)
+!$acc exit data delete(u)
+!$acc exit data delete(ke_vertex)
+!$acc exit data copyout(pv_vertex)
+!$acc exit data copyout(pv_edge)
+!$acc exit data copyout(pv_cell)
+
+call mpas_timer_stop('atm_compute_solve_diagnostics_total_work')
 
    end subroutine atm_compute_solve_diagnostics_work
 
@@ -7016,5 +7469,69 @@ module atm_time_integration
       end if
 
    end subroutine summarize_timestep
+
+
+    subroutine field_to_device(domain, fieldName)
+
+       use mpas_derived_types, only : mpas_pool_field_info_type, MPAS_POOL_REAL, MPAS_POOL_INTEGER
+       use mpas_pool_routines, only : MPAS_pool_get_field_info, MPAS_pool_get_array
+
+       ! Arguments
+       type (domain_type), intent(inout) :: domain
+       character(len=*), intent(in) :: fieldName
+
+       type (mpas_pool_field_info_type) :: fieldInfo
+       real(kind=RKIND), dimension(:), pointer :: field_real1d
+       real(kind=RKIND), dimension(:,:), pointer :: field_real2d
+       real(kind=RKIND), dimension(:,:,:), pointer :: field_real3d
+       integer, dimension(:), pointer :: field_int1d
+       integer, dimension(:,:), pointer :: field_int2d
+       integer, dimension(:,:,:), pointer :: field_int3d
+
+       call MPAS_pool_get_field_info(domain % blocklist % allFields, trim(fieldName), fieldInfo)
+
+       if (fieldInfo % fieldType == MPAS_POOL_REAL) then
+           if (fieldInfo % nDims == 1) then
+               nullify(field_real1d)
+               call MPAS_pool_get_array(domain % blocklist % allFields, trim(fieldName), field_real1d)
+               if (associated(field_real1d)) then
+                   !$acc enter data copyin(field_real1d)
+               end if
+           else if (fieldInfo % nDims == 2) then
+               nullify(field_real2d)
+               call MPAS_pool_get_array(domain % blocklist % allFields, trim(fieldName), field_real2d)
+               if (associated(field_real2d)) then
+                   !$acc enter data copyin(field_real2d)
+               end if
+           else if (fieldInfo % nDims == 3) then
+               nullify(field_real3d)
+               call MPAS_pool_get_array(domain % blocklist % allFields, trim(fieldName), field_real3d)
+               if (associated(field_real3d)) then
+                   !$acc enter data copyin(field_real3d)
+               end if
+           end if
+       else if (fieldInfo % fieldType == MPAS_POOL_INTEGER) then
+           if (fieldInfo % nDims == 1) then
+               nullify(field_int1d)
+               call MPAS_pool_get_array(domain % blocklist % allFields, trim(fieldName), field_int1d)
+               if (associated(field_int1d)) then
+                   !$acc enter data copyin(field_int1d)
+               end if
+           else if (fieldInfo % nDims == 2) then
+               nullify(field_int2d)
+               call MPAS_pool_get_array(domain % blocklist % allFields, trim(fieldName), field_int2d)
+               if (associated(field_int2d)) then
+                   !$acc enter data copyin(field_int2d)
+               end if
+           else if (fieldInfo % nDims == 3) then
+               nullify(field_int3d)
+               call MPAS_pool_get_array(domain % blocklist % allFields, trim(fieldName), field_int3d)
+               if (associated(field_int3d)) then
+                   !$acc enter data copyin(field_int3d)
+               end if
+           end if
+       end if
+
+    end subroutine field_to_device
 
 end module atm_time_integration

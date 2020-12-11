@@ -153,13 +153,12 @@ module atm_core
           return
       end if
 
-
       block => domain % blocklist
       do while (associated(block))
          call mpas_pool_get_subpool(block % structs, 'mesh', mesh)
          call mpas_pool_get_subpool(block % structs, 'state', state)
 
-         call atm_mpas_init_block(domain % dminfo, domain % streamManager, block, mesh, dt)
+         call atm_mpas_init_block(domain, domain % dminfo, domain % streamManager, block, mesh, dt)
 
          call mpas_pool_get_array(state, 'xtime', xtime, 1)
          xtime = startTimeStamp
@@ -254,7 +253,7 @@ module atm_core
    end subroutine atm_simulation_clock_init
 
 
-   subroutine atm_mpas_init_block(dminfo, stream_manager, block, mesh, dt)
+   subroutine atm_mpas_init_block(domain, dminfo, stream_manager, block, mesh, dt)
    
       use atm_time_integration
       use mpas_rbf_interpolation
@@ -270,6 +269,7 @@ module atm_core
 
       implicit none
    
+      type (domain_type), intent(inout) :: domain
       type (dm_info), intent(in) :: dminfo
       type (MPAS_streamManager_type), intent(inout) :: stream_manager
       type (block_type), intent(inout) :: block
@@ -356,6 +356,8 @@ module atm_core
       call atm_adv_coef_compression(mesh)
 
       call atm_couple_coef_3rd_order(mesh, block % configs)
+
+      call mpas_atm_dynamics_init(domain)
       
       call mpas_pool_get_dimension(state, 'nVertices', nVertices)
       call mpas_pool_get_dimension(state, 'nVertLevels', nVertLevels)
@@ -873,6 +875,7 @@ module atm_core
       use mpas_timekeeping
       use mpas_atm_diagnostics_manager, only : mpas_atm_diag_cleanup
       use mpas_atm_threading, only : mpas_atm_threading_finalize
+      use atm_time_integration, only : mpas_atm_dynamics_finalize
    
 #ifdef DO_PHYSICS
       use mpas_atmphys_finalize
@@ -888,6 +891,8 @@ module atm_core
 
       clock => domain % clock
       mpas_log_info => domain % logInfo
+
+      call mpas_atm_dynamics_finalize(domain)
 
       call mpas_atm_diag_cleanup()
 
