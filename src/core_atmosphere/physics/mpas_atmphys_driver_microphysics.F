@@ -718,9 +718,9 @@
              if(wzp(k,i) .lt. 1000.) wkp(i) = k
           enddo
           refl10cm_max(i) = maxval(wdBZ1d(:,i))
-          ww1(i) = (wzp(kp+1,i)-1000.)/(wzp(kp+1,i)-wzp(kp,i))
+          ww1(i) = (wzp(wkp(i)+1,i)-1000.)/(wzp(wkp(i)+1,i)-wzp(wkp(i),i))
           ww2(i) = 1.0 - ww1(i)
-          refl10cm_1km(i) = ww1(i)*wdBZ1d(kp,i) + ww2(i)*wdBZ1d(kp+1,i)
+          refl10cm_1km(i) = ww1(i)*wdBZ1d(wkp(i),i) + ww2(i)*wdBZ1d(wkp(i)+1,i)
           refl10cm_1km_max(i) = max(refl10cm_1km_max(i),refl10cm_1km(i))
        enddo
 !$acc end parallel
