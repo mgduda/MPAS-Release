@@ -815,6 +815,7 @@
  logical,pointer:: config_sfc_albedo
  character(len=StrKIND),pointer:: lsm_scheme
  character(len=StrKIND),pointer:: mminlu
+ integer,pointer:: isice
 
 #ifdef THREADED_PHYSICS
  integer, external :: omp_get_thread_num, omp_get_num_threads
@@ -830,8 +831,9 @@
  call mpas_pool_get_config(configs,'config_sfc_albedo',config_sfc_albedo)
  call mpas_pool_get_config(configs,'config_lsm_scheme',lsm_scheme)
  call mpas_pool_get_array_gpu(sfc_input,'mminlu',mminlu)
+ call mpas_pool_get_array(sfc_input,'isice' ,isice )
 !!!
- !$acc update host(mminlu)
+ !$acc update host(mminlu,isice)
 
 !copy MPAS arrays to local arrays:
  call lsm_from_MPAS(configs,mesh,diag_physics,sfc_input,its,ite)
