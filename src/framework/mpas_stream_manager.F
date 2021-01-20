@@ -3066,10 +3066,20 @@ module mpas_stream_manager
         integer :: maxRecords, tempRecord
         integer :: local_ierr, threadNum
 
+        type (MPAS_Time_type) :: now
+        type (MPAS_Time_type) :: nextRingTime
+        type (MPAS_Time_type) :: nearestRingTime
+        type (MPAS_Time_type) :: start_time
+        type (MPAS_TimeInterval_type) :: stream_interval
+        integer :: DD, H, M, S, s_n, s_d
+        real(kind=R8KIND) :: next_output_timestamp
+        character(len=StrKIND) :: stream_interval_string
+
         threadNum = mpas_threading_get_thread_num()
 
         ierr = MPAS_STREAM_MGR_NOERR
         if ( threadNum == 0 ) then
+
            swapRecords = .false.
 
            !
@@ -3105,6 +3115,62 @@ module mpas_stream_manager
            if ((.not. ringing_alarm) .and. (.not. forceWriteNow)) then
                return
            end if
+
+           !
+           ! Determine the next time this stream is scheduled to be written
+           !
+           nearestRingTime = mpas_get_clock_time(manager % streamClock, MPAS_STOP_TIME)
+           alarm_cursor => stream % alarmList_out % head
+           do while (associated(alarm_cursor))
+               nextRingTime = mpas_alarm_next_ring_time(manager % streamClock, alarm_cursor % name, &
+                                                        strictlyInFuture=.true., ierr=local_ierr)
+               if (local_ierr == 0) then
+                  if (nextRingTime < nearestRingTime) then
+                     nearestRingTime = nextRingTime
+                  end if
+               end if
+               alarm_cursor => alarm_cursor % next
+           end do
+call mpas_get_time(nearestRingTime, dateTimeString=now_string)
+call mpas_log_write('Stream '//trim(stream % name)//' next scheduled for '//trim(now_string))
+
+! TO DO: if forceWriteNow, should we set the deadline to the present?
+
+           start_time = mpas_get_clock_time(manager % streamClock, MPAS_START_TIME)
+
+! TO DO: probably need logic to handle clock direction
+           stream_interval = nearestRingTime - start_time
+           call mpas_get_timeInterval(stream_interval, DD=DD, H=H, M=M, S=S, S_n=s_n, S_d=s_d)
+
+           !
+           ! Compute timestamp (as seconds since start time) of next scheduled write
+           ! of this stream
+           !
+           next_output_timestamp = real(DD, kind=R8KIND) * 86400.0_R8KIND &
+                                 + real(H, kind=R8KIND) * 3600.0_R8KIND &
+                                 + real(M, kind=R8KIND) * 60.0_R8KIND &
+                                 + real(S, kind=R8KIND) &
+                                 + (real(S_n, kind=R8KIND) / real(S_d, kind=R8KIND))
+
+call mpas_log_write(trim(stream % name)//' deadline = $r', realArgs=[real(next_output_timestamp,kind=RKIND)])
+
+!  years and months are converted into days? Only fractional seconds go into S_n and S_d?
+!  interval: DD=397 H=1 M=1 S=1 S_n=1 S_d=1000
+
+!           now = mpas_get_clock_time(manager % streamClock, MPAS_NOW)
+!           start_time = mpas_get_clock_time(manager % streamClock, MPAS_START_TIME)
+!           alarm_cursor => stream % alarmList_out % head
+!           call mpas_minimum_alarm_interval(manager % streamClock, alarm_cursor, stream_interval)
+
+!call mpas_get_time(now, dateTimeString=now_string)
+!call mpas_get_timeInterval(stream_interval, timeString=stream_interval_string)
+!call mpas_log_write('Creating stream '//trim(stream % name)//' at '//trim(now_string)//', written next at '//trim(stream_interval_string))
+!now = now + stream_interval
+!call mpas_get_time(now, dateTimeString=now_string)
+!call mpas_log_write('    deadline: '//trim(now_string))
+!call mpas_get_time(start_time, dateTimeString=now_string)
+!call mpas_log_write('    ref time: '//trim(now_string))
+
 
            !
            ! Work out file clobbering options
