@@ -831,7 +831,7 @@
  call mpas_pool_get_config(configs,'config_sfc_albedo',config_sfc_albedo)
  call mpas_pool_get_config(configs,'config_lsm_scheme',lsm_scheme)
  call mpas_pool_get_array_gpu(sfc_input,'mminlu',mminlu)
- call mpas_pool_get_array(sfc_input,'isice' ,isice )
+ call mpas_pool_get_array_gpu(sfc_input,'isice' ,isice )
 !!!
  !$acc update host(mminlu,isice)
 
