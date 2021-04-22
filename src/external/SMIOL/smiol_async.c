@@ -22,7 +22,7 @@ int SMIOL_async_init(struct SMIOL_context *context)
 	/*
 	 * Mutex setup
 	 */
-	context->mutex = malloc(sizeof(pthread_mutex_t));
+	context->buf_mutex = malloc(sizeof(pthread_mutex_t));
 
 	ierr = pthread_mutexattr_init(&mutexattr);
 	if (ierr) {
@@ -30,7 +30,7 @@ int SMIOL_async_init(struct SMIOL_context *context)
 		return 1;
 	}
 
-	ierr = pthread_mutex_init(context->mutex, (const pthread_mutexattr_t *)&mutexattr);
+	ierr = pthread_mutex_init(context->buf_mutex, (const pthread_mutexattr_t *)&mutexattr);
 	if (ierr) {
 		fprintf(stderr, "Error: pthread_mutex_init: %i\n", ierr);
 		return 1;
@@ -46,7 +46,7 @@ int SMIOL_async_init(struct SMIOL_context *context)
 	/*
 	 * Condition variable setup
 	 */
-	context->cond = malloc(sizeof(pthread_cond_t));
+	context->buf_cond = malloc(sizeof(pthread_cond_t));
 
 	ierr = pthread_condattr_init(&condattr);
 	if (ierr) {
@@ -54,7 +54,7 @@ int SMIOL_async_init(struct SMIOL_context *context)
 		return 1;
 	}
 
-	ierr = pthread_cond_init(context->cond, (const pthread_condattr_t *)&condattr);
+	ierr = pthread_cond_init(context->buf_cond, (const pthread_condattr_t *)&condattr);
 	if (ierr) {
 		fprintf(stderr, "Error: pthread_cond_init: %i\n", ierr);
 		return 1;
@@ -65,6 +65,43 @@ int SMIOL_async_init(struct SMIOL_context *context)
 		fprintf(stderr, "Error: pthread_condattr_destroy: %i\n", ierr);
 		return 1;
 	}
+
+        context->buf_usage = 0;
+        context->max_buf_usage = ((size_t)2048 * (size_t)1024 * (size_t)1024 - 1);
+        context->n_bufs = 0;
+
+	/*
+	 * Asynchronous queue initialization
+	 */
+	context->write_queue = malloc(sizeof(struct SMIOL_async_queue));
+	*(context->write_queue) = SMIOL_ASYNC_QUEUE_INITIALIZER;
+
+	context->write_priority_queue = malloc(sizeof(heap_t));
+	*(context->write_priority_queue) = HEAP_INITIALIZER;
+	heap_init(context->write_priority_queue, (size_t)1000000);
+
+	context->pending_queue = malloc(sizeof(struct SMIOL_async_queue));
+	*(context->pending_queue) = SMIOL_ASYNC_QUEUE_INITIALIZER;
+
+	/*
+	 * Ticket lock initialization
+	 */
+	context->write_queue_lock = malloc(sizeof(struct SMIOL_async_ticketlock));
+	*(context->write_queue_lock) = SMIOL_ASYNC_TICKETLOCK_INITIALIZER;
+	SMIOL_async_ticketlock_create(context->write_queue_lock);
+
+
+	/*
+	 * Asynchronous writer thread initialization
+	 */
+	context->writer = NULL;
+
+
+	/*
+	 * Asynchronous status initialization
+	 */
+	context->active = 0;
+
 
 	return 0;
 }
@@ -83,23 +120,38 @@ int SMIOL_async_finalize(struct SMIOL_context *context)
 {
 	int ierr;
 
-	ierr = pthread_mutex_destroy(context->mutex);
+	ierr = pthread_mutex_destroy(context->buf_mutex);
 	if (ierr) {
 		fprintf(stderr, "Error: pthread_mutex_destroy: %i\n", ierr);
 		return 1;
 	}
 
-	free(context->mutex);
-	context->mutex = NULL;
+	free(context->buf_mutex);
+	context->buf_mutex = NULL;
 
-	ierr = pthread_cond_destroy(context->cond);
+	ierr = pthread_cond_destroy(context->buf_cond);
 	if (ierr) {
 		fprintf(stderr, "Error: pthread_cond_destroy: %i\n", ierr);
 		return 1;
 	}
 
-	free(context->cond);
-	context->cond = NULL;
+	free(context->buf_cond);
+	context->buf_cond = NULL;
+
+	/*
+	 * Free queue
+	 */
+/* TO DO: could check here that queues are empty */
+	free(context->write_queue);
+	heap_free(context->write_priority_queue);
+	free(context->write_priority_queue);
+	free(context->pending_queue);
+
+	/*
+	 * Free ticket lock
+	 */
+	SMIOL_async_ticketlock_free(context->write_queue_lock);
+	free(context->write_queue_lock);
 
 	return 0;
 }

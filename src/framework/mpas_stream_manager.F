@@ -3137,8 +3137,6 @@ module mpas_stream_manager
                end if
                alarm_cursor => alarm_cursor % next
            end do
-call mpas_get_time(nearestRingTime, dateTimeString=now_string)
-call mpas_log_write('Stream '//trim(stream % name)//' next scheduled for '//trim(now_string))
 
 ! TO DO: if forceWriteNow, should we set the deadline to the present?
 
@@ -3159,23 +3157,6 @@ call mpas_log_write('Stream '//trim(stream % name)//' next scheduled for '//trim
                                  + (real(S_n, kind=R8KIND) / real(S_d, kind=R8KIND))
 
 call mpas_log_write(trim(stream % name)//' deadline = $r', realArgs=[real(next_output_timestamp,kind=RKIND)])
-
-!  years and months are converted into days? Only fractional seconds go into S_n and S_d?
-!  interval: DD=397 H=1 M=1 S=1 S_n=1 S_d=1000
-
-!           now = mpas_get_clock_time(manager % streamClock, MPAS_NOW)
-!           start_time = mpas_get_clock_time(manager % streamClock, MPAS_START_TIME)
-!           alarm_cursor => stream % alarmList_out % head
-!           call mpas_minimum_alarm_interval(manager % streamClock, alarm_cursor, stream_interval)
-
-!call mpas_get_time(now, dateTimeString=now_string)
-!call mpas_get_timeInterval(stream_interval, timeString=stream_interval_string)
-!call mpas_log_write('Creating stream '//trim(stream % name)//' at '//trim(now_string)//', written next at '//trim(stream_interval_string))
-!now = now + stream_interval
-!call mpas_get_time(now, dateTimeString=now_string)
-!call mpas_log_write('    deadline: '//trim(now_string))
-!call mpas_get_time(start_time, dateTimeString=now_string)
-!call mpas_log_write('    ref time: '//trim(now_string))
 
 
            !
@@ -3419,7 +3400,7 @@ call mpas_log_write(trim(stream % name)//' deadline = $r', realArgs=[real(next_o
            ! Write the stream
            ! 
            STREAM_DEBUG_WRITE(' -- Writing stream ' // trim(stream % name))
-           call MPAS_writeStream(stream % stream, stream % nRecords, ierr=local_ierr)
+           call MPAS_writeStream(stream % stream, stream % nRecords, deadline=next_output_timestamp, ierr=local_ierr)
 
            !
            ! Regardless of the error code from MPAS_writeStream, we need to reset global indices in the stream back to local indices

@@ -3246,12 +3246,13 @@ module mpas_io_streams
    end subroutine MPAS_readStream
 
 
-   subroutine MPAS_writeStream(stream, frame, ierr)
+   subroutine MPAS_writeStream(stream, frame, deadline, ierr)
 
       implicit none
 
       type (MPAS_Stream_type), intent(inout) :: stream
       integer, intent(in) :: frame
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
       character (len=StrKIND) :: dimensionSuffix
@@ -3338,7 +3339,7 @@ module mpas_io_streams
             int0d_temp = field_cursor % int0dField % scalar
 
 !call mpas_log_write('MGD calling MPAS_io_put_var now...')
-            call MPAS_io_put_var(stream % fileHandle, field_cursor % int0dField % fieldName, int0d_temp, io_err)
+            call MPAS_io_put_var(stream % fileHandle, field_cursor % int0dField % fieldName, int0d_temp, deadline, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
 
@@ -3392,9 +3393,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % int1dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int1dField % constituentNames(j), int0d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int1dField % constituentNames(j), int0d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int1dField % fieldName, int1d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int1dField % fieldName, int1d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3455,9 +3456,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % int2dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int2dField % constituentNames(j), int1d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int2dField % constituentNames(j), int1d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int2dField % fieldName, int2d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int2dField % fieldName, int2d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3522,9 +3523,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % int3dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int3dField % constituentNames(j), int2d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int3dField % constituentNames(j), int2d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int3dField % fieldName, int3d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % int3dField % fieldName, int3d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3546,7 +3547,7 @@ module mpas_io_streams
             real0d_temp = field_cursor % real0dField % scalar
 
 !call mpas_log_write('MGD calling MPAS_io_put_var now...')
-            call MPAS_io_put_var(stream % fileHandle, field_cursor % real0dField % fieldName, real0d_temp, io_err)
+            call MPAS_io_put_var(stream % fileHandle, field_cursor % real0dField % fieldName, real0d_temp, deadline, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
 
@@ -3600,9 +3601,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % real1dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real1dField % constituentNames(j), real0d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real1dField % constituentNames(j), real0d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real1dField % fieldName, real1d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real1dField % fieldName, real1d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3663,9 +3664,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % real2dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real2dField % constituentNames(j), real1d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real2dField % constituentNames(j), real1d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real2dField % fieldName, real2d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real2dField % fieldName, real2d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3730,9 +3731,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % real3dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real3dField % constituentNames(j), real2d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real3dField % constituentNames(j), real2d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real3dField % fieldName, real3d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real3dField % fieldName, real3d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3799,9 +3800,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % real4dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real4dField % constituentNames(j), real3d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real4dField % constituentNames(j), real3d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real4dField % fieldName, real4d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real4dField % fieldName, real4d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3870,9 +3871,9 @@ module mpas_io_streams
                end if
 
                if (field_cursor % real5dField % isVarArray) then
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real5dField % constituentNames(j), real4d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real5dField % constituentNames(j), real4d_temp, deadline, io_err)
                else
-                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real5dField % fieldName, real5d_temp, io_err)
+                  call MPAS_io_put_var(stream % fileHandle, field_cursor % real5dField % fieldName, real5d_temp, deadline, io_err)
                end if
                call MPAS_io_err_mesg(io_err, .false.)
                if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
@@ -3892,7 +3893,7 @@ module mpas_io_streams
 
 !call mpas_log_write('Copying field from first block')
 !call mpas_log_write('MGD calling MPAS_io_put_var now...')
-            call MPAS_io_put_var(stream % fileHandle, field_cursor % char0dField % fieldName, field_cursor % char0dField % scalar, io_err)
+            call MPAS_io_put_var(stream % fileHandle, field_cursor % char0dField % fieldName, field_cursor % char0dField % scalar, deadline, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
 
@@ -3904,7 +3905,7 @@ module mpas_io_streams
 
 !call mpas_log_write('Copying field from first block')
 !call mpas_log_write('MGD calling MPAS_io_put_var now...')
-            call MPAS_io_put_var(stream % fileHandle, field_cursor % char1dField % fieldName, field_cursor % char1dField % array, io_err)
+            call MPAS_io_put_var(stream % fileHandle, field_cursor % char1dField % fieldName, field_cursor % char1dField % array, deadline, io_err)
             call MPAS_io_err_mesg(io_err, .false.)
             if (io_err /= MPAS_IO_NOERR .and. present(ierr)) ierr = MPAS_IO_ERR
 
