@@ -25,9 +25,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_0d_char(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_0d_char(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_char, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_char, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -36,6 +36,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         character(len=:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -86,7 +87,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
         if (associated(buf)) then
             deallocate(char_buf)
@@ -122,7 +123,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_0d_char(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_char, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_char, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -131,6 +132,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         character(len=:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -226,9 +228,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_0d_real32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_0d_real32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -237,6 +239,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -284,7 +287,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -318,7 +321,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_0d_real32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -327,6 +330,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -409,9 +413,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_0d_real64(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_0d_real64(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -420,6 +424,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -467,7 +472,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -501,7 +506,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_0d_real64(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -510,6 +515,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -592,9 +598,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_0d_int32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_0d_int32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -603,6 +609,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -650,7 +657,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -684,7 +691,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_0d_int32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -693,6 +700,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -815,9 +823,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_1d_real32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_1d_real32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -826,6 +834,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -877,7 +886,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -911,7 +920,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_1d_real32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -920,6 +929,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -1046,9 +1056,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_1d_real64(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_1d_real64(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1057,6 +1067,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -1108,7 +1119,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -1142,7 +1153,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_1d_real64(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1151,6 +1162,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -1277,9 +1289,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_1d_int32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_1d_int32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1288,6 +1300,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -1339,7 +1352,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -1373,7 +1386,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_1d_int32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1382,6 +1395,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -1508,9 +1522,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_2d_real32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_2d_real32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1519,6 +1533,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -1570,7 +1585,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -1604,7 +1619,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_2d_real32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1613,6 +1628,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -1739,9 +1755,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_2d_real64(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_2d_real64(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1750,6 +1766,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -1801,7 +1818,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -1835,7 +1852,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_2d_real64(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1844,6 +1861,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -1970,9 +1988,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_2d_int32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_2d_int32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -1981,6 +1999,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -2032,7 +2051,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -2066,7 +2085,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_2d_int32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2075,6 +2094,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -2201,9 +2221,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_3d_real32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_3d_real32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2212,6 +2232,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -2263,7 +2284,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -2297,7 +2318,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_3d_real32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2306,6 +2327,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -2432,9 +2454,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_3d_real64(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_3d_real64(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2443,6 +2465,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -2494,7 +2517,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -2528,7 +2551,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_3d_real64(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2537,6 +2560,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -2663,9 +2687,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_3d_int32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_3d_int32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2674,6 +2698,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -2725,7 +2750,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -2759,7 +2784,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_3d_int32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2768,6 +2793,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -2894,9 +2920,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_4d_real32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_4d_real32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -2905,6 +2931,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -2957,7 +2984,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -2991,7 +3018,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_4d_real32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3000,6 +3027,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -3127,9 +3155,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_4d_real64(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_4d_real64(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3138,6 +3166,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -3190,7 +3219,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -3224,7 +3253,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_4d_real64(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3233,6 +3262,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -3360,9 +3390,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_4d_int32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_4d_int32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3371,6 +3401,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:,:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -3423,7 +3454,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -3457,7 +3488,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_4d_int32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_int, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_int, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3466,6 +3497,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         integer(kind=c_int), dimension(:,:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -3593,9 +3625,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_5d_real32(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_5d_real32(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3604,6 +3636,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:,:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -3656,7 +3689,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -3690,7 +3723,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_5d_real32(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_float, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_float, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3699,6 +3732,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_float), dimension(:,:,:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr
@@ -3826,9 +3860,9 @@
     !>  will be returned.
     !
     !-----------------------------------------------------------------------
-    function SMIOLf_put_var_5d_real64(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_put_var_5d_real64(file, varname, decomp, buf, priority) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3837,6 +3871,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:,:,:,:), pointer :: buf
+        integer(kind=c_long), intent(in) :: priority
 
         ! Return status code
         integer :: ierr
@@ -3889,7 +3924,7 @@
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_put_var(c_file, c_varname, c_decomp, c_buf, priority)
 
 
         deallocate(c_varname)
@@ -3923,7 +3958,7 @@
     !-----------------------------------------------------------------------
     function SMIOLf_get_var_5d_real64(file, varname, decomp, buf) result(ierr)
 
-        use iso_c_binding, only : c_double, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : c_double, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -3932,6 +3967,7 @@
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
         real(kind=c_double), dimension(:,:,:,:,:), pointer :: buf
+
 
         ! Return status code
         integer :: ierr

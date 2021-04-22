@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include "mpi.h"
+#include "heap.h"
 
 
 /* If SMIOL_Offset is redefined, interoperable Fortran types and interfaces must also be updated */
@@ -34,8 +35,22 @@ struct SMIOL_context {
 	 */
 	int async_io_comm;    /* Comm for ranks performing I/O */
 	int async_group_comm; /* Comm for group of ranks associated with an I/O rank */
-	pthread_mutex_t *mutex;
-	pthread_cond_t *cond;
+
+	int active;
+	pthread_t *writer;
+
+	size_t buf_usage;
+	size_t max_buf_usage;
+	size_t n_bufs;
+
+	pthread_mutex_t *buf_mutex;
+	pthread_cond_t *buf_cond;
+
+	struct SMIOL_async_ticketlock *write_queue_lock;
+	struct SMIOL_async_queue *write_queue;
+	heap_t *write_priority_queue;
+
+	struct SMIOL_async_queue *pending_queue;
 
 	/*
 	 * Checksum for verifying validity of contents of a SMIOL_context struct
@@ -52,18 +67,19 @@ struct SMIOL_file {
 	int io_task; /* 1 = this task performs I/O calls; 0 = no I/O calls on this task */
 	int io_file_comm;
 	int io_group_comm;
-	int n_reqs;
-	int *reqs;
+//	int n_reqs;
+//	int *reqs;
 #endif
 
 	/*
 	 * Asynchronous output
 	 */
 	int mode;
-	int active;
-	pthread_t *writer;
-	struct SMIOL_async_ticketlock *lock;
-	struct SMIOL_async_queue *queue;
+	size_t n_pending;
+	int id;
+
+	pthread_mutex_t *mutex;
+	pthread_cond_t *cond;
 
 	/*
 	 * Checksum for verifying validity of contents of a SMIOL_file struct
@@ -102,11 +118,15 @@ struct SMIOL_async_buffer {
 	int ierr;
 	void *buf;
 	size_t bufsize;
+	size_t global_bufsize;
+	struct SMIOL_file *file;
+	int id;
 #ifdef SMIOL_PNETCDF
 	int ncidp;
 	int varidp;
 	MPI_Offset *mpi_start;
 	MPI_Offset *mpi_count;
+	int req;
 #endif
 	struct SMIOL_async_buffer *next;
 };

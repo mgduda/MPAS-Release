@@ -210,12 +210,13 @@ module SMIOLf
             integer(kind=c_int) :: ierr
         end function
 
-        function SMIOL_put_var(file, varname, decomp, buf) result(ierr) bind(C, name='SMIOL_put_var')
-             use iso_c_binding, only : c_ptr, c_char, c_int
+        function SMIOL_put_var(file, varname, decomp, buf, priority) result(ierr) bind(C, name='SMIOL_put_var')
+             use iso_c_binding, only : c_ptr, c_char, c_int, c_long
              type (c_ptr), value :: file
              character (kind=c_char), dimension(*) :: varname
              type (c_ptr), value :: decomp
              type (c_ptr), value :: buf
+             integer (kind=c_long), value :: priority
              integer (kind=c_int) :: ierr
         end function
 

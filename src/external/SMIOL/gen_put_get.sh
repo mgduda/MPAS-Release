@@ -117,6 +117,8 @@ gen_put_get_var()
     !>  will be returned.
     !
     !-----------------------------------------------------------------------"
+    priority_arg=", priority"
+    priority_decl="        integer(kind=c_long), intent(in) :: priority"
 
     else
 
@@ -144,14 +146,16 @@ gen_put_get_var()
     !>  will be returned.
     !
     !-----------------------------------------------------------------------"
+    priority_arg=""
+    priority_decl=""
 
     fi
 
     cat >> ${filename} << EOF
 $header
-    function SMIOLf_${io}_var_${d}d_${type}(file, varname, decomp, buf) result(ierr)
+    function SMIOLf_${io}_var_${d}d_${type}(file, varname, decomp, buf${priority_arg}) result(ierr)
 
-        use iso_c_binding, only : ${kind}, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
+        use iso_c_binding, only : ${kind}, c_long, c_char, c_loc, c_ptr, c_null_ptr, c_null_char
 
         implicit none
 
@@ -160,6 +164,7 @@ $header
         character(len=*), intent(in) :: varname
         type(SMIOLf_decomp), pointer :: decomp
 ${dummy_buf_decl}
+${priority_decl}
 
         ! Return status code
         integer :: ierr
@@ -207,7 +212,7 @@ ${c_loc_invocation}
             c_buf = c_null_ptr
         end if
 
-        ierr = SMIOL_${io}_var(c_file, c_varname, c_decomp, c_buf)
+        ierr = SMIOL_${io}_var(c_file, c_varname, c_decomp, c_buf${priority_arg})
 
 ${char_copyout}
         deallocate(c_varname)

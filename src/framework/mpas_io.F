@@ -2888,7 +2888,9 @@ module mpas_io
 
    subroutine MPAS_io_put_var_generic(handle, fieldname, intVal, intArray1d, intArray2d, intArray3d, intArray4d, &
                                                         realVal, realArray1d, realArray2d, realArray3d, realArray4d, realArray5d, &
-                                                        charVal, charArray1d, ierr)
+                                                        charVal, charArray1d, deadline, ierr)
+
+      use iso_c_binding, only : c_long
 
       implicit none
 
@@ -2907,6 +2909,7 @@ module mpas_io
       real (kind=RKIND), dimension(:,:,:,:,:), intent(in), target, optional :: realArray5d
       character (len=*), intent(in), target, optional :: charVal
       character (len=*), dimension(:), intent(in), target, optional :: charArray1d
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
       integer :: pio_ierr
@@ -3046,7 +3049,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleVal)
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleVal, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          else if ((field_cursor % fieldhandle % precision == MPAS_IO_DOUBLE_PRECISION) .and. &
              (MPAS_IO_NATIVE_PRECISION /= MPAS_IO_DOUBLE_PRECISION)) then
@@ -3060,7 +3063,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleVal)
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleVal, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          else
 #ifdef MPAS_PIO_SUPPORT
@@ -3073,7 +3076,7 @@ module mpas_io
 
             realVal_p => realVal
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realVal_p)
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realVal_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          end if
       else if (present(intVal)) then
@@ -3087,7 +3090,7 @@ module mpas_io
 
          intVal_p => intVal
 #ifdef MPAS_SMIOL_SUPPORT
-         local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intVal_p)
+         local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intVal_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
       else if (present(charVal)) then
 #ifdef MPAS_PIO_SUPPORT
@@ -3103,7 +3106,7 @@ module mpas_io
 
          charVal_p => charVal
 #ifdef MPAS_SMIOL_SUPPORT
-         local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, charVal_p)
+         local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, charVal_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
       else if (present(charArray1d)) then
 #ifdef MPAS_PIO_SUPPORT
@@ -3145,7 +3148,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray1d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray1d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3163,7 +3166,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray1d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray1d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(singleArray1d)
@@ -3179,7 +3182,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray1d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray1d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3197,7 +3200,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray1d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray1d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(doubleArray1d)
@@ -3211,7 +3214,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray1d_p)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray1d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3229,7 +3232,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray1d_p)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray1d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
          end if
@@ -3246,7 +3249,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray2d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3267,7 +3270,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray2d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray2d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(singleArray2d)
@@ -3283,7 +3286,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray2d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3304,7 +3307,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray2d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray2d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(doubleArray2d)
@@ -3318,7 +3321,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray2d_p)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray2d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3339,7 +3342,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray2d_p)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray2d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
          end if
@@ -3356,7 +3359,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray3d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray3d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3380,7 +3383,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray3d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray3d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(singleArray3d)
@@ -3396,7 +3399,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray3d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray3d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3420,7 +3423,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray3d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray3d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(doubleArray3d)
@@ -3434,7 +3437,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray3d_p)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray3d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3458,7 +3461,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray3d_p)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray3d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
          end if
@@ -3475,7 +3478,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray4d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray4d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3502,7 +3505,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray4d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray4d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(singleArray4d)
@@ -3518,7 +3521,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray4d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray4d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3545,7 +3548,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray4d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray4d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(doubleArray4d)
@@ -3559,7 +3562,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray4d_p)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray4d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3586,7 +3589,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray4d_p)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray4d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
          end if
@@ -3603,7 +3606,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray5d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, singleArray5d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3633,7 +3636,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray5d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, singleArray5d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(singleArray5d)
@@ -3649,7 +3652,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray5d)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, doubleArray5d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3679,7 +3682,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray5d)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, doubleArray5d, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
             deallocate(doubleArray5d)
@@ -3693,7 +3696,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
                local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray5d_p)
+                                           field_cursor % fieldhandle % decomp % smiol_decomp, realArray5d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             else
 #ifdef MPAS_PIO_SUPPORT
@@ -3723,7 +3726,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray5d_p)
+               local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, realArray5d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
             end if
          end if
@@ -3737,7 +3740,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray1d_p)
+                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray1d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          else
 #ifdef MPAS_PIO_SUPPORT
@@ -3755,7 +3758,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray1d_p)
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray1d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          end if
       else if (present(intArray2d)) then
@@ -3768,7 +3771,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray2d_p)
+                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray2d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          else
 #ifdef MPAS_PIO_SUPPORT
@@ -3789,7 +3792,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray2d_p)
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray2d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          end if
       else if (present(intArray3d)) then
@@ -3802,7 +3805,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray3d_p)
+                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray3d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          else
 #ifdef MPAS_PIO_SUPPORT
@@ -3826,7 +3829,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray3d_p)
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray3d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          end if
       else if (present(intArray4d)) then
@@ -3839,7 +3842,7 @@ module mpas_io
 
 #ifdef MPAS_SMIOL_SUPPORT
             local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), &
-                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray4d_p)
+                                        field_cursor % fieldhandle % decomp % smiol_decomp, intArray4d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          else
 #ifdef MPAS_PIO_SUPPORT
@@ -3866,7 +3869,7 @@ module mpas_io
 #endif
 
 #ifdef MPAS_SMIOL_SUPPORT
-            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray4d_p)
+            local_ierr = SMIOLf_put_var(handle % smiol_file, trim(fieldname), null_decomp, intArray4d_p, priority=int(deadline*1000.0_R8KIND,c_long))
 #endif
          end if
       end if
@@ -3885,223 +3888,236 @@ module mpas_io
    end subroutine MPAS_io_put_var_generic
 
 
-   subroutine MPAS_io_put_var_int0d(handle, fieldname, val, ierr)
+   subroutine MPAS_io_put_var_int0d(handle, fieldname, val, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       integer, intent(in) :: val
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_int0d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, intVal=val, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, intVal=val, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_int0d
 
 
-   subroutine MPAS_io_put_var_int1d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_int1d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       integer, dimension(:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_int1d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, intArray1d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, intArray1d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_int1d
 
 
-   subroutine MPAS_io_put_var_int2d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_int2d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       integer, dimension(:,:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_int2d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, intArray2d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, intArray2d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_int2d
 
 
-   subroutine MPAS_io_put_var_int3d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_int3d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       integer, dimension(:,:,:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_int3d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, intArray3d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, intArray3d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_int3d
 
 
-   subroutine MPAS_io_put_var_int4d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_int4d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       integer, dimension(:,:,:,:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_int4d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, intArray4d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, intArray4d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_int4d
 
 
-   subroutine MPAS_io_put_var_real0d(handle, fieldname, val, ierr)
+   subroutine MPAS_io_put_var_real0d(handle, fieldname, val, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       real (kind=RKIND), intent(in) :: val
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_real0d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, realVal=val, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, realVal=val, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_real0d
 
 
-   subroutine MPAS_io_put_var_real1d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_real1d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       real (kind=RKIND), dimension(:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_real1d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, realArray1d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, realArray1d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_real1d
 
 
-   subroutine MPAS_io_put_var_real2d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_real2d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       real (kind=RKIND), dimension(:,:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_real2d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, realArray2d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, realArray2d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_real2d
 
 
-   subroutine MPAS_io_put_var_real3d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_real3d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       real (kind=RKIND), dimension(:,:,:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_real3d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, realArray3d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, realArray3d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_real3d
 
 
-   subroutine MPAS_io_put_var_real4d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_real4d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       real (kind=RKIND), dimension(:,:,:,:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_real4d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, realArray4d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, realArray4d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_real4d
 
 
-   subroutine MPAS_io_put_var_real5d(handle, fieldname, array, ierr)
+   subroutine MPAS_io_put_var_real5d(handle, fieldname, array, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       real (kind=RKIND), dimension(:,:,:,:,:), intent(in) :: array
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_real5d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, realArray5d=array, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, realArray5d=array, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_real5d
 
 
-   subroutine MPAS_io_put_var_char0d(handle, fieldname, val, ierr)
+   subroutine MPAS_io_put_var_char0d(handle, fieldname, val, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       character (len=*), intent(in) :: val
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_char0d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, charVal=val, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, charVal=val, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_char0d
 
 
-   subroutine MPAS_io_put_var_char1d(handle, fieldname, val, ierr)
+   subroutine MPAS_io_put_var_char1d(handle, fieldname, val, deadline, ierr)
 
       implicit none
 
       type (MPAS_IO_Handle_type), intent(inout) :: handle
       character (len=*), intent(in) :: fieldname
       character (len=*), dimension(:), intent(in) :: val
+      real(kind=R8KIND), intent(in), optional :: deadline
       integer, intent(out), optional :: ierr
 
 !      call mpas_log_write('Called MPAS_io_put_var_char1d()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
-      call MPAS_io_put_var_generic(handle, fieldname, charArray1d=val, ierr=ierr)
+      call MPAS_io_put_var_generic(handle, fieldname, charArray1d=val, deadline=deadline, ierr=ierr)
 
    end subroutine MPAS_io_put_var_char1d
 
