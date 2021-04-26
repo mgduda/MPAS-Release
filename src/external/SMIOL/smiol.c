@@ -1298,7 +1298,7 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 		if (file->state == PNETCDF_DEFINE_MODE) {
 			if (file->io_task) {
 				ierr = ncmpi_enddef(file->ncidp);
-				ierr = ncmpi_begin_indep_data(file->ncidp);
+//				ierr = ncmpi_begin_indep_data(file->ncidp);
 			}
 			MPI_Bcast(&ierr, 1, MPI_INT, 0, MPI_Comm_f2c(file->io_group_comm));
 			if (ierr != NC_NOERR) {
@@ -2616,16 +2616,13 @@ void *async_write(void *b)
 
 	context = b;
 
-#if 1
         CPU_ZERO(&mask);
         if (context->comm_rank % 38 < 19) {
                 CPU_SET(4*19, &mask);
         } else {
                 CPU_SET(4*41, &mask);
         }
-
         sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-#endif
 
 	while (context->active) {
 		/* Before locking, make sure all tasks are in a position to communicate */
@@ -2658,8 +2655,6 @@ void *async_write(void *b)
 		 * Process an item from the write queue
 		 */
 		if (async != NULL) {
-#define NOT_SURE
-#ifdef NOT_SURE
 			int pending, max_pending, min_pending;
 
 			ierr = ncmpi_inq_buffer_usage(async->ncidp, &usage);
@@ -2682,7 +2677,8 @@ void *async_write(void *b)
 					SMIOL_async_queue_add(context->pending_queue, pend);
 					pend = SMIOL_async_queue_remove(context->pending_queue);
 				}
-				ierr = ncmpi_wait(pend->ncidp, 1, &(pend->req), &status);
+				ierr = ncmpi_wait_all(pend->ncidp, 1, &(pend->req), &status);
+fprintf(stderr, "1wait ierr = %i\n", ierr);
 
 				ierr = ncmpi_inq_buffer_usage(async->ncidp, &usage);
 				usage += async->bufsize;
@@ -2695,7 +2691,6 @@ void *async_write(void *b)
 				lusage = usage;
 				ierr = MPI_Allreduce(&lusage, &max_usage, 1, MPI_LONG, MPI_MAX, MPI_Comm_f2c(context->async_io_comm));
 			}
-#endif
 
 			/* TO DO: How do we communicate ierr back to main thread? */
 			async->ierr = ncmpi_bput_vara(async->ncidp,
@@ -2723,7 +2718,8 @@ void *async_write(void *b)
 		 */
 		} else if (async == NULL && !SMIOL_async_queue_empty(context->pending_queue)) {
 			pend = SMIOL_async_queue_remove(context->pending_queue);
-			ierr = ncmpi_wait(pend->ncidp, 1, &(pend->req), &status);
+			ierr = ncmpi_wait_all(pend->ncidp, 1, &(pend->req), &status);
+fprintf(stderr, "wait ierr = %i\n", ierr);
 
 			/* Does this need to happend while buf_mutex is locked? */
 			pthread_mutex_lock(pend->file->mutex);
