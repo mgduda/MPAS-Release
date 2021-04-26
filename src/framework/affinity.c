@@ -13,6 +13,7 @@ void set_compute_affinity(int rank)
 	char filename[32];
 	FILE *f;
 
+#if 0
 	snprintf(filename, 32, "task_mask.%4.4i", rank);
 	f = fopen(filename, "w");
 
@@ -88,5 +89,6 @@ MPI_Barrier(MPI_COMM_WORLD);
 #endif
 
 	fclose(f);
+#endif
 #endif
 }
