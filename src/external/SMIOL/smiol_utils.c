@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "smiol_utils.h"
 
-#define IO_OFFSET 0
+#define IO_OFFSET 2560
 
 /*
  * Prototypes for functions used only internally by SMIOL utilities

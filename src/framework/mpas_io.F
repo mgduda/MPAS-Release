@@ -1380,7 +1380,6 @@ module mpas_io
       integer(kind=SMIOL_offset_kind) :: smiol_n_compute_elements
 #endif
 
-!      call mpas_log_write('Called MPAS_io_set_var_indices()')
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
       ! Sanity checks
@@ -1389,7 +1388,6 @@ module mpas_io
          return 
       end if
 
-!      call mpas_log_write('Assigning $i indices for '//trim(fieldname), intArgs=(/size(indices)/) )
       !  
       ! Check whether the field has been defined
       !
@@ -1404,7 +1402,6 @@ module mpas_io
          if (present(ierr)) ierr = MPAS_IO_ERR_UNDEFINED_VAR
          return
       end if
-!call mpas_log_write(trim(fieldname)//' has been defined')
 
       !
       ! If this is a scalar field, just return
@@ -1412,7 +1409,6 @@ module mpas_io
       if (field_cursor % fieldhandle % ndims == 0 .or. &
           (field_cursor % fieldhandle % ndims == 1 .and. field_cursor % fieldhandle % has_unlimited_dim) .or. &
           field_cursor % fieldhandle % field_type == MPAS_IO_CHAR) then
-!call mpas_log_write('No need to create a decomposition for a 0d field...')
          return
       end if
 
@@ -1421,15 +1417,12 @@ module mpas_io
       ! Check whether a suitable decomposition already exists
       !
       decomp_cursor => handle % ioContext % decomp_list
-!if (.not. associated(decomp_cursor)) call mpas_log_write('No existing decompositions to check...')
       early_return = 0
       DECOMP_LOOP: do while (associated(decomp_cursor))
 #ifdef MPAS_PIO_SUPPORT
          if (decomp_cursor % decomphandle % field_type == field_cursor % fieldhandle % field_type) then
          if (size(decomp_cursor % decomphandle % dims) == field_cursor % fieldhandle % ndims) then
-!call mpas_log_write('Number of dimensions matches...')
             do i=1,field_cursor % fieldhandle % ndims
-!call mpas_log_write('Checking dimension ', intArgs=(/decomp_cursor % decomphandle % dims(i), field_cursor % fieldhandle % dims(i) % dimsize/) )
                if (decomp_cursor % decomphandle % dims(i) /= field_cursor % fieldhandle % dims(i) % dimsize) then
                   decomp_cursor => decomp_cursor % next
                   cycle DECOMP_LOOP
@@ -1437,33 +1430,35 @@ module mpas_io
             end do
 #endif
 
+            early_return = 1
+
             if (size(decomp_cursor % decomphandle % indices) /= size(indices)) then
-!call mpas_log_write('We do not have the same number of indices in this decomposition...')
+               early_return = 0
+            end if
+
+            if (early_return == 1) then
+               do i=1,size(decomp_cursor % decomphandle % indices)
+                  if (indices(i) /= decomp_cursor % decomphandle % indices(i)) then
+                     early_return = 0
+                  end if
+               end do 
+            end if
+
+            call mpas_dmpar_min_int(handle % ioContext % dminfo, early_return, early_return_global)
+            if (early_return_global == 0) then
                decomp_cursor => decomp_cursor % next
                cycle DECOMP_LOOP
             end if
-
-            do i=1,size(decomp_cursor % decomphandle % indices)
-               if (indices(i) /= decomp_cursor % decomphandle % indices(i)) then
-!call mpas_log_write('One of the indices does not match... $i', intArgs=(/i/) )
-                  decomp_cursor => decomp_cursor % next
-                  cycle DECOMP_LOOP
-               end if
-            end do 
             
             ! OK, we have a match... just use this decomposition for the field and return
             field_cursor % fieldhandle % decomp => decomp_cursor % decomphandle 
-!call mpas_log_write('Found a matching decomposition that we can use')
-            early_return = 1
             exit DECOMP_LOOP
 #ifdef MPAS_PIO_SUPPORT
          else if ((size(decomp_cursor % decomphandle % dims) == field_cursor % fieldhandle % ndims - 1)  &
                   .and. field_cursor % fieldhandle % has_unlimited_dim  &
                  ) then
-!call mpas_log_write('Number of non-record dimensions matches...')
             do i=1,field_cursor % fieldhandle % ndims
                if (field_cursor % fieldhandle % dims(i) % is_unlimited_dim) cycle
-!call mpas_log_write('Checking dimension ', intArgs=(/decomp_cursor % decomphandle % dims(i), field_cursor % fieldhandle % dims(i) % dimsize/) )
                if (decomp_cursor % decomphandle % dims(i) /= field_cursor % fieldhandle % dims(i) % dimsize) then
                   decomp_cursor => decomp_cursor % next
                   cycle DECOMP_LOOP
@@ -1472,14 +1467,12 @@ module mpas_io
 
             ! Type and dimensions match... what about indices?
             if (size(decomp_cursor % decomphandle % indices) /= size(indices)) then
-!call mpas_log_write('We do not have the same number of indices in this decomposition...')
                decomp_cursor => decomp_cursor % next
                cycle DECOMP_LOOP
             end if
 
             do i=1,size(decomp_cursor % decomphandle % indices)
                if (indices(i) /= decomp_cursor % decomphandle % indices(i)) then
-!call mpas_log_write('One of the indices does not match... $i', intArgs=(/i/) )
                   decomp_cursor => decomp_cursor % next
                   cycle DECOMP_LOOP
                end if
@@ -1487,7 +1480,6 @@ module mpas_io
             
             ! OK, we have a match... just use this decomposition for the field and return
             field_cursor % fieldhandle % decomp => decomp_cursor % decomphandle 
-!call mpas_log_write('Found a matching decomposition that we can use (aside from record dimension)')
             early_return = 1
             exit DECOMP_LOOP
          end if
@@ -1503,9 +1495,6 @@ module mpas_io
       if (early_return_global == 1) then
          return
       end if
-
-
-!call mpas_log_write('Creating a new decomposition')
 
 
       !
@@ -1627,17 +1616,12 @@ module mpas_io
       ! Add new decomposition to the list
       if (.not. associated(handle % ioContext % decomp_list)) then
          handle % ioContext % decomp_list => new_decomp
-!call mpas_log_write('Adding first item to the decomp_list')
       else
          new_decomp % next => handle % ioContext % decomp_list
          handle % ioContext % decomp_list => new_decomp
-!call mpas_log_write('Adding new decomp to the head of the list')
       end if
 
-!call mpas_log_write('Setting decomp in fieldhandle')
       field_cursor % fieldhandle % decomp => new_decomp % decomphandle
-
-!call mpas_log_write('All finished.')
 
    end subroutine MPAS_io_set_var_indices
 

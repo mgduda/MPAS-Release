@@ -118,7 +118,11 @@ module atm_time_integration
       call mpas_pool_get_config(domain % blocklist % configs, 'config_apply_lbcs', config_apply_lbcs)
 
       if (trim(config_time_integration) == 'SRK3') then
+if (domain % dminfo % my_proc_id < 2560) then
          call atm_srk3(domain, dt, itimestep)
+else
+         call summarize_timestep(domain)
+end if
       else
          call mpas_log_write('Unknown time integration option '//trim(config_time_integration), messageType=MPAS_LOG_ERR)
          call mpas_log_write('Currently, only ''SRK3'' is supported.', messageType=MPAS_LOG_CRIT)
@@ -326,17 +330,24 @@ module atm_time_integration
       end if
         
 ! theta_m
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(theta_m_field)
+end if
  
 ! scalars
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(scalars_field)
+end if
 
 ! pressure_p
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(pressure_p_field)
+end if
 
 ! rtheta_p
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(rtheta_p_field)
-
+end if
 
       call mpas_timer_start('atm_rk_integration_setup')
 
@@ -510,7 +521,9 @@ module atm_time_integration
          call mpas_timer_stop('atm_compute_vert_imp_coefs')
 
          call mpas_pool_get_field(diag, 'exner', exner_field)
+if (domain % dminfo % my_proc_id < 2560) then
          call mpas_dmpar_exch_halo_field(exner_field)
+end if
 
 
          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
@@ -639,7 +652,9 @@ module atm_time_integration
 ! tend_u
             call mpas_pool_get_subpool(domain % blocklist % structs, 'tend', tend)
             call mpas_pool_get_field(tend, 'u', tend_u_field)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(tend_u_field, (/ 1 /))
+end if
    
             call mpas_timer_start('small_step_prep')
 
@@ -789,7 +804,9 @@ module atm_time_integration
 
                call mpas_pool_get_subpool(domain % blocklist % structs, 'diag', diag)
                call mpas_pool_get_field(diag, 'rho_pp', rho_pp_field)
+if (domain % dminfo % my_proc_id < 2560) then
                call mpas_dmpar_exch_halo_field(rho_pp_field, (/ 1 /))
+end if
 
                call mpas_timer_start('atm_advance_acoustic_step')
                block => domain % blocklist
@@ -842,7 +859,9 @@ module atm_time_integration
 
                call mpas_pool_get_subpool(domain % blocklist % structs, 'diag', diag)
                call mpas_pool_get_field(diag, 'rtheta_pp', rtheta_pp_field)
+if (domain % dminfo % my_proc_id < 2560) then
                call mpas_dmpar_exch_halo_field(rtheta_pp_field, (/ 1 /))
+end if
 
 !  complete update of horizontal momentum by including 3d divergence damping at the end of the acoustic step
 
@@ -873,18 +892,26 @@ module atm_time_integration
             !CR: SMALLER STENCIL?: call mpas_dmpar_exch_halo_field(block % diag % rw_p, (/ 1 /))
             call mpas_pool_get_subpool(domain % blocklist % structs, 'diag', diag)
             call mpas_pool_get_field(diag, 'rw_p', rw_p_field)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(rw_p_field)
+end if
 
             !CR: SMALLER STENCIL?: call mpas_dmpar_exch_halo_field(block % diag % ru_p, (/ 2 /))
             call mpas_pool_get_field(diag, 'ru_p', ru_p_field)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(ru_p_field)
+end if
 
             call mpas_pool_get_field(diag, 'rho_pp', rho_pp_field)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(rho_pp_field)
+end if
 
             ! the second layer of halo cells must be exchanged before calling atm_recover_large_step_variables
             call mpas_pool_get_field(diag, 'rtheta_pp', rtheta_pp_field)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(rtheta_pp_field, (/ 2 /))
+end if
 
             call mpas_timer_start('atm_recover_large_step_variables')
             block => domain % blocklist
@@ -985,7 +1012,9 @@ module atm_time_integration
             !CR: SMALLER STENCIL?: call mpas_dmpar_exch_halo_field(block % state % time_levs(2) % state % u, (/ 3 /))
             call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
             call mpas_pool_get_field(state, 'u', u_field, 2)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(u_field)
+end if
 
             ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
             ! PD or monotonicity constraints applied only on the final Runge-Kutta substep.
@@ -1109,7 +1138,9 @@ module atm_time_integration
                if (config_apply_lbcs) then  ! adjust boundary tendencies for regional_MPAS scalar transport
 
                   call mpas_pool_get_field(state, 'scalars', scalars_field, 2)  ! need to fill halo for horizontal filter
+if (domain % dminfo % my_proc_id < 2560) then
                   call mpas_dmpar_exch_halo_field(scalars_field)
+end if
 
                   block => domain % blocklist
                   do while (associated(block))
@@ -1231,21 +1262,29 @@ module atm_time_integration
             ! w
             call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
             call mpas_pool_get_field(state, 'w', w_field, 2)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(w_field)
+end if
 
             ! pv_edge
             call mpas_pool_get_subpool(domain % blocklist % structs, 'diag', diag)
             call mpas_pool_get_field(diag, 'pv_edge', pv_edge_field)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(pv_edge_field)
+end if
 
             ! rho_edge
             call mpas_pool_get_field(diag, 'rho_edge', rho_edge_field)
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(rho_edge_field)
+end if
 
             ! scalars
             if (config_scalar_advection .and. (.not. config_split_dynamics_transport) ) then
                call mpas_pool_get_field(state, 'scalars', scalars_field, 2)
+if (domain % dminfo % my_proc_id < 2560) then
                call mpas_dmpar_exch_halo_field(scalars_field)
+end if
             end if
 
             ! set the zero-gradient condition on w for regional_MPAS
@@ -1273,7 +1312,9 @@ module atm_time_integration
               ! w halo values needs resetting after regional boundary update
               call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
               call mpas_pool_get_field(state, 'w', w_field, 2)
+if (domain % dminfo % my_proc_id < 2560) then
               call mpas_dmpar_exch_halo_field(w_field)
+end if
 
             end if ! end of regional_MPAS addition 
 
@@ -1283,9 +1324,11 @@ module atm_time_integration
             call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
             call mpas_pool_get_field(state, 'theta_m', theta_m_field, 2)
 
+if (domain % dminfo % my_proc_id < 2560) then
             call mpas_dmpar_exch_halo_field(theta_m_field)
             call mpas_dmpar_exch_halo_field(pressure_p_field)
             call mpas_dmpar_exch_halo_field(rtheta_p_field)
+end if
 
             !
             ! Note: A halo exchange for 'exner' here as well as after the call
@@ -1491,7 +1534,9 @@ module atm_time_integration
             if (config_apply_lbcs) then  ! adjust boundary tendencies for regional_MPAS scalar transport
 
                call mpas_pool_get_field(state, 'scalars', scalars_field, 2)  ! need to fill halo for horizontal filter
+if (domain % dminfo % my_proc_id < 2560) then
                call mpas_dmpar_exch_halo_field(scalars_field)
+end if
 
                block => domain % blocklist
                do while (associated(block))
@@ -1568,7 +1613,9 @@ module atm_time_integration
 
             if (rk_step < 3) then
                call mpas_pool_get_field(state, 'scalars', scalars_field, 2)
+if (domain % dminfo % my_proc_id < 2560) then
                call mpas_dmpar_exch_halo_field(scalars_field)
+end if
             end if
 
          end do RK3_SPLIT_TRANSPORT
@@ -1714,7 +1761,9 @@ module atm_time_integration
       if (config_apply_lbcs) then  ! adjust boundary values for regional_MPAS scalar transport
 
          call mpas_pool_get_field(state, 'scalars', scalars_field, 2)  ! need to fill halo for horizontal filter
+if (domain % dminfo % my_proc_id < 2560) then
          call mpas_dmpar_exch_halo_field(scalars_field)
+end if
 
          block => domain % blocklist
          do while (associated(block))
@@ -3754,7 +3803,9 @@ module atm_time_integration
 
 !$OMP BARRIER
 !$OMP MASTER
+if (block % domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(scalars_old_field)
+end if
 !$OMP END MASTER
 !$OMP BARRIER
 
@@ -4095,7 +4146,9 @@ module atm_time_integration
          tempField % isActive = .true.
 
          tempField % array => scale_arr
+if (block % domain % dminfo % my_proc_id < 2560) then
          call mpas_dmpar_exch_halo_field(tempField, (/ 1 /))
+end if
 !$OMP END MASTER
 !$OMP BARRIER
 

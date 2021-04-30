@@ -9,7 +9,7 @@
 #include "smiol_utils.h"
 #include "smiol_async.h"
 
-#define IO_OFFSET 0
+#define IO_OFFSET 2560
 
 #ifdef SMIOL_PNETCDF
 #include "pnetcdf.h"
@@ -2646,9 +2646,9 @@ void *async_write(void *b)
 
 	context = b;
 
-#if 1
+#if 0
         CPU_ZERO(&mask);
-#if 1
+#if 0
         if (context->comm_rank % 40 < 20) {
                 CPU_SET(4*20, &mask);
         } else {
@@ -2668,6 +2668,16 @@ void *async_write(void *b)
 #endif
 #if 0
         if (context->comm_rank % 40 < 10) {
+                CPU_SET(4*20, &mask);
+        } else if (context->comm_rank % 40 < 20) {
+                CPU_SET(4*20+1, &mask);
+        } else if (context->comm_rank % 40 < 30) {
+                CPU_SET(4*42, &mask);
+        } else {
+                CPU_SET(4*42+1, &mask);
+        }
+#endif
+        if (context->comm_rank % 40 < 10) {
                 CPU_SET(1, &mask);
         } else if (context->comm_rank % 40 < 20) {
                 CPU_SET(80, &mask);
@@ -2677,7 +2687,6 @@ void *async_write(void *b)
                 CPU_SET(168, &mask);
         }
         sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-#endif
 #endif
 
 	while (context->active) {

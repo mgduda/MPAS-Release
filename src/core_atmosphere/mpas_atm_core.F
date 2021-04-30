@@ -49,6 +49,8 @@ module atm_core
 
       integer, pointer :: nVertLevels, maxEdges, maxEdges2, num_scalars
 
+      real (kind=R8KIND) :: input_start_time, input_stop_time
+
       ierr = 0
 
 
@@ -89,11 +91,13 @@ module atm_core
       ! input alarms for both input and restart before reading any remaining
       ! input streams.
       !
+      call mpas_dmpar_get_time(input_start_time)
       if (config_do_restart) then
          call MPAS_stream_mgr_read(domain % streamManager, streamID='restart', ierr=ierr)
       else
          call MPAS_stream_mgr_read(domain % streamManager, streamID='input', ierr=ierr)
       end if
+      call mpas_dmpar_get_time(input_stop_time)
       if (ierr /= MPAS_STREAM_MGR_NOERR) then
          call mpas_log_write('********************************************************************************', messageType=MPAS_LOG_ERR)
          call mpas_log_write('Error reading initial conditions',                                                 messageType=MPAS_LOG_ERR)
@@ -101,6 +105,7 @@ module atm_core
       end if
       call MPAS_stream_mgr_reset_alarms(domain % streamManager, streamID='input', direction=MPAS_STREAM_INPUT, ierr=ierr)
       call MPAS_stream_mgr_reset_alarms(domain % streamManager, streamID='restart', direction=MPAS_STREAM_INPUT, ierr=ierr)
+      call mpas_log_write('Timing for stream input: $r s', realArgs=(/real(input_stop_time - input_start_time, kind=RKIND)/))
 
       !
       ! Read all other inputs
@@ -142,7 +147,10 @@ module atm_core
 
       call mpas_pool_get_subpool(domain % blocklist % structs, 'state', state)
       call mpas_pool_get_field(state, 'u', u_field, 1)
+
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(u_field)
+end if
 
 
       !
@@ -177,13 +185,19 @@ module atm_core
 
       call mpas_pool_get_subpool(domain % blocklist % structs, 'diag', diag)
       call mpas_pool_get_field(diag, 'pv_edge', pv_edge_field)
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(pv_edge_field)
+end if
 
       call mpas_pool_get_field(diag, 'ru', ru_field)
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(ru_field)
+end if
 
       call mpas_pool_get_field(diag, 'rw', rw_field)
+if (domain % dminfo % my_proc_id < 2560) then
       call mpas_dmpar_exch_halo_field(rw_field)
+end if
 
       call mpas_atm_diag_setup(domain % streamManager, domain % blocklist % configs, &
                                domain % blocklist % structs, domain % clock, domain % dminfo)
@@ -864,10 +878,12 @@ module atm_core
 
 #ifdef DO_PHYSICS
       !proceed with physics if moist_physics is set to true:
+if (domain % dminfo % my_proc_id < 2560) then
       if(moist_physics) then
          call physics_timetracker(domain,dt,clock,itimestep,xtime_s)
          call physics_driver(domain,itimestep,xtime_s)
       endif
+end if
 #endif
 
       call atm_timestep(domain, dt, currTime, itimestep)
