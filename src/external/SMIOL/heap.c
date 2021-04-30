@@ -131,7 +131,7 @@ void *heap_get_min(heap_t *heap)
 	void *item;
 
 	if (heap->cur_size == 0) {
-		fprintf(stderr, "Error: heap is empty!\n");
+//		fprintf(stderr, "Error: heap is empty!\n");
 		return NULL;
 	}
 
