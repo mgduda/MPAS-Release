@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include "smiol_utils.h"
 
+#define IO_OFFSET 0
+
 /*
  * Prototypes for functions used only internally by SMIOL utilities
  */
@@ -393,8 +395,8 @@ int get_io_elements(int comm_rank, int num_io_tasks, int io_stride,
 	*io_start = 0;
 	*io_count = 0;
 
-	if (comm_rank % io_stride == 0) {
-		size_t io_rank = (size_t)(comm_rank / io_stride);
+	if (comm_rank % io_stride == 0 && comm_rank >= IO_OFFSET) {
+		size_t io_rank = (size_t)((comm_rank - IO_OFFSET) / io_stride);
 		size_t elems_per_task = (n_io_elements / (size_t)num_io_tasks);
 
 		if (io_rank >= num_io_tasks) {
