@@ -9,6 +9,18 @@
 #include "smiol_utils.h"
 #include "smiol_async.h"
 
+/*
+ * The following three macros control placement of asynchronous writer threads
+ */
+//define CPUS_PER_NODE 34
+//define CPUS_PER_SOCKET 17
+//define SOCKETS_PER_NODE 2
+
+#define CPUS_PER_NODE 35
+#define CPUS_PER_SOCKET 35
+#define SOCKETS_PER_NODE 1
+
+
 #define IO_OFFSET 0
 
 #ifdef SMIOL_PNETCDF
@@ -2232,7 +2244,7 @@ int SMIOL_create_decomp(struct SMIOL_context *context,
 	size_t n_compute_elements_agg;
 	SMIOL_Offset *compute_elements_agg = NULL;
 #ifdef SMIOL_AGGREGATION
-	const int agg_factor = 20;     /* Eventually, compute this or get value from user */
+	const int agg_factor = CPUS_PER_SOCKET;   /* Eventually, compute this or get value from user */
 
 	int comm_rank;
 	MPI_Comm agg_comm;
@@ -2646,39 +2658,13 @@ void *async_write(void *b)
 
 	context = b;
 
-#if 1
         CPU_ZERO(&mask);
-#if 1
-        if (context->comm_rank % 40 < 20) {
-                CPU_SET(4*20, &mask);
+        if (context->comm_rank % CPUS_PER_NODE < CPUS_PER_SOCKET) {
+                CPU_SET(CPUS_PER_SOCKET, &mask);       /* [0,CPUS_PER_SOCKET) on socket 0 */
         } else {
-                CPU_SET(4*42, &mask);
-        }
-#endif
-#if 0
-        if (context->comm_rank % 40 < 10) {
-                CPU_SET(4*20, &mask);
-        } else if (context->comm_rank % 40 < 20) {
-                CPU_SET(4*20+1, &mask);
-        } else if (context->comm_rank % 40 < 30) {
-                CPU_SET(4*42, &mask);
-        } else {
-                CPU_SET(4*42+1, &mask);
-        }
-#endif
-#if 0
-        if (context->comm_rank % 40 < 10) {
-                CPU_SET(1, &mask);
-        } else if (context->comm_rank % 40 < 20) {
-                CPU_SET(80, &mask);
-        } else if (context->comm_rank % 40 < 30) {
-                CPU_SET(89, &mask);
-        } else {
-                CPU_SET(168, &mask);
+                CPU_SET(SOCKETS_PER_NODE*CPUS_PER_SOCKET + 1, &mask); /* [CPUS_PER_SOCKET+1,2*CPUS_PER_SOCKET+1) on socket 1 */
         }
         sched_setaffinity(0, sizeof(cpu_set_t), &mask);
-#endif
-#endif
 
 	while (context->active) {
 		/* Before locking, make sure all tasks are in a position to communicate */
