@@ -13,82 +13,21 @@ void set_compute_affinity(int rank)
 	char filename[32];
 	FILE *f;
 
-#if 0
-	snprintf(filename, 32, "task_mask.%4.4i", rank);
-	f = fopen(filename, "w");
-
-        sched_getaffinity(0, sizeof(cpu_set_t), &mask);
-
-MPI_Barrier(MPI_COMM_WORLD);
-
-	fprintf(f, "  from OS:");
-	for (i = 0; i < 176; i++) {
-		if (i % 4 == 0) {
-			fprintf(f, " ");
-		}
-		if (CPU_ISSET(i, &mask)) {
-			fprintf(f, "1");
-		} else {
-			fprintf(f, "0");
-		}
-	}
-	fprintf(f, "\n");
-	fprintf(f, "          ");
-	for (i = 0; i < 44; i++) {
-		fprintf(f, " %2i  ", i);
-	}
-	fprintf(f, "\n\n");
-
-#if 0
 	CPU_ZERO(&mask);
-	if (rank % 38 < 19) {
-		CPU_SET(4*(rank % 38), &mask);
-	} else {
-		CPU_SET(4*((rank % 38) + 3), &mask);
-	}
+//define CPUS_PER_NODE 34
+//define CPUS_PER_SOCKET 17
+//define SOCKETS_PER_NODE 2
 
-	fprintf(f, "requested:");
-	for (i = 0; i < 176; i++) {
-		if (i % 4 == 0) {
-			fprintf(f, " ");
-		}
-		if (CPU_ISSET(i, &mask)) {
-			fprintf(f, "1");
-		} else {
-			fprintf(f, "0");
-		}
+#define CPUS_PER_NODE 35
+#define CPUS_PER_SOCKET 35
+#define SOCKETS_PER_NODE 1
+
+	if (rank % CPUS_PER_NODE < CPUS_PER_SOCKET) {
+		CPU_SET(rank % CPUS_PER_NODE, &mask);
+	} else {
+		CPU_SET(rank % CPUS_PER_NODE + 1, &mask);
 	}
-	fprintf(f, "\n");
-	fprintf(f, "          ");
-	for (i = 0; i < 44; i++) {
-		fprintf(f, " %2i  ", i);
-	}
-	fprintf(f, "\n\n");
-	
 	sched_setaffinity(0, sizeof(cpu_set_t), &mask);	
 
-        sched_getaffinity(0, sizeof(cpu_set_t), &mask);
-
-	fprintf(f, "      got:");
-	for (i = 0; i < 176; i++) {
-		if (i % 4 == 0) {
-			fprintf(f, " ");
-		}
-		if (CPU_ISSET(i, &mask)) {
-			fprintf(f, "1");
-		} else {
-			fprintf(f, "0");
-		}
-	}
-	fprintf(f, "\n");
-	fprintf(f, "          ");
-	for (i = 0; i < 44; i++) {
-		fprintf(f, " %2i  ", i);
-	}
-	fprintf(f, "\n");
-#endif
-
-	fclose(f);
-#endif
 #endif
 }
