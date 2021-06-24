@@ -27,7 +27,7 @@
 #include "pnetcdf.h"
 #define PNETCDF_DEFINE_MODE 0
 #define PNETCDF_DATA_MODE 1
-#define N_REQS 1024 
+#define N_REQS 1024
 #define BUFSIZE (1024*1024*1024)
 #endif
 
@@ -66,23 +66,23 @@ static void long_equality(void *invec, void *inoutvec, int *len, MPI_Datatype *d
 
 static void long_equality(void *invec, void *inoutvec, int *len, MPI_Datatype *dptr)
 {
-        int i;
-        EqLong *invecl;
-        EqLong *inoutvecl;
+	int i;
+	EqLong *invecl;
+	EqLong *inoutvecl;
 
-        if (*dptr != eq_long) {
-                fprintf(stderr, "Only eq_long is supported!\n");
-                return;
-        }
+	if (*dptr != eq_long) {
+		fprintf(stderr, "Only eq_long is supported!\n");
+		return;
+	}
 
-        invecl = (EqLong *)invec;
-        inoutvecl = (EqLong *)inoutvec;
+	invecl = (EqLong *)invec;
+	inoutvecl = (EqLong *)inoutvec;
 
-        for (i = 0; i < *len; i++) {
-                if ((invecl[i].val != inoutvecl[i].val) || invecl[i].flag || inoutvecl[i].flag) {
-                        inoutvecl[i].flag = 1;
-                }
-        }
+	for (i = 0; i < *len; i++) {
+		if ((invecl[i].val != inoutvecl[i].val) || invecl[i].flag || inoutvecl[i].flag) {
+			inoutvecl[i].flag = 1;
+		}
+	}
 }
 
 
@@ -127,9 +127,7 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
 {
 	MPI_Comm smiol_comm;
 	int io_task;
-//	int io_group;
 	MPI_Comm async_io_comm;
-//	MPI_Comm async_group_comm;
 
 
 	/*
@@ -179,8 +177,6 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
 	}
 	(*context)->fcomm = MPI_Comm_c2f(smiol_comm);
 
-//fprintf(stderr, "Comm smiol_comm = %x\n", (*context)->fcomm);
-
 	if (MPI_Comm_size(smiol_comm, &((*context)->comm_size)) != MPI_SUCCESS) {
 		free((*context));
 		(*context) = NULL;
@@ -216,18 +212,7 @@ int SMIOL_init(MPI_Comm comm, int num_io_tasks, int io_stride,
 	MPI_Comm_split(MPI_Comm_f2c((*context)->fcomm), io_task,
 	               (*context)->comm_rank, &async_io_comm);
 	(*context)->async_io_comm = MPI_Comm_c2f(async_io_comm);
-//fprintf(stderr, "Comm async_io_comm = %x\n", (*context)->async_io_comm);
 
-#if 0
-	/* Create a communicator for gathering/scattering values within a group
-	   of tasks associated with an I/O task */
-	io_group = (*context)->comm_rank / (*context)->io_stride;
-/* TO DO: check return error code here */
-	MPI_Comm_split(MPI_Comm_f2c((*context)->fcomm), io_group,
-	               (*context)->comm_rank, &async_group_comm);
-	(*context)->async_group_comm = MPI_Comm_c2f(async_group_comm);
-//fprintf(stderr, "Comm async_group_comm = %x\n", (*context)->async_group_comm);
-#endif
 
 	/*
 	 * Define MPI datatype
@@ -266,7 +251,6 @@ int SMIOL_finalize(struct SMIOL_context **context)
 {
 	MPI_Comm smiol_comm;
 	MPI_Comm async_io_comm;
-//	MPI_Comm async_group_comm;
 
 	/*
 	 * If the pointer to the context pointer is NULL, assume we have nothing
@@ -287,8 +271,10 @@ int SMIOL_finalize(struct SMIOL_context **context)
 		return SMIOL_INVALID_ARGUMENT;
 	}
 
-fprintf(stderr, "Finalizing context");
-SMIOL_async_join_thread(&((*context)->writer));
+	/*
+	 * Join with asynchronous writer thread, if one is still running
+	 */
+	SMIOL_async_join_thread(&((*context)->writer));
 
 	/*
 	 * Free MPI datatypes and operators
@@ -311,14 +297,6 @@ SMIOL_async_join_thread(&((*context)->writer));
 		fprintf(stderr, "Error: MPI_Comm_free\n");
 		return SMIOL_MPI_ERROR;
 	}
-
-#if 0
-	async_group_comm = MPI_Comm_f2c((*context)->async_group_comm);
-	if (MPI_Comm_free(&async_group_comm) != MPI_SUCCESS) {
-		fprintf(stderr, "Error: MPI_Comm_free\n");
-		return SMIOL_MPI_ERROR;
-	}
-#endif
 
 	/*
 	 * Free communicator
@@ -414,19 +392,6 @@ int SMIOL_open_file(struct SMIOL_context *context, const char *filename, int mod
 		(*file)->io_task = 0;
 	}
 
-#if 0
-	/* Create a communicator for collective file I/O operations */
-/* TO DO: check return error code here */
-        ierr = MPI_Comm_dup(MPI_Comm_f2c(context->async_io_comm), &io_file_comm);
-	(*file)->io_file_comm = MPI_Comm_c2f(io_file_comm);
-fprintf(stderr, "Comm io_file_comm = %x\n", (*file)->io_file_comm);
-
-	/* Create a communicator for gathering/scattering values within a group of tasks associated with an I/O task */
-/* TO DO: check return error code here */
-        ierr = MPI_Comm_dup(MPI_Comm_f2c(context->async_group_comm), &io_group_comm);
-	(*file)->io_group_comm = MPI_Comm_c2f(io_group_comm);
-fprintf(stderr, "Comm io_group_comm = %x\n", (*file)->io_group_comm);
-#endif
 
 	/* Create a communicator for collective file I/O operations */
 	if (context->comm_rank >= IO_OFFSET) {
@@ -437,7 +402,6 @@ fprintf(stderr, "Comm io_group_comm = %x\n", (*file)->io_group_comm);
 	MPI_Comm_split(MPI_Comm_f2c(context->fcomm), io_task,
 	               context->comm_rank, &io_file_comm);
 	(*file)->io_file_comm = MPI_Comm_c2f(io_file_comm);
-//fprintf(stderr, "Comm io_file_comm = %x\n", (*file)->io_file_comm);
 
 	/* Create a communicator for gathering/scattering values within a group
 	   of tasks associated with an I/O task */
@@ -454,7 +418,6 @@ fprintf(stderr, "Comm io_group_comm = %x\n", (*file)->io_group_comm);
 	MPI_Comm_split(MPI_Comm_f2c(context->fcomm), io_group,
 	               key, &io_group_comm);
 	(*file)->io_group_comm = MPI_Comm_c2f(io_group_comm);
-//fprintf(stderr, "Comm io_group_comm = %x\n", (*file)->io_group_comm);
 
 	(*file)->n_pending = 0;
 
@@ -515,7 +478,7 @@ fprintf(stderr, "Comm io_group_comm = %x\n", (*file)->io_group_comm);
 			                    &((*file)->ncidp));
 			
 /* TO DO - check return status code */
-                        ncmpi_buffer_attach((*file)->ncidp, BUFSIZE);
+			ncmpi_buffer_attach((*file)->ncidp, BUFSIZE);
 		}
 		(*file)->state = PNETCDF_DEFINE_MODE;
 #endif
@@ -526,7 +489,7 @@ fprintf(stderr, "Comm io_group_comm = %x\n", (*file)->io_group_comm);
 			                  NC_WRITE, MPI_INFO_NULL, &((*file)->ncidp));
 
 /* TO DO - check return status code */
-                        ncmpi_buffer_attach((*file)->ncidp, BUFSIZE);
+			ncmpi_buffer_attach((*file)->ncidp, BUFSIZE);
 		}
 		(*file)->state = PNETCDF_DATA_MODE;
 #endif
@@ -563,7 +526,6 @@ fprintf(stderr, "Comm io_group_comm = %x\n", (*file)->io_group_comm);
 	 * Unique ID
 	 */
 	(*file)->id = id++;
-if ((*file)->context->comm_rank == 0) fprintf(stderr, "Assigned file ID %i to %s\n", (*file)->id, filename);
 	
 
 	/*
@@ -594,8 +556,6 @@ int SMIOL_close_file(struct SMIOL_file **file)
 	MPI_Comm io_file_comm;
 	MPI_Comm io_group_comm;
 #endif
-	double time_start, time_stop;
-	double timestamp;
 
 	/*
 	 * If the pointer to the file pointer is NULL, assume we have nothing
@@ -618,19 +578,11 @@ if ((*file)->io_task) {
 	/*
 	 * Wait until no more pending writes
 	 */
-time_start = MPI_Wtime();
 pthread_mutex_lock((*file)->mutex);
-timestamp = MPI_Wtime(); if ((*file)->context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf acquired file mutex\n", (*file)->id, timestamp);
 while ((*file)->n_pending > 0) {
-        timestamp = MPI_Wtime(); if ((*file)->context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf wait for pending writes\n", (*file)->id, timestamp);
-        pthread_cond_wait((*file)->cond, (*file)->mutex);
+	pthread_cond_wait((*file)->cond, (*file)->mutex);
 }
-timestamp = MPI_Wtime(); if ((*file)->context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf no more pending writes\n", (*file)->id, timestamp);
 pthread_mutex_unlock((*file)->mutex);
-time_stop = MPI_Wtime();
-if ((*file)->context->comm_rank == 0) {
-	fprintf(stderr, "Timing [file=%i] (pending_writes): %lf\n", (*file)->id, (time_stop - time_start));
-}
 }
 
 #ifdef SMIOL_PNETCDF
@@ -1226,8 +1178,6 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 	void *out_buf = NULL;
 	size_t *start;
 	size_t *count;
-	double time_start, time_stop;
-	double timestamp;
 
 	struct SMIOL_context *context;
 
@@ -1380,51 +1330,34 @@ int SMIOL_put_var(struct SMIOL_file *file, const char *varname,
 			buf_p = out_buf;
 			bufsize = decomp->io_count * element_size;
 		} else if (file->io_task) {
-                        size_t buf_size = element_size;
+			size_t buf_size = element_size;
 
-                        buf_p = malloc(buf_size);
-                        memcpy(buf_p, buf, buf_size);
+			buf_p = malloc(buf_size);
+			memcpy(buf_p, buf, buf_size);
 			bufsize = element_size;
 		}
 
-time_start = MPI_Wtime();
 /*
  * Wait until context buffer usage will not exceed limit set by max_buf_usage
  */
 MPI_Allreduce(&bufsize, &global_bufsize, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_Comm_f2c(file->io_file_comm));
 
-timestamp = MPI_Wtime(); if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf try buf_mutex in main\n", file->id, timestamp);
-
 pthread_mutex_lock(context->buf_mutex);
 
-timestamp = MPI_Wtime(); if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf got buf_mutex in main\n", file->id, timestamp);
 
     while (context->buf_usage + global_bufsize > context->max_buf_usage && context->n_bufs > 0) {
-        timestamp = MPI_Wtime(); if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf not enough space in main\n", file->id, timestamp);
         pthread_cond_wait(context->buf_cond, context->buf_mutex);
     }
-    timestamp = MPI_Wtime(); if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf sufficient space in main\n", file->id, timestamp);
 
     context->buf_usage += global_bufsize;
     context->n_bufs++;
 
 pthread_mutex_unlock(context->buf_mutex);
-timestamp = MPI_Wtime(); if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf release buf_mutex in main\n", file->id, timestamp);
-
-time_stop = MPI_Wtime();
-if (context->comm_rank == 0) {
-	fprintf(stderr, "Timing [file=%i] (wait_for_buf): %lf\n", file->id, (time_stop - time_start));
-}
 
 /* Does this need to happend while buf_mutex is locked? */
-time_start = MPI_Wtime();
 pthread_mutex_lock(file->mutex);
 file->n_pending++;
 pthread_mutex_unlock(file->mutex);
-time_stop = MPI_Wtime();
-if (context->comm_rank == 0) {
-	fprintf(stderr, "Timing [file=%i] (increment n_pending): %lf\n", file->id, (time_stop - time_start));
-}
 
 		mpi_start = malloc(sizeof(MPI_Offset) * (size_t)ndims);
 		if (mpi_start == NULL) {
@@ -1448,7 +1381,7 @@ if (context->comm_rank == 0) {
 			mpi_count[j] = (MPI_Offset)count[j];
 		}
 
-                async = malloc(sizeof(struct SMIOL_async_buffer));
+		async = malloc(sizeof(struct SMIOL_async_buffer));
 
 		async->ierr = 0;
 		async->id = file->id;
@@ -1462,11 +1395,7 @@ if (context->comm_rank == 0) {
 		async->file = file;
 		async->next = NULL;
 
-time_start = MPI_Wtime();
-if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf try to lock in main\n", file->id, time_start);
 		SMIOL_async_ticket_lock(file->context->write_queue_lock);
-timestamp = MPI_Wtime(); if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] %lf got lock in main\n", file->id, timestamp);
-if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] priority = %li\n", file->id, priority);
 		heap_insert(file->context->write_priority_queue, (void *)async, priority);
 //		SMIOL_async_queue_add(file->context->write_queue, async);
 		if (!file->context->active) {
@@ -1475,10 +1404,6 @@ if (context->comm_rank == 0) fprintf(stderr, "trace [file=%i] priority = %li\n",
 			SMIOL_async_launch_thread(&(file->context->writer), async_write, (void *)file->context);
 		}
 		SMIOL_async_ticket_unlock(file->context->write_queue_lock);
-time_stop = MPI_Wtime();
-if (context->comm_rank == 0) {
-	fprintf(stderr, "Timing [file=%i] (queue_write): %lf\n", file->id, (time_stop - time_start));
-}
 		}
 	}
 #endif
@@ -1892,7 +1817,7 @@ int SMIOL_define_att(struct SMIOL_file *file, const char *varname,
  * argument will be unchanged.
  *
  ********************************************************************************/
-int SMIOL_inquire_att(struct SMIOL_file *file, const char *varname,                                                                  
+int SMIOL_inquire_att(struct SMIOL_file *file, const char *varname,
                       const char *att_name, int *att_type,
                       SMIOL_Offset *att_len, void *att)
 {
@@ -2326,10 +2251,10 @@ int SMIOL_create_decomp(struct SMIOL_context *context,
 	 * Create intracommunicators for aggregation
 	 */
 	ierr = MPI_Comm_split(comm, (comm_rank / agg_factor), comm_rank, &agg_comm);
-        if (ierr != MPI_SUCCESS) {
-                fprintf(stderr, "Error: MPI_Comm_split in smiol_aggregate_list\n");
-                return -1;
-        }
+	if (ierr != MPI_SUCCESS) {
+		fprintf(stderr, "Error: MPI_Comm_split in smiol_aggregate_list\n");
+		return -1;
+	}
 
 	/*
 	 * Create aggregated compute_elements list
@@ -2355,7 +2280,6 @@ int SMIOL_create_decomp(struct SMIOL_context *context,
 
 #ifdef SMIOL_AGGREGATION
 	(*decomp)->agg_comm = MPI_Comm_c2f(agg_comm);
-//fprintf(stderr, "Comm agg_comm = %x\n", (*decomp)->agg_comm);
 	(*decomp)->n_compute = n_compute_elements;
 	(*decomp)->n_compute_agg = n_compute_elements_agg;
 	(*decomp)->counts = counts;
@@ -2642,10 +2566,10 @@ void *async_write(void *b)
 	struct SMIOL_async_buffer *pend;
 
 #ifdef SMIOL_PNETCDF
-        MPI_Offset usage;
-        long lusage;
-        long max_usage;
-        int status;
+	MPI_Offset usage;
+	long lusage;
+	long max_usage;
+	int status;
 #endif
 	cpu_set_t mask;
 	struct timespec t;
@@ -2658,13 +2582,13 @@ void *async_write(void *b)
 
 	context = b;
 
-        CPU_ZERO(&mask);
-        if (context->comm_rank % CPUS_PER_NODE < CPUS_PER_SOCKET) {
-                CPU_SET(CPUS_PER_SOCKET, &mask);       /* [0,CPUS_PER_SOCKET) on socket 0 */
-        } else {
-                CPU_SET(SOCKETS_PER_NODE*CPUS_PER_SOCKET + 1, &mask); /* [CPUS_PER_SOCKET+1,2*CPUS_PER_SOCKET+1) on socket 1 */
-        }
-        sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+	CPU_ZERO(&mask);
+	if (context->comm_rank % CPUS_PER_NODE < CPUS_PER_SOCKET) {
+		CPU_SET(CPUS_PER_SOCKET, &mask);       /* [0,CPUS_PER_SOCKET) on socket 0 */
+	} else {
+		CPU_SET(SOCKETS_PER_NODE*CPUS_PER_SOCKET + 1, &mask); /* [CPUS_PER_SOCKET+1,2*CPUS_PER_SOCKET+1) on socket 1 */
+	}
+	sched_setaffinity(0, sizeof(cpu_set_t), &mask);
 
 	while (context->active) {
 		/* Before locking, make sure all tasks are in a position to communicate */
@@ -2720,7 +2644,6 @@ void *async_write(void *b)
 					pend = SMIOL_async_queue_remove(context->pending_queue);
 				}
 				ierr = ncmpi_wait_all(pend->ncidp, 1, &(pend->req), &status);
-//fprintf(stderr, "1wait ierr = %i\n", ierr);
 
 				ierr = ncmpi_inq_buffer_usage(async->ncidp, &usage);
 				usage += async->bufsize;
@@ -2761,7 +2684,6 @@ void *async_write(void *b)
 		} else if (async == NULL && !SMIOL_async_queue_empty(context->pending_queue)) {
 			pend = SMIOL_async_queue_remove(context->pending_queue);
 			ierr = ncmpi_wait_all(pend->ncidp, 1, &(pend->req), &status);
-//fprintf(stderr, "wait ierr = %i\n", ierr);
 
 			/* Does this need to happend while buf_mutex is locked? */
 			pthread_mutex_lock(pend->file->mutex);
