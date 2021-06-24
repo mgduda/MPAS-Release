@@ -847,7 +847,7 @@ module mpas_io
 #ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), vartype=smiol_type)
          if (local_ierr /= SMIOL_SUCCESS) then
-            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+!            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             if (present(ierr)) ierr = MPAS_IO_ERR_PIO
             deallocate(new_fieldlist_node % fieldhandle)
             deallocate(new_fieldlist_node)
@@ -886,7 +886,7 @@ module mpas_io
 #ifdef MPAS_SMIOL_SUPPORT
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), ndims=smiol_ndims)
          if (local_ierr /= SMIOL_SUCCESS) then
-            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+!            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
             if (present(ierr)) ierr = MPAS_IO_ERR_PIO
             deallocate(new_fieldlist_node % fieldhandle)
             deallocate(new_fieldlist_node)
@@ -952,7 +952,7 @@ module mpas_io
          allocate(smiol_dimnames(smiol_ndims))
          local_ierr = SMIOLf_inquire_var(handle % smiol_file, trim(fieldname), dimnames=smiol_dimnames)
          if (local_ierr /= SMIOL_SUCCESS) then
-            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
+!            call mpas_log_write('SMIOLf_inquire_var failed with error $i', intArgs=[local_ierr], messageType=MPAS_LOG_ERR)
          end if
          do i=1,new_fieldlist_node % fieldhandle % ndims
             new_fieldlist_node % fieldhandle % dims(i) % dimname = smiol_dimnames(i)
