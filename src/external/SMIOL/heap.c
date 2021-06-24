@@ -30,7 +30,7 @@ int main(void)
 	for (i = 0; i < 100000000; i++) {
 		temp = malloc(sizeof(struct buffer));
 		temp->name = malloc(sizeof(char) * 32);
-		snprintf(temp->name, 32, "uReconstructZonal"); 
+		snprintf(temp->name, 32, "uReconstructZonal");
 		key = rand() % 100000;
 		if (i % 3 == 0) key = -key;
 		temp->deadline = key;

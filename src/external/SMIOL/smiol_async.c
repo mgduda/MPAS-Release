@@ -66,9 +66,9 @@ int SMIOL_async_init(struct SMIOL_context *context)
 		return 1;
 	}
 
-        context->buf_usage = 0;
-        context->max_buf_usage = ((size_t)2048 * (size_t)1024 * (size_t)1024 - 1);
-        context->n_bufs = 0;
+	context->buf_usage = 0;
+	context->max_buf_usage = ((size_t)2048 * (size_t)1024 * (size_t)1024 - 1);
+	context->n_bufs = 0;
 
 	/*
 	 * Asynchronous queue initialization
@@ -238,27 +238,27 @@ struct SMIOL_async_buffer *SMIOL_async_queue_remove(struct SMIOL_async_queue *qu
 void SMIOL_async_ticketlock_create(struct SMIOL_async_ticketlock *lock)
 {
 	int ierr;
-        pthread_mutexattr_t mutexattr;
+	pthread_mutexattr_t mutexattr;
 	pthread_condattr_t condattr;
 
-        ierr = pthread_mutexattr_init(&mutexattr);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutexattr_init: %i\n", ierr);
-                return;
-        }
+	ierr = pthread_mutexattr_init(&mutexattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_mutexattr_init: %i\n", ierr);
+		return;
+	}
 
-        lock->mutex = malloc(sizeof(pthread_mutex_t));
-        ierr = pthread_mutex_init(lock->mutex, (const pthread_mutexattr_t *)&mutexattr);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutex_init: %i\n", ierr);
-                return;
-        }
+	lock->mutex = malloc(sizeof(pthread_mutex_t));
+	ierr = pthread_mutex_init(lock->mutex, (const pthread_mutexattr_t *)&mutexattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_mutex_init: %i\n", ierr);
+		return;
+	}
 
-        ierr = pthread_mutexattr_destroy(&mutexattr);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutexattr_destroy: %i\n", ierr);
-                return;
-        }
+	ierr = pthread_mutexattr_destroy(&mutexattr);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_mutexattr_destroy: %i\n", ierr);
+		return;
+	}
 
 	/*
 	 * Condition variable setup
@@ -304,24 +304,24 @@ void SMIOL_async_ticketlock_free(struct SMIOL_async_ticketlock *lock)
 	/*
 	 * Free mutex
 	 */
-        ierr = pthread_mutex_destroy(lock->mutex);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_mutex_destroy: %i\n", ierr);
+	ierr = pthread_mutex_destroy(lock->mutex);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_mutex_destroy: %i\n", ierr);
 		return;
 	}
 
-        free(lock->mutex);
+	free(lock->mutex);
 
 	/*
 	 * Free condition variable
 	 */
-        ierr = pthread_cond_destroy(lock->cond);
-        if (ierr) {
-                fprintf(stderr, "Error: pthread_cond_destroy: %i\n", ierr);
+	ierr = pthread_cond_destroy(lock->cond);
+	if (ierr) {
+		fprintf(stderr, "Error: pthread_cond_destroy: %i\n", ierr);
 		return;
 	}
 
-        free(lock->cond);
+	free(lock->cond);
 }
 
 
