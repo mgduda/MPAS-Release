@@ -447,6 +447,8 @@ bluegene:
 CPPINCLUDES = 
 FCINCLUDES = 
 LIBS = 
+
+ifneq "$(PIO)" ""
 ifneq ($(wildcard $(PIO)/lib), ) # Check for newer PIO version
 ifeq "$(USE_PIO2)" "true"
 	FCINCLUDES = -I$(PIO)/include
@@ -472,6 +474,7 @@ else
 	CPPINCLUDES = -I$(PIO)
 	FCINCLUDES = -I$(PIO)
 	LIBS = -L$(PIO) -lpio
+endif
 endif
 endif
 
@@ -588,11 +591,15 @@ else # USE_PAPI IF
 	PAPI_MESSAGE="Papi libraries are off."
 endif # USE_PAPI IF
 
+ifneq "$(PIO)" ""
 ifeq "$(USE_PIO2)" "true"
 	PIO_MESSAGE="Using the PIO 2 library."
 else # USE_PIO2 IF
 	PIO_MESSAGE="Using the PIO 1.x library."
 endif # USE_PIO2 IF
+else
+	PIO_MESSAGE="Not linking with PIO."
+endif
 
 ifdef TIMER_LIB
 ifeq "$(TIMER_LIB)" "tau"
@@ -711,6 +718,12 @@ ifdef MPAS_EXTERNAL_CPPFLAGS
 	override CPPFLAGS += $(MPAS_EXTERNAL_CPPFLAGS)
 endif
 ####################################################
+
+ifneq "$(PIO)" ""
+	override CPPFLAGS += "-DMPAS_PIO_SUPPORT"
+else
+	override CPPFLAGS += "-DMPAS_SMIOL_SUPPORT"
+endif
 
 ifeq ($(wildcard src/core_$(CORE)), ) # CHECK FOR EXISTENCE OF CORE DIRECTORY
 
